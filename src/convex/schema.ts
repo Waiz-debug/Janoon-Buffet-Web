@@ -102,10 +102,10 @@ const schema = defineSchema(
       seating: seatingValidator,
       /** Each dish line: [slug, unit count] */
       dishes: v.array(
-        v.tuple([
-          v.string(),
-          v.number(),
-        ]),
+        v.object({
+          slug: v.string(),
+          count: v.number(),
+        }),
       ),
       notes: v.optional(v.string()),
       status: orderStatusValidator,

@@ -44,7 +44,7 @@ async function findReservation(ctx: QueryCtx | MutationCtx, reference: string, p
  * Staff members are signed-in members of the restaurant team. Anonymous
  * "guest" sessions are rejected so the bookings desk stays private.
  */
-async function requireStaff(ctx: QueryCtx | MutationCtx) {
+export async function requireStaff(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
   if (userId === null) {
     throw new Error("Sign in to manage buffet reservations.");

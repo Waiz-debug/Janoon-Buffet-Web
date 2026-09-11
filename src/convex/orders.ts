@@ -47,7 +47,10 @@ export const create = mutation({
     guestName: v.string(),
     partySize: v.number(),
     dishes: v.array(
-      v.tuple([v.string(), v.number()], "dishes"),
+      v.object({
+        slug: v.string(),
+        count: v.number(),
+      }),
     ),
     notes: v.optional(v.string()),
     seating: v.union(v.literal("outdoor"), v.literal("indoor")),
@@ -61,7 +64,8 @@ export const create = mutation({
     const valid: [MenuSlug, number][] = [];
 
     for (const line of dishList) {
-      const [slug, count] = line;
+      const slug = line.slug;
+      const count = line.count;
       if (typeof slug !== "string" || !slug.trim()) continue;
       const qualified = qualifyDish(slug.trim());
       if (!qualified) {
