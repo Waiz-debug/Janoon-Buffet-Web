@@ -19,8 +19,6 @@ function validateIcon(icon: string): "flame" | "pot" | "bites" | "dessert" {
 
 /** Generate a URL-friendly slug from a dish name. */
 function slugify(name: string): string {
-
-function slugify(name: string): string {
   const cleaned = name
     .trim()
     .toLowerCase()
@@ -32,19 +30,10 @@ function slugify(name: string): string {
   return cleaned;
 }
 
+type Id<T extends string> = string;
+
 function collisionAvoid(reference: string, ctx: any, table: string, field: string) {
   const existing = ctx.db
-    .query(table)
-    .withIndex(field, (q) => q.eq(field, reference))
-    .unique();
-  if (existing) {
-    throw new Error(
-      `A record with that identifier already exists. Please choose another.`,
-    );
-  }
-}
-
-type Id<T extends string> = string;  const existing = ctx.db
     .query(table)
     .withIndex(field, (q) => q.eq(field, reference))
     .unique();
@@ -92,8 +81,9 @@ export const upsertCategory = mutation({
   handler: async (ctx, args) => {
     const icon = validateIcon(args.icon);
     const existing = await ctx.db
-      .query("menuCategories")      .withIndex("by_categoryId", (q) => q.eq("id", args.id))
-        .unique();
+      .query("menuCategories")
+      .withIndex("by_categoryId", (q) => q.eq("id", args.id))
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -123,9 +113,9 @@ export const upsertCategory = mutation({
 export const deleteCategory = mutation({
   args: { id: v.string() },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("menuCategories")      .withIndex("by_categoryId", (q) => q.eq("id", args.id))
-        .unique();
+    const existing = await ctx.db  .query("menuCategories")
+      .withIndex("by_categoryId", (q) => q.eq("id", args.id))
+      .unique();
     if (!existing) throw new Error("Category not found.");
 
     // Move any dishes in this category into a hidden "uncategorized" bucket.
@@ -194,7 +184,7 @@ export const upsertDish = mutation({
     // Ensure the target category exists.
     const category = await ctx.db
       .query("menuCategories")
-      .withIndex("by_id", (q) => q.eq("id", args.categoryId))
+      .withIndex("by_categoryId", (q) => q.eq("id", args.categoryId))
       .unique();
     if (!category) {
       throw new Error(
@@ -369,7 +359,10 @@ export const ensureSeedData = mutation({
     ];
 
     for (const c of categories) {
-      await ctx.db.insert("menuCategories", c);
+      await ctx.db.insert("menuCategories", {
+        ...c,
+        icon: validateIcon(c.icon),
+      });
     }
 
     const dishes: any[] = [
