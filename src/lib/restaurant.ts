@@ -1,0 +1,224 @@
+/**
+ * Tribe of Taste — single source of truth for public site content.
+ *
+ * Photos: swap these Unsplash placeholders for real photos of the Natha Singh
+ * Wala seating area and live counters. Every image degrades to a themed tile
+ * if it fails to load, so the layout never breaks.
+ */
+
+const unsplash = (id: string, width = 1000) =>
+  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=70`;
+
+export const RESTAURANT = {
+  name: "Tribe of Taste",
+  tagline: "24/7 open buffet",
+  phoneDisplay: "0322 8543333",
+  phoneHref: "tel:+923228543333",
+  address: "Natha Singh Wala, near DHA Phase 5, Lahore",
+  hours: "Open 24 hours, every day",
+  rating: 4.6,
+  reviewCount: 72,
+  buffetRange: "Rs 2,000 – 3,000",
+  instagramHandle: "@tribeoftaste",
+  instagramUrl: "https://www.instagram.com/tribeoftaste/",
+  facebookUrl: "https://www.facebook.com/search/top?q=tribe%20of%20taste%20lahore",
+  mapsUrl:
+    "https://www.google.com/maps/search/?api=1&query=Tribe+of+Taste+Natha+Singh+Wala+DHA+Phase+5+Lahore",
+  heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
+} as const;
+
+export type MenuCategory = {
+  id: string;
+  name: string;
+  urdu: string;
+  blurb: string;
+  icon: "flame" | "pot" | "bites" | "dessert";
+  items: string[];
+};
+
+export const BUFFET_TIERS = [
+  {
+    label: "Monday – Thursday",
+    price: "Rs 2,000",
+    note: "per person, all you can eat",
+  },
+  {
+    label: "Friday – Sunday",
+    price: "Rs 2,500",
+    note: "per person, live BBQ counters",
+  },
+  {
+    label: "Festive & Eid nights",
+    price: "Rs 3,000",
+    note: "per person, extended menu",
+  },
+] as const;
+
+export const BUFFET_INCLUDES = [
+  "Unlimited live-fire BBQ refills",
+  "Tandoori naan, sheermal & roti to order",
+  "Salad bar, raita, chutneys & pickles",
+  "Soft drinks, lassi and Kashmiri chai",
+] as const;
+
+export const MENU_CATEGORIES: MenuCategory[] = [
+  {
+    id: "bbq",
+    name: "BBQ & Grills",
+    urdu: "باری بی کیو",
+    blurb:
+      "Charcoal counters that run all night — the same seekh recipe the family has grilled for years.",
+    icon: "flame",
+    items: [
+      "Beef & chicken seekh kebab",
+      "Chicken tikka, malai boti & kalmi tikka",
+      "Beef bihari kebab & mutton chops",
+      "Tandoori grilled fish (daily special)",
+      "Charcoal-grilled corn & vegetables",
+    ],
+  },
+  {
+    id: "handi",
+    name: "Traditional Handi",
+    urdu: "روایتی ہانڈی",
+    blurb:
+      "Slow clay-pot cooking that starts before dawn and simmers until the first guests arrive.",
+    icon: "pot",
+    items: [
+      "Chicken karahi, made to order",
+      "Mutton nihari, simmered overnight",
+      "Chicken haleem with crisp fried onions",
+      "Daal maash tarka & palak paneer",
+      "Chicken handi with tandoori naan",
+    ],
+  },
+  {
+    id: "fast-bites",
+    name: "Fast Bites",
+    urdu: "فاسٹ بائٹس",
+    blurb:
+      "Lahori street snacks and quick plates for the kids, the cousins and the midnight crowd.",
+    icon: "bites",
+    items: [
+      "Lahori chana chaat & dahi baray",
+      "Samosa, pakora & spring roll counter",
+      "Chicken shashlik sticks",
+      "Gol gappay with teekha pani",
+      "Crispy fries & loaded chicken bites",
+    ],
+  },
+  {
+    id: "desserts",
+    name: "Desi Desserts",
+    urdu: "دیسی میٹھا",
+    blurb:
+      "Warm mithai served straight from the degh — sweet endings for the whole table.",
+    icon: "dessert",
+    items: [
+      "Gajar ka halwa with khoya",
+      "Shahi kheer & gulab jamun",
+      "Kulfi falooda with rabri",
+      "Jalebi with warm milk",
+      "Seasonal fruit & rabri trifle",
+    ],
+  },
+];
+
+export const TESTIMONIALS = [
+  {
+    quote:
+      "We came in at 1 AM with six kids after a wedding and they still set up a full table for us outdoors. The seekh kebab and nihari were exactly like home.",
+    name: "Faiza N.",
+    detail: "Family dinner · outdoor seating",
+    rating: 5,
+  },
+  {
+    quote:
+      "Best value buffet in Lahore right now. The grilled fish special was outstanding and the staff kept refilling the BBQ without us asking.",
+    name: "Hamza R.",
+    detail: "Late-night craving",
+    rating: 5,
+  },
+  {
+    quote:
+      "Booked ahead for my mother's birthday — 14 of us, open air, string lights on. They remembered the booking and had the table ready.",
+    name: "Ayesha & Bilal",
+    detail: "Birthday party of 14",
+    rating: 4,
+  },
+] as const;
+
+export const GALLERY = [
+  { caption: "Live seekh kebab counter", image: unsplash("photo-1555939594-58d7cb561ad1", 700) },
+  { caption: "Malai boti off the coals", image: unsplash("photo-1600891964092-4316c288032e", 700) },
+  { caption: "Nihari at 3 AM", image: unsplash("photo-1585937421612-70a008356fbe", 700) },
+  { caption: "Open-air family seating", image: unsplash("photo-1414235077428-338989a2e8c0", 700) },
+  { caption: "Gulab jamun & kheer", image: unsplash("photo-1563379091339-03b21ab4a4f8", 700) },
+  { caption: "Kulfi falooda", image: unsplash("photo-1544025162-d76694265947", 700) },
+] as const;
+
+/** House rules that make booking ahead worth it for families. */
+export const BOOKING_PROMISES = [
+  {
+    title: "Table held for 20 minutes",
+    body: "Running late with the family? Call us and we will keep your table reserved.",
+  },
+  {
+    title: "Free to reserve",
+    body: "No deposit and no card required — pay per head at the buffet counter.",
+  },
+  {
+    title: "Groups over 12",
+    body: "Call 0322 8543333 and our floor team will set up joined tables for you.",
+  },
+] as const;
+
+/* ------------------------------------------------------------------ */
+/* Formatting + booking form helpers                                   */
+/* ------------------------------------------------------------------ */
+
+/** 30-minute arrival slots across the full 24-hour day. */
+export const ARRIVAL_SLOTS: string[] = Array.from({ length: 48 }, (_, index) => {
+  const hours = Math.floor(index / 2);
+  const minutes = index % 2 === 0 ? "00" : "30";
+  return `${String(hours).padStart(2, "0")}:${minutes}`;
+});
+
+/** `"20:30"` → `"8:30 PM"` */
+export function formatTime(time: string) {
+  const [rawHours, minutes] = time.split(":");
+  const hours = Number(rawHours);
+  if (!Number.isFinite(hours)) return time;
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const display = hours % 12 === 0 ? 12 : hours % 12;
+  return `${display}:${minutes} ${suffix}`;
+}
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+
+/** `"2026-09-12"` → `"Sat, 12 Sep"` */
+export function formatDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return DATE_FORMATTER.format(parsed);
+}
+
+/** Today in the guest's local timezone as `YYYY-MM-DD` (for date inputs). */
+export function todayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+export function formatPhone(phone: string) {
+  if (phone.startsWith("92") && phone.length === 12) {
+    return `0${phone.slice(2, 5)} ${phone.slice(5)}`;
+  }
+  if (phone.length === 11) return `${phone.slice(0, 4)} ${phone.slice(4)}`;
+  return phone;
+}

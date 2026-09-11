@@ -1,0 +1,192 @@
+/* DO NOT CHANGE */
+@import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:is(.dark *));
+
+/* DO NOT CHANGE */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Heritage Hearth accents */
+  --color-gold: var(--gold);
+  --color-ember: var(--ember);
+  --color-clay: var(--clay);
+}
+
+/* Typography — a warm heritage serif for display, a clean sans for reading */
+@theme {
+  --font-display: "Fraunces", ui-serif, Georgia, Cambria, serif;
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* THE HERITAGE HEARTH — charcoal hearthstone, ember glow, aged gold */
+:root {
+  --radius: 0.75rem;
+  color-scheme: dark;
+
+  --background: oklch(0.168 0.012 58);
+  --foreground: oklch(0.945 0.014 85);
+  --card: oklch(0.212 0.014 56);
+  --card-foreground: oklch(0.945 0.014 85);
+  --popover: oklch(0.226 0.015 56);
+  --popover-foreground: oklch(0.945 0.014 85);
+  --primary: oklch(0.786 0.134 76);
+  --primary-foreground: oklch(0.203 0.028 58);
+  --secondary: oklch(0.283 0.018 54);
+  --secondary-foreground: oklch(0.93 0.016 85);
+  --muted: oklch(0.243 0.013 56);
+  --muted-foreground: oklch(0.722 0.022 78);
+  --accent: oklch(0.612 0.148 44);
+  --accent-foreground: oklch(0.972 0.016 85);
+  --destructive: oklch(0.596 0.19 26);
+  --border: oklch(0.96 0.014 82 / 11%);
+  --input: oklch(0.96 0.014 82 / 15%);
+  --ring: oklch(0.786 0.134 76 / 55%);
+  --gold: oklch(0.83 0.122 84);
+  --ember: oklch(0.672 0.168 44);
+  --clay: oklch(0.521 0.06 46);
+  --chart-1: oklch(0.786 0.134 76);
+  --chart-2: oklch(0.672 0.168 44);
+  --chart-3: oklch(0.83 0.122 84);
+  --chart-4: oklch(0.521 0.06 46);
+  --chart-5: oklch(0.45 0.04 56);
+  --sidebar: oklch(0.196 0.013 57);
+  --sidebar-foreground: oklch(0.945 0.014 85);
+  --sidebar-primary: oklch(0.786 0.134 76);
+  --sidebar-primary-foreground: oklch(0.203 0.028 58);
+  --sidebar-accent: oklch(0.266 0.017 55);
+  --sidebar-accent-foreground: oklch(0.93 0.016 85);
+  --sidebar-border: oklch(0.96 0.014 82 / 11%);
+  --sidebar-ring: oklch(0.786 0.134 76 / 55%);
+}
+
+.dark {
+  --background: oklch(0.168 0.012 58);
+  --foreground: oklch(0.945 0.014 85);
+  --card: oklch(0.212 0.014 56);
+  --card-foreground: oklch(0.945 0.014 85);
+  --popover: oklch(0.226 0.015 56);
+  --popover-foreground: oklch(0.945 0.014 85);
+  --primary: oklch(0.786 0.134 76);
+  --primary-foreground: oklch(0.203 0.028 58);
+  --secondary: oklch(0.283 0.018 54);
+  --secondary-foreground: oklch(0.93 0.016 85);
+  --muted: oklch(0.243 0.013 56);
+  --muted-foreground: oklch(0.722 0.022 78);
+  --accent: oklch(0.612 0.148 44);
+  --accent-foreground: oklch(0.972 0.016 85);
+  --destructive: oklch(0.596 0.19 26);
+  --border: oklch(0.96 0.014 82 / 11%);
+  --input: oklch(0.96 0.014 82 / 15%);
+  --ring: oklch(0.786 0.134 76 / 55%);
+  --gold: oklch(0.83 0.122 84);
+  --ember: oklch(0.672 0.168 44);
+  --clay: oklch(0.521 0.06 46);
+  --chart-1: oklch(0.786 0.134 76);
+  --chart-2: oklch(0.672 0.168 44);
+  --chart-3: oklch(0.83 0.122 84);
+  --chart-4: oklch(0.521 0.06 46);
+  --chart-5: oklch(0.45 0.04 56);
+  --sidebar: oklch(0.196 0.013 57);
+  --sidebar-foreground: oklch(0.945 0.014 85);
+  --sidebar-primary: oklch(0.786 0.134 76);
+  --sidebar-primary-foreground: oklch(0.203 0.028 58);
+  --sidebar-accent: oklch(0.266 0.017 55);
+  --sidebar-accent-foreground: oklch(0.93 0.016 85);
+  --sidebar-border: oklch(0.96 0.014 82 / 11%);
+  --sidebar-ring: oklch(0.786 0.134 76 / 55%);
+}
+
+/* Soft firelight pooling from the top of a section */
+@utility hearth-glow {
+  background-image: radial-gradient(
+    72% 58% at 50% 0%,
+    color-mix(in oklab, var(--gold) 18%, transparent) 0%,
+    transparent 72%
+  );
+}
+
+/* Two-tone ember warmth for wide section backgrounds */
+@utility hearth-texture {
+  background-image:
+    radial-gradient(
+      78% 62% at 12% 0%,
+      color-mix(in oklab, var(--ember) 13%, transparent) 0%,
+      transparent 66%
+    ),
+    radial-gradient(
+      70% 56% at 88% 100%,
+      color-mix(in oklab, var(--gold) 11%, transparent) 0%,
+      transparent 70%
+    );
+}
+
+/* Aged brass hairline used to separate heritage panels */
+@utility brass-rule {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--gold) 55%, transparent) 50%,
+    transparent 100%
+  );
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  ::selection {
+    background-color: color-mix(in oklab, var(--gold) 35%, transparent);
+    color: var(--foreground);
+  }
+  button:not([disabled]),
+  [role="button"]:not([disabled]) {
+    cursor: pointer;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}
