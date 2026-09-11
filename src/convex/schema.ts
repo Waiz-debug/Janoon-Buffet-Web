@@ -38,6 +38,23 @@ export const seatingValidator = v.union(
 );
 export type Seating = Infer<typeof seatingValidator>;
 
+// "Buffet orders" placed at the settling-in counter. Kept separate from
+// reservations because an order is per-person plates, not a table booking.
+export const ORDER_STATUSES = {
+  PENDING: "pending",
+  PREPARING: "preparing",
+  READY: "ready",
+  SERVED: "served",
+} as const;
+
+export const orderStatusValidator = v.union(
+  v.literal(ORDER_STATUSES.PENDING),
+  v.literal(ORDER_STATUSES.PREPARING),
+  v.literal(ORDER_STATUSES.READY),
+  v.literal(ORDER_STATUSES.SERVED),
+);
+export type OrderStatus = Infer<typeof orderStatusValidator>;
+
 const schema = defineSchema(
   {
     // default auth tables using convex auth.
@@ -70,14 +87,36 @@ const schema = defineSchema(
     })
       .index("by_date", ["date"])
       .index("by_status", ["status"])
-      .index("by_reference", ["reference"]),
+      .index("by_reference", ["reference"])
+      .index("by_phone", ["phone"]),
+
+    /** Buffet orders placed by guests at the settling-in counter or via a
+     *  pre-order link. Each order is tied to a single table reservation. */
+    orders: defineTable({
+      reference: v.string(),
+      /** Short human name the order is referred to on boarding. */
+      guestName: v.string(),
+      partySize: v.number(),
+      /** Timestamp when the order was placed, seconds since epoch. */
+      createdAt: v.number(),
+      seating: seatingValidator,
+      /** Each dish line: [slug, unit count] */
+      dishes: v.array(
+        v.tuple([
+          v.string(),
+          v.number(),
+        ]),
+      ),
+      notes: v.optional(v.string()),
+      status: orderStatusValidator,
+      /** The settling-in counter stamp when an order reaches "served". Optional. */
+      servedAt: v.optional(v.number()),
+    })
+      .index("by_status", ["status"])
+      .index("by_reference", ["reference"])
+      .index("by_guestName", ["guestName"]),
 
     // add other tables here
-
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
   },
   {
     schemaValidation: false,
