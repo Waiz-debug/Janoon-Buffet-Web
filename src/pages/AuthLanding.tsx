@@ -19,24 +19,23 @@ const ROLE_CARDS = [
     id: "staff",
     label: "Staff Portal",
     description:
-      "See live table reservations and mark arrivals, confirmations, and seating from the floor.",
-    cta: "Enter staff PIN",
-    icon: PanelRight,
-    accent: "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:border-sky-500/40 hover:bg-sky-500/15",
-    glow: "shadow-[0_0_18px_-4px_rgba(56,189,248,0.25)]",
-    pin: true,
-  },
-  {
-    id: "admin",
-    label: "Admin Portal",
-    description:
-      "Manage the live menu, update pricing, upload real photos, and oversee every reservation.",
-    cta: "Enter admin PIN",
-    icon: Lock,
-    accent: "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/15",
-    glow: "shadow-[0_0_18px_-4px_rgba(251,191,36,0.25)]",
-    pin: true,
-  },
+      "See live table reservations and mark arrivals, confirmations, and seating from the floor.",              cta: "Enter staff PIN",
+              icon: PanelRight,
+              accent: "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:border-sky-500/40 hover:bg-sky-500/15",
+              glow: "shadow-[0_0_18px_-4px_rgba(56,189,248,0.25)]",
+              pin: true,
+            },
+            {
+              id: "admin",
+              label: "Admin Portal",
+              description:
+                "Manage the live menu, update pricing, upload real photos, and oversee every reservation.",
+              cta: "Enter admin PIN",
+              icon: Lock,
+              accent: "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/15",
+              glow: "shadow-[0_0_18px_-4px_rgba(251,191,36,0.25)]",
+              pin: true,
+            },
 ] as const;
 
 export default function AuthLanding() {
@@ -154,12 +153,12 @@ export default function AuthLanding() {
                 </motion.div>
               );
             })}
-          </div>
-
-          <p className="mt-10 text-center text-xs text-muted-foreground/80">
+          </div>          <p className="mt-10 text-center text-xs text-muted-foreground/80">
             Staff and admin portals are protected by PIN 01234. Sessions stay
             local to this browser for 24 hours.
           </p>
+
+
         </div>
       </main>
     </div>
