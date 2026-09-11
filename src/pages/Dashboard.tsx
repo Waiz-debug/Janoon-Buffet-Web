@@ -109,8 +109,9 @@ export default function Dashboard() {
       toast.success(
         `${reservation.name} marked ${RESERVATION_STATUS_LABELS[status].toLowerCase()}`,
         {
-        description: `${formatDate(reservation.date)} · ${formatTime(reservation.time)}`,
-      });
+          description: `${formatDate(reservation.date)} · ${formatTime(reservation.time)}`,
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not update.";
       toast.error("Update failed", { description: message.split("\n")[0] });
@@ -163,7 +164,7 @@ export default function Dashboard() {
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
         <section className="flex flex-col gap-2">
           <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Table bookings
+            Table reservations
           </h1>
           <p className="text-sm text-muted-foreground">
             {user?.name ? `${user.name}, ` : ""}every booking from the website
@@ -177,7 +178,7 @@ export default function Dashboard() {
             icon={CalendarDays}
             label="Today"
             value={stats ? stats.todayBookings : "—"}
-            hint="Bookings for today"
+            hint="Reservations today"
           />
           <StatCard
             icon={Users}
@@ -267,10 +268,12 @@ export default function Dashboard() {
             <span className="flex size-11 items-center justify-center rounded-2xl bg-gold/10 text-gold">
               <CalendarDays className="size-5" aria-hidden />
             </span>
-            <p className="font-display text-lg font-semibold">No bookings here yet</p>
+            <p className="font-display text-lg font-semibold">
+              No reservations here yet
+            </p>
             <p className="max-w-md text-sm text-muted-foreground">
               {reservations.length === 0
-                ? "As soon as a family books a table on the website it will appear here instantly."
+                ? "As soon as a family reserves a table on the website it will appear here instantly."
                 : "Nothing matches these filters. Try a different date range or status."}
             </p>
           </div>
