@@ -37,6 +37,7 @@ import {
   Trees,
   Users,
   UtensilsCrossed,
+  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -99,13 +100,18 @@ function initialForm(): BookingForm {
  * Confirmation view. It renders the reservation record fetched from the
  * database — never an in-memory snapshot — so a refresh (or a status change
  * made by the restaurant) is reflected immediately and stays correct.
+ *
+ * Cancelled bookings never reach this panel: the parent drops them from the
+ * site the moment they are cancelled, here or on the reservations desk.
  */
 function ConfirmationPanel({
   reservation,
   onBookAnother,
+  onCancelled,
 }: {
   reservation: Doc<"reservations">;
   onBookAnother: () => void;
+  onCancelled: () => void;
 }) {
   const cancelByGuest = useMutation(api.reservations.cancelByGuest);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -113,7 +119,7 @@ function ConfirmationPanel({
 
   const firstName = reservation.name.split(" ")[0];
   const canCancel =
-    reservation.status !== "cancelled" && reservation.status !== "seated";
+    reservation.status === "pending" || reservation.status === "confirmed";
 
   const handleCancel = async () => {
     setIsCancelling(true);
@@ -126,6 +132,7 @@ function ConfirmationPanel({
       toast.success("Reservation cancelled", {
         description: `Reference ${reservation.reference} has been released.`,
       });
+      onCancelled();
     } catch (error) {
       toast.error("Could not cancel", { description: bookingErrorMessage(error) });
     } finally {
@@ -270,6 +277,7 @@ export function ReservationForm() {
   const [form, setForm] = useState<BookingForm>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Read the device pointer synchronously on the client so a refresh paints the
   // confirmation immediately; fall back to an effect when rendered on a server.
@@ -295,6 +303,19 @@ export function ReservationForm() {
       setPointer(null);
     }
   }, [pointer, stored]);
+
+  // Cancelled bookings are taken off the website entirely — whether the guest
+  // cancelled just now or the reservations desk cancelled on their behalf.
+  useEffect(() => {
+    if (!stored || stored.status !== "cancelled") return;
+    clearReservationPointer();
+    setPointer(null);
+    setNotice(
+      (current) =>
+        current ??
+        `Reservation ${stored.reference} was cancelled, so it has been removed.`,
+    );
+  }, [stored]);
 
   const isRestoring = !hydrated || (pointer !== null && stored === undefined);
   const minDate = useMemo(() => todayKey(), []);
@@ -355,6 +376,7 @@ export function ReservationForm() {
       };
       saveReservationPointer(saved);
       setPointer(saved);
+      setNotice(null);
       setForm(initialForm());
 
       toast.success("Table requested", {
@@ -375,6 +397,14 @@ export function ReservationForm() {
     setForm(initialForm());
   };
 
+  const handleCancelled = (reference: string) => {
+    clearReservationPointer();
+    setPointer(null);
+    setNotice(
+      `Reservation ${reference} has been cancelled and removed. No table is being held.`,
+    );
+  };
+
   if (isRestoring) {
     return (
       <div className="flex min-h-64 items-center justify-center rounded-3xl border border-border/70 bg-card/60">
@@ -384,7 +414,13 @@ export function ReservationForm() {
   }
 
   if (pointer && stored) {
-    return <ConfirmationPanel reservation={stored} onBookAnother={handleBookAnother} />;
+    return (
+      <ConfirmationPanel
+        reservation={stored}
+        onBookAnother={handleBookAnother}
+        onCancelled={handleCancelled}
+      />
+    );
   }
 
   return (
@@ -393,6 +429,20 @@ export function ReservationForm() {
       noValidate
       className="flex flex-col gap-5 rounded-3xl border border-border/70 bg-card/60 p-6 sm:p-8"
     >
+      {notice ? (
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3">
+          <p className="text-sm leading-relaxed">{notice}</p>
+          <button
+            type="button"
+            aria-label="Dismiss message"
+            onClick={() => setNotice(null)}
+            className="mt-0.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="reservation-name">Full name</Label>

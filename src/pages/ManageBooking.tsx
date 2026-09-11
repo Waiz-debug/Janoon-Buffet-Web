@@ -21,7 +21,9 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
+  CalendarCheck,
   CalendarClock,
+  CheckCircle2,
   Loader2,
   Phone,
   Search,
@@ -30,6 +32,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { toast } from "sonner";
 
 type Lookup = { reference: string; phone: string };
@@ -49,6 +52,7 @@ export default function ManageBooking() {
   const [error, setError] = useState<string | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [removedReference, setRemovedReference] = useState<string | null>(null);
 
   // The reservation is always fetched from the database for the lookup in
   // state, so a refresh (or a desk-side change) re-loads it on first render.
@@ -72,11 +76,21 @@ export default function ManageBooking() {
 
   // Remember the booking once it resolves, so the next visit opens it directly.
   useEffect(() => {
-    if (!reservation) return;
+    if (!reservation || reservation.status === "cancelled") return;
     saveReservationPointer({
       reference: reservation.reference,
       phone: reservation.phone,
     });
+  }, [reservation]);
+
+  // A cancelled booking is taken off the website, including here — whether it
+  // was cancelled a moment ago or by the reservations desk on the guest's behalf.
+  useEffect(() => {
+    if (!reservation || reservation.status !== "cancelled") return;
+    clearReservationPointer();
+    setRemovedReference(reservation.reference);
+    setLookup(null);
+    setConfirmingCancel(false);
   }, [reservation]);
 
   useEffect(() => {
@@ -97,20 +111,25 @@ export default function ManageBooking() {
     }
     setError(null);
     setConfirmingCancel(false);
+    setRemovedReference(null);
     setLookup({ reference: code, phone: phone.trim() });
   };
 
   const handleCancel = async () => {
     if (!reservation) return;
+    const reference = reservation.reference;
     setIsCancelling(true);
     try {
       await cancelByGuest({
-        reference: reservation.reference,
+        reference,
         phone: reservation.phone,
       });
+      clearReservationPointer();
       setConfirmingCancel(false);
+      setLookup(null);
+      setRemovedReference(reference);
       toast.success("Reservation cancelled", {
-        description: `Reference ${reservation.reference} has been released.`,
+        description: `Reference ${reference} has been released.`,
       });
     } catch (cancelError) {
       const message =
@@ -196,7 +215,54 @@ export default function ManageBooking() {
               </p>
             </form>
 
-            {lookup ? (
+            {removedReference ? (
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+                className="flex flex-col gap-4 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:p-8"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex size-11 items-center justify-center rounded-2xl bg-gold/15 text-gold">
+                    <CheckCircle2 className="size-5" aria-hidden />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-xl font-semibold">
+                      Reservation cancelled
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Reference {removedReference} has been released and removed
+                      from the website. No table is being held.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  You are welcome to reserve another table at any hour — the
+                  buffet runs around the clock and changes stay free of charge.
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button asChild className="gap-2">
+                    <Link to="/#reserve">
+                      <CalendarCheck className="size-4" aria-hidden />
+                      Book another table
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-border/70"
+                    onClick={() => {
+                      setRemovedReference(null);
+                      setReference("");
+                      setPhone("");
+                      setError(null);
+                    }}
+                  >
+                    Look up a different booking
+                  </Button>
+                </div>
+              </motion.div>
+            ) : lookup ? (
               reservation === undefined ? (
                 <div className="flex items-center justify-center rounded-2xl border border-border/70 bg-card/40 py-14">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -283,12 +349,7 @@ export default function ManageBooking() {
                     </p>
                   ) : null}
 
-                  {reservation.status === "cancelled" ? (
-                    <p className="rounded-xl border border-border/70 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
-                      This reservation is cancelled and the table released.
-                      Nothing further is required.
-                    </p>
-                  ) : reservation.status === "seated" ? (
+                  {reservation.status === "seated" ? (
                     <p className="rounded-xl border border-border/70 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
                       Your party has already been seated. Please speak to our floor
                       team or call {RESTAURANT.phoneDisplay} if anything needs to

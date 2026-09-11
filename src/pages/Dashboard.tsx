@@ -34,6 +34,26 @@ import { Link, useNavigate } from "react-router";
 type Reservation = Doc<"reservations">;
 type Scope = "upcoming" | "today" | "all";
 
+type StatusFilter = ReservationStatus | "active" | "all";
+
+const STATUS_FILTERS: StatusFilter[] = [
+  "active",
+  "pending",
+  "confirmed",
+  "seated",
+  "cancelled",
+  "all",
+];
+
+const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
+  active: "Active",
+  pending: RESERVATION_STATUS_LABELS.pending,
+  confirmed: RESERVATION_STATUS_LABELS.confirmed,
+  seated: RESERVATION_STATUS_LABELS.seated,
+  cancelled: RESERVATION_STATUS_LABELS.cancelled,
+  all: "All statuses",
+};
+
 const SCOPE_LABELS: Record<Scope, string> = {
   upcoming: "Upcoming",
   today: "Today",
@@ -73,7 +93,7 @@ export default function Dashboard() {
   const updateStatus = useMutation(api.reservations.updateStatus);
 
   const [scope, setScope] = useState<Scope>("upcoming");
-  const [filter, setFilter] = useState<ReservationStatus | "all">("all");
+  const [filter, setFilter] = useState<StatusFilter>("active");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -87,7 +107,18 @@ export default function Dashboard() {
       .filter((reservation) => {
         if (scope === "today" && reservation.date !== today) return false;
         if (scope === "upcoming" && reservation.date < today) return false;
-        if (filter !== "all" && reservation.status !== filter) return false;
+        // Cancelled bookings leave the guest-facing site, so they stay out of
+        // the desk's default list too and are only shown on request.
+        if (filter === "active" && reservation.status === "cancelled") {
+          return false;
+        }
+        if (
+          filter !== "all" &&
+          filter !== "active" &&
+          reservation.status !== filter
+        ) {
+          return false;
+        }
         if (!needle) return true;
         return (
           reservation.name.toLowerCase().includes(needle) ||
@@ -236,25 +267,21 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {(["all", "pending", "confirmed", "seated", "cancelled"] as const).map(
-              (option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setFilter(option)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs transition-colors",
-                    filter === option
-                      ? "border-gold/50 bg-gold/15 text-gold"
-                      : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
-                  )}
-                >
-                  {option === "all"
-                    ? "All statuses"
-                    : RESERVATION_STATUS_LABELS[option]}
-                </button>
-              ),
-            )}
+            {STATUS_FILTERS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setFilter(option)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs transition-colors",
+                  filter === option
+                    ? "border-gold/50 bg-gold/15 text-gold"
+                    : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
+                )}
+              >
+                {STATUS_FILTER_LABELS[option]}
+              </button>
+            ))}
           </div>
         </section>
 
