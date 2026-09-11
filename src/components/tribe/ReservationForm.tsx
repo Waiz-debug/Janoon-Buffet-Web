@@ -1,3 +1,4 @@
+import { ReservationStatusBadge } from "@/components/tribe/ReservationStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
+import type { ReservationStatus } from "@/convex/schema";
+import {
+  clearReservationPointer,
+  readReservationPointer,
+  saveReservationPointer,
+  type ReservationPointer,
+} from "@/lib/last-reservation";
 import {
   ARRIVAL_SLOTS,
   RESTAURANT,
@@ -18,7 +27,7 @@ import {
   todayKey,
 } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   CalendarClock,
@@ -30,7 +39,7 @@ import {
   UtensilsCrossed,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
@@ -46,17 +55,25 @@ type BookingForm = {
   notes: string;
 };
 
-type BookingConfirmation = {
-  reference: string;
-  name: string;
-  phone: string;
-  partySize: number;
-  date: string;
-  time: string;
-  seating: Seating;
+const PARTY_SIZES = Array.from({ length: 12 }, (_, index) => String(index + 1));
+
+const CONFIRMATION_HEADLINES: Record<ReservationStatus, string> = {
+  pending: "Your table is requested",
+  confirmed: "Your table is confirmed",
+  seated: "Your table is ready",
+  cancelled: "This reservation is cancelled",
 };
 
-const PARTY_SIZES = Array.from({ length: 12 }, (_, index) => String(index + 1));
+const CONFIRMATION_NOTES: Record<ReservationStatus, string> = {
+  pending:
+    "Our floor team confirms every booking by phone, so expect a call shortly to lock in your table.",
+  confirmed:
+    "Your booking is confirmed. Give your reference at the counter on arrival and you will be seated straight away.",
+  seated:
+    "Your party has been seated. Please speak to our floor team if anything needs changing.",
+  cancelled:
+    "The table has been released and nothing further is required. We hope to welcome your family another evening.",
+};
 
 /** Convex prefixes thrown errors with request metadata — surface only the message. */
 function bookingErrorMessage(error: unknown) {
@@ -78,17 +95,208 @@ function initialForm(): BookingForm {
   };
 }
 
+/**
+ * Confirmation view. It renders the reservation record fetched from the
+ * database — never an in-memory snapshot — so a refresh (or a status change
+ * made by the restaurant) is reflected immediately and stays correct.
+ */
+function ConfirmationPanel({
+  reservation,
+  onBookAnother,
+}: {
+  reservation: Doc<"reservations">;
+  onBookAnother: () => void;
+}) {
+  const cancelByGuest = useMutation(api.reservations.cancelByGuest);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const firstName = reservation.name.split(" ")[0];
+  const canCancel =
+    reservation.status !== "cancelled" && reservation.status !== "seated";
+
+  const handleCancel = async () => {
+    setIsCancelling(true);
+    try {
+      await cancelByGuest({
+        reference: reservation.reference,
+        phone: reservation.phone,
+      });
+      setConfirmingCancel(false);
+      toast.success("Reservation cancelled", {
+        description: `Reference ${reservation.reference} has been released.`,
+      });
+    } catch (error) {
+      toast.error("Could not cancel", { description: bookingErrorMessage(error) });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+      className="flex flex-col gap-6 rounded-3xl border border-gold/30 bg-gold/[0.06] p-6 sm:p-8"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold">
+            <CheckCircle2 className="size-6" aria-hidden />
+          </span>
+          <div>
+            <h3 className="font-display text-xl font-semibold">
+              {CONFIRMATION_HEADLINES[reservation.status]}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Thank you, {firstName} — reference {reservation.reference} is held
+              under {reservation.name}.
+            </p>
+          </div>
+        </div>
+        <ReservationStatusBadge status={reservation.status} />
+      </div>
+
+      <dl className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-border/70 bg-background/40 p-4">
+          <dt className="text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase">
+            Booking reference
+          </dt>
+          <dd className="mt-1 font-display text-2xl font-semibold tracking-wider text-gold">
+            {reservation.reference}
+          </dd>
+        </div>
+        <div className="rounded-2xl border border-border/70 bg-background/40 p-4">
+          <dt className="text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase">
+            Your table
+          </dt>
+          <dd className="mt-1 flex flex-col gap-1 text-sm">
+            <span className="flex items-center gap-2">
+              <Users className="size-3.5 text-gold" aria-hidden />
+              {reservation.partySize}{" "}
+              {reservation.partySize === 1 ? "guest" : "guests"}
+            </span>
+            <span className="flex items-center gap-2">
+              <CalendarClock className="size-3.5 text-gold" aria-hidden />
+              {formatDate(reservation.date)} · {formatTime(reservation.time)}
+            </span>
+            <span className="flex items-center gap-2 capitalize">
+              <Trees className="size-3.5 text-gold" aria-hidden />
+              {reservation.seating} seating
+            </span>
+          </dd>
+        </div>
+      </dl>
+
+      <p className="text-sm leading-relaxed text-muted-foreground">
+        {CONFIRMATION_NOTES[reservation.status]} Keep this reference to manage or
+        cancel the booking later. Running early or late? Call{" "}
+        <a
+          href={RESTAURANT.phoneHref}
+          className="text-gold underline-offset-4 hover:underline"
+        >
+          {RESTAURANT.phoneDisplay}
+        </a>{" "}
+        and we will hold your table for 20 minutes past your arrival time.
+      </p>
+
+      {confirmingCancel && canCancel ? (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4">
+          <p className="text-sm">
+            Cancel the table for {reservation.partySize} guests on{" "}
+            {formatDate(reservation.date)} at {formatTime(reservation.time)}?
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isCancelling}
+              onClick={handleCancel}
+              className="gap-2"
+            >
+              {isCancelling ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <XCircle className="size-4" aria-hidden />
+              )}
+              Yes, cancel it
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="border border-border/70"
+              onClick={() => setConfirmingCancel(false)}
+            >
+              Keep my table
+            </Button>
+          </div>
+        </div>
+      ) : canCancel ? (
+        <button
+          type="button"
+          onClick={() => setConfirmingCancel(true)}
+          className="inline-flex items-center gap-2 self-start text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-destructive hover:underline"
+        >
+          <XCircle className="size-4" aria-hidden />
+          Cancel this reservation
+        </button>
+      ) : null}
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1 border-border/70"
+          onClick={onBookAnother}
+        >
+          Book another table
+        </Button>
+        <Button asChild variant="outline" className="flex-1 border-border/70">
+          <Link to="/manage">Manage this booking</Link>
+        </Button>
+      </div>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Saved to our reservations desk — this confirmation stays here, even after
+        you reload the page.
+      </p>
+    </motion.div>
+  );
+}
+
 export function ReservationForm() {
   const createReservation = useMutation(api.reservations.create);
-  const cancelReservation = useMutation(api.reservations.cancelByGuest);
   const [form, setForm] = useState<BookingForm>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
 
+  // Read the device pointer synchronously on the client so a refresh paints the
+  // confirmation immediately; fall back to an effect when rendered on a server.
+  const [pointer, setPointer] = useState<ReservationPointer | null>(() =>
+    typeof window === "undefined" ? null : readReservationPointer(),
+  );
+  const [hydrated, setHydrated] = useState(() => typeof window !== "undefined");
+
+  useEffect(() => {
+    if (hydrated) return;
+    setPointer(readReservationPointer());
+    setHydrated(true);
+  }, [hydrated]);
+
+  // The record is re-fetched from Convex on every render pass, so a refresh —
+  // or a status change made on the reservations desk — never goes stale.
+  const stored = useQuery(api.reservations.findByReference, pointer ?? "skip");
+
+  // A pointer that no longer resolves (booking purged) should not trap the guest.
+  useEffect(() => {
+    if (pointer && stored === null) {
+      clearReservationPointer();
+      setPointer(null);
+    }
+  }, [pointer, stored]);
+
+  const isRestoring = !hydrated || (pointer !== null && stored === undefined);
   const minDate = useMemo(() => todayKey(), []);
 
   const update = <Key extends keyof BookingForm>(
@@ -139,17 +347,16 @@ export function ReservationForm() {
         notes: form.notes.trim() ? form.notes.trim() : undefined,
       });
 
-      setCancelled(false);
-      setConfirmingCancel(false);
-      setConfirmation({
+      // Persist the pointer, not the data: the booking itself is already stored
+      // in the database and is what we read back on the next page load.
+      const saved: ReservationPointer = {
         reference: result.reference,
-        name: form.name.trim(),
         phone: form.phone.trim(),
-        partySize: Number(form.partySize),
-        date: form.date,
-        time: form.time,
-        seating: form.seating,
-      });
+      };
+      saveReservationPointer(saved);
+      setPointer(saved);
+      setForm(initialForm());
+
       toast.success("Table requested", {
         description: `Reference ${result.reference}. Our team will confirm by phone.`,
       });
@@ -162,163 +369,22 @@ export function ReservationForm() {
     }
   };
 
-  const handleCancelBooking = async () => {
-    if (!confirmation) return;
-    setIsCancelling(true);
-    try {
-      await cancelReservation({
-        reference: confirmation.reference,
-        phone: confirmation.phone,
-      });
-      setCancelled(true);
-      setConfirmingCancel(false);
-      toast.success("Reservation cancelled", {
-        description: `Reference ${confirmation.reference} has been released.`,
-      });
-    } catch (error) {
-      toast.error("Could not cancel", { description: bookingErrorMessage(error) });
-    } finally {
-      setIsCancelling(false);
-    }
+  const handleBookAnother = () => {
+    clearReservationPointer();
+    setPointer(null);
+    setForm(initialForm());
   };
 
-  if (confirmation) {
+  if (isRestoring) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="flex flex-col gap-6 rounded-3xl border border-gold/30 bg-gold/[0.06] p-6 sm:p-8"
-      >
-        <div className="flex items-center gap-3">
-          <span className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold">
-            <CheckCircle2 className="size-6" aria-hidden />
-          </span>
-          <div>
-            <h3 className="font-display text-xl font-semibold">
-              Your table is requested
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              Thank you, {confirmation.name.split(" ")[0]} — our floor team will
-              call {confirmation.phone} shortly to confirm.
-            </p>
-          </div>
-        </div>
-
-        <dl className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-border/70 bg-background/40 p-4">
-            <dt className="text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase">
-              Booking reference
-            </dt>
-            <dd className="mt-1 font-display text-2xl font-semibold tracking-wider text-gold">
-              {confirmation.reference}
-            </dd>
-          </div>
-          <div className="rounded-2xl border border-border/70 bg-background/40 p-4">
-            <dt className="text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase">
-              Your table
-            </dt>
-            <dd className="mt-1 flex flex-col gap-1 text-sm">
-              <span className="flex items-center gap-2">
-                <Users className="size-3.5 text-gold" aria-hidden />
-                {confirmation.partySize}{" "}
-                {confirmation.partySize === 1 ? "guest" : "guests"}
-              </span>
-              <span className="flex items-center gap-2">
-                <CalendarClock className="size-3.5 text-gold" aria-hidden />
-                {formatDate(confirmation.date)} · {formatTime(confirmation.time)}
-              </span>
-              <span className="flex items-center gap-2 capitalize">
-                <Trees className="size-3.5 text-gold" aria-hidden />
-                {confirmation.seating} seating
-              </span>
-            </dd>
-          </div>
-        </dl>
-
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Keep this reference to manage or cancel the booking later. Running
-          early or late? Call{" "}
-          <a
-            href={RESTAURANT.phoneHref}
-            className="text-gold underline-offset-4 hover:underline"
-          >
-            {RESTAURANT.phoneDisplay}
-          </a>{" "}
-          and we will hold your table for 20 minutes past your arrival time.
-        </p>
-
-        {cancelled ? (
-          <p className="rounded-xl border border-border/70 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
-            This reservation has been cancelled and the table released. Nothing
-            further is required — we hope to welcome your family another evening.
-          </p>
-        ) : confirmingCancel ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4">
-            <p className="text-sm">
-              Cancel the table for {confirmation.partySize} guests on{" "}
-              {formatDate(confirmation.date)} at {formatTime(confirmation.time)}?
-            </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={isCancelling}
-                onClick={handleCancelBooking}
-                className="gap-2"
-              >
-                {isCancelling ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
-                ) : (
-                  <XCircle className="size-4" aria-hidden />
-                )}
-                Yes, cancel it
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="border border-border/70"
-                onClick={() => setConfirmingCancel(false)}
-              >
-                Keep my table
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmingCancel(true)}
-            className="inline-flex items-center gap-2 self-start text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-destructive hover:underline"
-          >
-            <XCircle className="size-4" aria-hidden />
-            Cancel this reservation
-          </button>
-        )}
-
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 border-border/70"
-            onClick={() => {
-              setConfirmation(null);
-              setCancelled(false);
-              setConfirmingCancel(false);
-              setForm(initialForm());
-            }}
-          >
-            Book another table
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            className="flex-1 border-border/70"
-          >
-            <Link to="/manage">Manage this booking</Link>
-          </Button>
-        </div>
-      </motion.div>
+      <div className="flex min-h-64 items-center justify-center rounded-3xl border border-border/70 bg-card/60">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
     );
+  }
+
+  if (pointer && stored) {
+    return <ConfirmationPanel reservation={stored} onBookAnother={handleBookAnother} />;
   }
 
   return (
@@ -419,7 +485,9 @@ export function ReservationForm() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">Open 24 hours — all slots live.</p>
+          <p className="text-xs text-muted-foreground">
+            Open 24 hours — all slots live.
+          </p>
         </div>
       </div>
 

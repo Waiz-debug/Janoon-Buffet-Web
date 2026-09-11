@@ -9,6 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/convex/_generated/api";
 import {
+  readReservationPointer,
+  saveReservationPointer,
+} from "@/lib/last-reservation";
+import {
   RESTAURANT,
   formatDate,
   formatPhone,
@@ -30,19 +34,50 @@ import { toast } from "sonner";
 
 type Lookup = { reference: string; phone: string };
 
+/** Read the device pointer synchronously on the client, never during SSR. */
+function storedLookup(): Lookup | null {
+  if (typeof window === "undefined") return null;
+  return readReservationPointer();
+}
+
 export default function ManageBooking() {
-  const [reference, setReference] = useState("");
-  const [phone, setPhone] = useState("");
-  const [lookup, setLookup] = useState<Lookup | null>(null);
+  const [pointer] = useState(storedLookup);
+  const [reference, setReference] = useState(pointer?.reference ?? "");
+  const [phone, setPhone] = useState(pointer?.phone ?? "");
+  const [lookup, setLookup] = useState<Lookup | null>(pointer);
+  const [hydrated, setHydrated] = useState(() => typeof window !== "undefined");
   const [error, setError] = useState<string | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // The reservation is always fetched from the database for the lookup in
+  // state, so a refresh (or a desk-side change) re-loads it on first render.
   const reservation = useQuery(
     api.reservations.findByReference,
     lookup ?? "skip",
   );
   const cancelByGuest = useMutation(api.reservations.cancelByGuest);
+
+  // Server-render fallback: hydrate the stored pointer once mounted.
+  useEffect(() => {
+    if (hydrated) return;
+    const stored = readReservationPointer();
+    if (stored) {
+      setReference(stored.reference);
+      setPhone(stored.phone);
+      setLookup(stored);
+    }
+    setHydrated(true);
+  }, [hydrated]);
+
+  // Remember the booking once it resolves, so the next visit opens it directly.
+  useEffect(() => {
+    if (!reservation) return;
+    saveReservationPointer({
+      reference: reservation.reference,
+      phone: reservation.phone,
+    });
+  }, [reservation]);
 
   useEffect(() => {
     document.title = `Manage a reservation · ${RESTAURANT.name}`;
