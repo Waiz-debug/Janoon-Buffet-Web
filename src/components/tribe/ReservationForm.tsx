@@ -419,6 +419,7 @@ export function ReservationForm() {
         reservation={stored}
         onBookAnother={handleBookAnother}
         onCancelled={handleCancelled}
+        onSkip={undefined}
       />
     );
   }
