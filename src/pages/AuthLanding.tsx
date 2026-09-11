@@ -150,15 +150,13 @@ export default function AuthLanding() {
                         : "No account needed"}
                     </p>
                   </div>
-                </motion.div>
-              );
+                </motion.div>              );
             })}
-          </div>          <p className="mt-10 text-center text-xs text-muted-foreground/80">
+          </div>
+          <p className="mt-10 text-center text-xs text-muted-foreground/80">
             Staff and admin portals are protected by PIN 01234. Sessions stay
             local to this browser for 24 hours.
           </p>
-
-
         </div>
       </main>
     </div>

@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import type { Doc } from "./_generated/dataModel";
 
 /** Validate a category icon against the known set. */
 function validateIcon(icon: string): "flame" | "pot" | "bites" | "dessert" {
@@ -20,6 +19,8 @@ function validateIcon(icon: string): "flame" | "pot" | "bites" | "dessert" {
 
 /** Generate a URL-friendly slug from a dish name. */
 function slugify(name: string): string {
+
+function slugify(name: string): string {
   const cleaned = name
     .trim()
     .toLowerCase()
@@ -33,6 +34,17 @@ function slugify(name: string): string {
 
 function collisionAvoid(reference: string, ctx: any, table: string, field: string) {
   const existing = ctx.db
+    .query(table)
+    .withIndex(field, (q) => q.eq(field, reference))
+    .unique();
+  if (existing) {
+    throw new Error(
+      `A record with that identifier already exists. Please choose another.`,
+    );
+  }
+}
+
+type Id<T extends string> = string;  const existing = ctx.db
     .query(table)
     .withIndex(field, (q) => q.eq(field, reference))
     .unique();
@@ -80,9 +92,8 @@ export const upsertCategory = mutation({
   handler: async (ctx, args) => {
     const icon = validateIcon(args.icon);
     const existing = await ctx.db
-      .query("menuCategories")
-      .withIndex("by_id", (q) => q.eq("id", args.id))
-      .unique();
+      .query("menuCategories")      .withIndex("by_categoryId", (q) => q.eq("id", args.id))
+        .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -113,9 +124,8 @@ export const deleteCategory = mutation({
   args: { id: v.string() },
   handler: async (ctx, args) => {
     const existing = await ctx.db
-      .query("menuCategories")
-      .withIndex("by_id", (q) => q.eq("id", args.id))
-      .unique();
+      .query("menuCategories")      .withIndex("by_categoryId", (q) => q.eq("id", args.id))
+        .unique();
     if (!existing) throw new Error("Category not found.");
 
     // Move any dishes in this category into a hidden "uncategorized" bucket.
@@ -197,7 +207,7 @@ export const upsertDish = mutation({
       .withIndex("by_slug", (q) => q.eq("slug", targetSlug))
       .unique();
 
-    if (existing && existing._id !== (args._id as Id<"menuDishes"> | undefined)) {
+    if (existing && (args._id ? existing._id !== args._id : true)) {
       throw new Error(
         `A dish with the slug "${targetSlug}" already exists. Use a different name or edit the existing dish.`,
       );

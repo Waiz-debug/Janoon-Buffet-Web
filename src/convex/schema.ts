@@ -138,7 +138,7 @@ const schema = defineSchema(
       active: v.boolean(),
     })
       .index("by_sortOrder", ["sortOrder"])
-      .index("by_id", ["id"]),
+      .index("by_categoryId", ["id"]),
 
     /** Individual buffet dishes. Image URLs should point at uploaded assets. */
     menuDishes: defineTable({
@@ -186,7 +186,8 @@ const schema = defineSchema(
       ),
     })
       .index("by_assetId", ["assetId"])
-      .index("by_uploadedById", ["uploadedById"]),
+      .index("by_uploadedById", ["uploadedById"])
+      .index("by_url", ["url"]),
 
     // add other tables here
   },
