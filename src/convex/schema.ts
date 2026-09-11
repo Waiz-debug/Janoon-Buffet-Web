@@ -116,6 +116,78 @@ const schema = defineSchema(
       .index("by_reference", ["reference"])
       .index("by_guestName", ["guestName"]),
 
+    // ------------------------------------------------------------------ //
+    // Menu management — editable from the admin portal at runtime.         //
+    // The public frontend reads from these tables via Convex queries so    //
+    // any change here is reflected on the live site without redeploy.      //
+    // ------------------------------------------------------------------ //
+
+    /** Ordered categories that group dishes on the public buffet menu. */
+    menuCategories: defineTable({
+      id: v.string(),
+      name: v.string(),
+      urdu: v.optional(v.string()),
+      blurb: v.optional(v.string()),
+      icon: v.union(
+        v.literal("flame"),
+        v.literal("pot"),
+        v.literal("bites"),
+        v.literal("dessert"),
+      ),
+      sortOrder: v.number(),
+      active: v.boolean(),
+    })
+      .index("by_sortOrder", ["sortOrder"])
+      .index("by_id", ["id"]),
+
+    /** Individual buffet dishes. Image URLs should point at uploaded assets. */
+    menuDishes: defineTable({
+      slug: v.string(),
+      name: v.string(),
+      urdu: v.optional(v.string()),
+      categoryId: v.string(),
+      summary: v.optional(v.string()),
+      description: v.optional(v.string()),
+      notes: v.optional(v.array(v.object({ label: v.string(), value: v.string() }))),
+      pairings: v.optional(v.array(v.string())),
+      image: v.optional(v.string()),
+      /** When true the dish is visible on the public menu. */
+      active: v.boolean(),
+      featured: v.boolean(),
+      sortOrder: v.number(),
+      pricePerPlate: v.optional(v.number()),
+    })
+      .index("by_categoryId", ["categoryId"])
+      .index("by_slug", ["slug"])
+      .index("by_sortOrder", ["sortOrder"])
+      .index("by_active", ["active"]),
+
+    /** Media library entries uploaded by admin staff. */
+    menuAssets: defineTable({
+      assetId: v.string(),
+      originalName: v.string(),
+      mimeType: v.string(),
+      /** Local relative path when stored on the same host, or a remote URL. */
+      url: v.string(),
+      width: v.optional(v.number()),
+      height: v.optional(v.number()),
+      bytes: v.number(),
+      uploadedById: v.string(),
+      uploadedAt: v.number(),
+      usedBy: v.optional(
+        v.array(
+          v.union(
+            v.literal("hero"),
+            v.literal("dish"),
+            v.literal("category"),
+            v.literal("social"),
+          ),
+        ),
+      ),
+    })
+      .index("by_assetId", ["assetId"])
+      .index("by_uploadedById", ["uploadedById"]),
+
     // add other tables here
   },
   {
