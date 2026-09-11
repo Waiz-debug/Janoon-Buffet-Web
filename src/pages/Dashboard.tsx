@@ -1,3 +1,7 @@
+import {
+  ReservationStatusBadge,
+  RESERVATION_STATUS_LABELS,
+} from "@/components/tribe/ReservationStatusBadge";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import type { ReservationStatus } from "@/convex/schema";
@@ -30,38 +34,11 @@ import { Link, useNavigate } from "react-router";
 type Reservation = Doc<"reservations">;
 type Scope = "upcoming" | "today" | "all";
 
-const STATUS_LABELS: Record<ReservationStatus, string> = {
-  pending: "Pending",
-  confirmed: "Confirmed",
-  seated: "Seated",
-  cancelled: "Cancelled",
-};
-
-const STATUS_STYLES: Record<ReservationStatus, string> = {
-  pending: "border-gold/40 bg-gold/15 text-gold",
-  confirmed: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300",
-  seated: "border-sky-500/30 bg-sky-500/15 text-sky-300",
-  cancelled: "border-rose-500/30 bg-rose-500/15 text-rose-300",
-};
-
 const SCOPE_LABELS: Record<Scope, string> = {
   upcoming: "Upcoming",
   today: "Today",
   all: "All dates",
 };
-
-function StatusBadge({ status }: { status: ReservationStatus }) {
-  return (
-    <span
-      className={cn(
-        "rounded-full border px-3 py-1 text-[0.7rem] font-medium tracking-wide uppercase",
-        STATUS_STYLES[status],
-      )}
-    >
-      {STATUS_LABELS[status]}
-    </span>
-  );
-}
 
 function StatCard({
   icon: Icon,
@@ -129,7 +106,9 @@ export default function Dashboard() {
     setBusyId(reservation._id);
     try {
       await updateStatus({ id: reservation._id, status });
-      toast.success(`${reservation.name} marked ${STATUS_LABELS[status].toLowerCase()}`, {
+      toast.success(
+        `${reservation.name} marked ${RESERVATION_STATUS_LABELS[status].toLowerCase()}`,
+        {
         description: `${formatDate(reservation.date)} · ${formatTime(reservation.time)}`,
       });
     } catch (error) {
@@ -150,7 +129,7 @@ export default function Dashboard() {
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gradient-to-br from-gold/25 to-ember/20 text-gold">
+            <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
               <Flame className="size-4" aria-hidden />
             </span>
             <div>
@@ -187,8 +166,8 @@ export default function Dashboard() {
             Table bookings
           </h1>
           <p className="text-sm text-muted-foreground">
-            {user?.name ? `${user.name}, ` : ""}every buffet booking from the
-            website lands here the moment a guest submits it — no refresh needed.
+            {user?.name ? `${user.name}, ` : ""}every booking from the website
+            arrives here the moment a guest submits it, with no refresh required.
           </p>
         </section>
 
@@ -269,7 +248,9 @@ export default function Dashboard() {
                       : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
                   )}
                 >
-                  {option === "all" ? "All statuses" : STATUS_LABELS[option]}
+                  {option === "all"
+                    ? "All statuses"
+                    : RESERVATION_STATUS_LABELS[option]}
                 </button>
               ),
             )}
@@ -305,7 +286,7 @@ export default function Dashboard() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-gold/25 to-ember/20 text-sm font-semibold text-gold">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-sm font-semibold text-gold">
                         {reservation.name.charAt(0).toUpperCase()}
                       </span>
                       <div className="min-w-0">
@@ -332,7 +313,7 @@ export default function Dashboard() {
                         ) : null}
                       </div>
                     </div>
-                    <StatusBadge status={reservation.status} />
+                    <ReservationStatusBadge status={reservation.status} />
                   </div>
 
                   <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-4">

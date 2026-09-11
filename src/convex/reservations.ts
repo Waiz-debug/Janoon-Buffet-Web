@@ -21,6 +21,26 @@ function makeReference() {
 }
 
 /**
+ * Look up a booking using the short reference plus the phone number the guest
+ * booked with. Only the last ten digits are compared, so `0300 1234567` and
+ * `+92 300 1234567` both resolve.
+ */
+async function findReservation(ctx: QueryCtx | MutationCtx, reference: string, phone: string) {
+  const code = reference.trim().toUpperCase();
+  const digits = phone.replace(/[^\d]/g, "");
+  if (!code || digits.length < 6) return null;
+
+  const reservation = await ctx.db
+    .query("reservations")
+    .withIndex("by_reference", (q) => q.eq("reference", code))
+    .unique();
+
+  if (!reservation) return null;
+  if (reservation.phone.slice(-10) !== digits.slice(-10)) return null;
+  return reservation;
+}
+
+/**
  * Staff members are signed-in members of the restaurant team. Anonymous
  * "guest" sessions are rejected so the bookings desk stays private.
  */
@@ -115,6 +135,43 @@ export const create = mutation({
     }
 
     throw new Error("Could not create your booking. Please try again.");
+  },
+});
+
+/**
+ * Public booking lookup. A guest signs in with nothing but their reference
+ * code and phone number, and sees only their own reservation.
+ */
+export const findByReference = query({
+  args: { reference: v.string(), phone: v.string() },
+  handler: async (ctx, args) => {
+    return await findReservation(ctx, args.reference, args.phone);
+  },
+});
+
+/** A guest cancels their own booking with the same reference and phone pair. */
+export const cancelByGuest = mutation({
+  args: { reference: v.string(), phone: v.string() },
+  handler: async (ctx, args) => {
+    const reservation = await findReservation(ctx, args.reference, args.phone);
+    if (!reservation) {
+      throw new Error(
+        "We could not find a booking with that reference and phone number.",
+      );
+    }
+    if (reservation.status === RESERVATION_STATUSES.CANCELLED) {
+      return { alreadyCancelled: true };
+    }
+    if (reservation.status === RESERVATION_STATUSES.SEATED) {
+      throw new Error(
+        "This table has already been seated. Please call 0322 8543333 and our team will help.",
+      );
+    }
+
+    await ctx.db.patch(reservation._id, {
+      status: RESERVATION_STATUSES.CANCELLED,
+    });
+    return { alreadyCancelled: false };
   },
 });
 

@@ -1,17 +1,17 @@
+import { useGoToSection } from "@/hooks/use-go-to-section";
 import { Button } from "@/components/ui/button";
 import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { scrollToSection } from "@/lib/scroll";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarCheck, Flame, Menu, Phone, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
 const NAV_LINKS = [
-  { label: "The vibe", id: "vibe" },
-  { label: "Menu & pricing", id: "menu" },
+  { label: "The Experience", id: "vibe" },
+  { label: "Menu & Pricing", id: "menu" },
   { label: "Reviews", id: "reviews" },
-  { label: "Visit us", id: "visit" },
+  { label: "Visit Us", id: "visit" },
 ];
 
 export function SiteHeader() {
@@ -25,9 +25,10 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const goToSection = useGoToSection();
   const goTo = (id: string) => {
     setOpen(false);
-    scrollToSection(id);
+    goToSection(id);
   };
 
   return (
@@ -45,7 +46,7 @@ export function SiteHeader() {
           onClick={() => goTo("top")}
           className="flex items-center gap-3 text-left"
         >
-          <span className="flex size-9 items-center justify-center rounded-xl border border-gold/30 bg-gradient-to-br from-gold/25 to-ember/20 text-gold">
+          <span className="flex size-9 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
             <Flame className="size-4" aria-hidden />
           </span>
           <span className="flex flex-col leading-none">
@@ -135,10 +136,16 @@ export function SiteHeader() {
                   </a>
                 </Button>
                 <Link
+                  to="/manage"
+                  className="w-full rounded-xl border border-border/70 px-4 py-2.5 text-center text-sm text-muted-foreground transition-colors hover:border-gold/30 hover:text-foreground"
+                >
+                  Manage a reservation
+                </Link>
+                <Link
                   to="/dashboard"
                   className="px-1 pt-2 text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                 >
-                  Staff bookings desk
+                  Staff sign in
                 </Link>
               </div>
             </div>

@@ -6,11 +6,13 @@ import { ReservationSection } from "@/components/tribe/ReservationSection";
 import { SiteHeader } from "@/components/tribe/SiteHeader";
 import { SocialProof } from "@/components/tribe/SocialProof";
 import { Button } from "@/components/ui/button";
+import { useGoToSection } from "@/hooks/use-go-to-section";
 import { RESTAURANT } from "@/lib/restaurant";
-import { scrollToSection } from "@/lib/scroll";
 import { CalendarCheck, Phone } from "lucide-react";
 
 export default function Landing() {
+  const goToSection = useGoToSection();
+
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
@@ -30,8 +32,8 @@ export default function Landing() {
         <div className="flex items-center gap-3">
           <Button
             type="button"
-            className="h-11 flex-1 gap-2 bg-gradient-to-r from-primary to-ember text-primary-foreground"
-            onClick={() => scrollToSection("reserve")}
+            className="h-11 flex-1 gap-2"
+            onClick={() => goToSection("reserve")}
           >
             <CalendarCheck className="size-4" aria-hidden />
             Book Buffet

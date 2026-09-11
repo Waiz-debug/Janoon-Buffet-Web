@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { useGoToSection } from "@/hooks/use-go-to-section";
 import { RESTAURANT } from "@/lib/restaurant";
-import { scrollToSection } from "@/lib/scroll";
 import { Clock, Facebook, Flame, Instagram, MapPin, Phone } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Link } from "react-router";
@@ -37,11 +37,13 @@ const CONTACT_CARDS: ContactCard[] = [
 ];
 
 export function ContactFooter() {
+  const goToSection = useGoToSection();
+
   return (
     <footer id="visit" className="scroll-mt-24 border-t border-border/60 bg-card/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
         {/* Final call to action */}
-        <div className="flex flex-col items-start justify-between gap-6 rounded-3xl border border-gold/25 bg-gradient-to-r from-ember/15 via-card/60 to-card/40 p-8 sm:flex-row sm:items-center">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-3xl border border-gold/25 bg-card/50 p-8 sm:flex-row sm:items-center">
           <div>
             <h2 className="font-display text-2xl font-semibold text-balance sm:text-3xl">
               Hungry tonight? The coals are already lit.
@@ -54,8 +56,8 @@ export function ContactFooter() {
           <Button
             type="button"
             size="lg"
-            onClick={() => scrollToSection("reserve")}
-            className="h-12 shrink-0 gap-2 bg-gradient-to-r from-primary to-ember text-primary-foreground"
+            onClick={() => goToSection("reserve")}
+            className="h-12 shrink-0 gap-2"
           >
             <Flame className="size-4" aria-hidden />
             Book Buffet
@@ -66,7 +68,7 @@ export function ContactFooter() {
         <div className="mt-14 grid gap-6 lg:grid-cols-[1.1fr_1.4fr]">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gradient-to-br from-gold/25 to-ember/20 text-gold">
+              <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
                 <Flame className="size-4" aria-hidden />
               </span>
               <div>
@@ -158,16 +160,22 @@ export function ContactFooter() {
           <div className="flex items-center gap-5">
             <button
               type="button"
-              onClick={() => scrollToSection("menu")}
+              onClick={() => goToSection("menu")}
               className="transition-colors hover:text-foreground"
             >
-              Menu &amp; pricing
+              Menu &amp; Pricing
             </button>
+            <Link
+              to="/manage"
+              className="transition-colors hover:text-foreground"
+            >
+              Manage a reservation
+            </Link>
             <Link
               to="/dashboard"
               className="transition-colors hover:text-foreground"
             >
-              Staff bookings desk
+              Staff sign in
             </Link>
           </div>
         </div>

@@ -2,7 +2,8 @@ import { ReservationForm } from "@/components/tribe/ReservationForm";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { BOOKING_PROMISES, RESTAURANT } from "@/lib/restaurant";
 import { motion } from "framer-motion";
-import { Clock, MapPin, Phone } from "lucide-react";
+import { ArrowUpRight, Clock, MapPin, Phone } from "lucide-react";
+import { Link } from "react-router";
 
 export function ReservationSection() {
   return (
@@ -15,8 +16,8 @@ export function ReservationSection() {
           <div className="flex flex-col gap-8 lg:sticky lg:top-28">
             <SectionHeading
               eyebrow="Reservations"
-              title="Book your buffet table ahead"
-              description="Families book ahead so the table is ready the moment they arrive — especially on Friday and Saturday nights. Tell us who is coming and we will keep the seats warm."
+              title="Reserve your table in advance"
+              description="Families reserve ahead so the table is ready on arrival, which matters most on Friday and Saturday evenings. Tell us who is coming and how many seats you need — our floor team confirms every booking by phone."
             />
 
             <div className="flex flex-col gap-3">
@@ -79,6 +80,14 @@ export function ReservationSection() {
                 buffet service.
               </span>
             </div>
+
+            <Link
+              to="/manage"
+              className="inline-flex items-center gap-2 text-sm text-gold underline-offset-4 hover:underline"
+            >
+              <ArrowUpRight className="size-4" aria-hidden />
+              Already booked? Manage or cancel a reservation
+            </Link>
           </div>
 
           <ReservationForm />

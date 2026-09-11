@@ -16,12 +16,16 @@ import {
 const HERO_STATS = [
   {
     icon: Star,
-    value: `${RESTAURANT.rating} ★`,
+    value: `${RESTAURANT.rating} / 5`,
     label: `${RESTAURANT.reviewCount}+ Google reviews`,
   },
-  { icon: UtensilsCrossed, value: RESTAURANT.buffetRange, label: "per person, unlimited" },
-  { icon: Clock, value: "Open 24/7", label: "even at 3 AM" },
-  { icon: MapPin, value: "Open air", label: "near DHA Phase 5" },
+  {
+    icon: UtensilsCrossed,
+    value: RESTAURANT.buffetRange,
+    label: "per person, unlimited"
+  },
+  { icon: Clock, value: "Open 24 hours", label: "seating all night" },
+  { icon: MapPin, value: "Open-air terrace", label: "Natha Singh Wala, Lahore" },
 ] as const;
 
 const container = {
@@ -75,21 +79,17 @@ export function Hero() {
             variants={item}
             className="font-display text-4xl leading-[1.05] font-semibold text-balance sm:text-5xl lg:text-6xl"
           >
-            Authentic Pakistani{" "}
-            <span className="bg-gradient-to-r from-gold via-primary to-ember bg-clip-text text-transparent italic">
-              BBQ &amp; handi
-            </span>
-            , served around the clock.
+            Authentic Pakistani BBQ and handi, served around the clock.
           </motion.h1>
 
           <motion.p
             variants={item}
             className="max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
           >
-            An all-you-can-eat open-air buffet at {RESTAURANT.name} — charcoal
-            grills, clay-pot handi and desi desserts, laid out every hour of the
-            day for families who like to eat late. Reserve your table ahead and
-            walk straight in.
+            {RESTAURANT.name} is Lahore&apos;s open-air, all-you-can-eat buffet:
+            charcoal grills, clay-pot handi and desi desserts, laid out on the
+            terrace at Natha Singh Wala, minutes from DHA Phase 5. Reserve your
+            table in advance and be seated on arrival.
           </motion.p>
 
           <motion.div
@@ -100,7 +100,7 @@ export function Hero() {
               type="button"
               size="lg"
               onClick={() => scrollToSection("reserve")}
-              className="group h-12 w-full gap-2 bg-gradient-to-r from-primary to-ember text-primary-foreground shadow-lg shadow-ember/20 transition-transform hover:-translate-y-0.5 sm:w-auto"
+              className="group h-12 w-full gap-2 shadow-lg shadow-black/30 sm:w-auto"
             >
               Book Buffet
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -121,8 +121,8 @@ export function Hero() {
             className="text-xs text-muted-foreground/90 sm:text-sm"
           >
             Tonight&apos;s special:{" "}
-            <span className="text-gold">charcoal-grilled fish</span> · Kids under 6
-            dine free · Free to reserve, no deposit
+            <span className="text-gold">charcoal-grilled fish</span> · Children
+            under six dine free · No deposit required
           </motion.p>
 
           <motion.dl

@@ -28,8 +28,10 @@ import {
   Trees,
   Users,
   UtensilsCrossed,
+  XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { toast } from "sonner";
 
 type Seating = "outdoor" | "indoor";
@@ -47,6 +49,7 @@ type BookingForm = {
 type BookingConfirmation = {
   reference: string;
   name: string;
+  phone: string;
   partySize: number;
   date: string;
   time: string;
@@ -77,10 +80,14 @@ function initialForm(): BookingForm {
 
 export function ReservationForm() {
   const createReservation = useMutation(api.reservations.create);
+  const cancelReservation = useMutation(api.reservations.cancelByGuest);
   const [form, setForm] = useState<BookingForm>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
 
   const minDate = useMemo(() => todayKey(), []);
 
@@ -132,9 +139,12 @@ export function ReservationForm() {
         notes: form.notes.trim() ? form.notes.trim() : undefined,
       });
 
+      setCancelled(false);
+      setConfirmingCancel(false);
       setConfirmation({
         reference: result.reference,
         name: form.name.trim(),
+        phone: form.phone.trim(),
         partySize: Number(form.partySize),
         date: form.date,
         time: form.time,
@@ -152,13 +162,33 @@ export function ReservationForm() {
     }
   };
 
+  const handleCancelBooking = async () => {
+    if (!confirmation) return;
+    setIsCancelling(true);
+    try {
+      await cancelReservation({
+        reference: confirmation.reference,
+        phone: confirmation.phone,
+      });
+      setCancelled(true);
+      setConfirmingCancel(false);
+      toast.success("Reservation cancelled", {
+        description: `Reference ${confirmation.reference} has been released.`,
+      });
+    } catch (error) {
+      toast.error("Could not cancel", { description: bookingErrorMessage(error) });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   if (confirmation) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        className="flex flex-col gap-6 rounded-3xl border border-gold/30 bg-gradient-to-b from-gold/12 to-card/60 p-6 sm:p-8"
+        className="flex flex-col gap-6 rounded-3xl border border-gold/30 bg-gold/[0.06] p-6 sm:p-8"
       >
         <div className="flex items-center gap-3">
           <span className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold">
@@ -166,10 +196,11 @@ export function ReservationForm() {
           </span>
           <div>
             <h3 className="font-display text-xl font-semibold">
-              Your table is requested, {confirmation.name.split(" ")[0]}!
+              Your table is requested
             </h3>
             <p className="text-sm text-muted-foreground">
-              Our floor team will call you shortly to confirm.
+              Thank you, {confirmation.name.split(" ")[0]} — our floor team will
+              call {confirmation.phone} shortly to confirm.
             </p>
           </div>
         </div>
@@ -206,7 +237,8 @@ export function ReservationForm() {
         </dl>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Keep this reference handy. Running early or late? Call{" "}
+          Keep this reference to manage or cancel the booking later. Running
+          early or late? Call{" "}
           <a
             href={RESTAURANT.phoneHref}
             className="text-gold underline-offset-4 hover:underline"
@@ -216,17 +248,75 @@ export function ReservationForm() {
           and we will hold your table for 20 minutes past your arrival time.
         </p>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full border-gold/30"
-          onClick={() => {
-            setConfirmation(null);
-            setForm(initialForm());
-          }}
-        >
-          Book another table
-        </Button>
+        {cancelled ? (
+          <p className="rounded-xl border border-border/70 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
+            This reservation has been cancelled and the table released. Nothing
+            further is required — we hope to welcome your family another evening.
+          </p>
+        ) : confirmingCancel ? (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4">
+            <p className="text-sm">
+              Cancel the table for {confirmation.partySize} guests on{" "}
+              {formatDate(confirmation.date)} at {formatTime(confirmation.time)}?
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isCancelling}
+                onClick={handleCancelBooking}
+                className="gap-2"
+              >
+                {isCancelling ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <XCircle className="size-4" aria-hidden />
+                )}
+                Yes, cancel it
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="border border-border/70"
+                onClick={() => setConfirmingCancel(false)}
+              >
+                Keep my table
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingCancel(true)}
+            className="inline-flex items-center gap-2 self-start text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-destructive hover:underline"
+          >
+            <XCircle className="size-4" aria-hidden />
+            Cancel this reservation
+          </button>
+        )}
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 border-border/70"
+            onClick={() => {
+              setConfirmation(null);
+              setCancelled(false);
+              setConfirmingCancel(false);
+              setForm(initialForm());
+            }}
+          >
+            Book another table
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            className="flex-1 border-border/70"
+          >
+            <Link to="/manage">Manage this booking</Link>
+          </Button>
+        </div>
       </motion.div>
     );
   }
@@ -387,7 +477,7 @@ export function ReservationForm() {
         type="submit"
         size="lg"
         disabled={isSubmitting}
-        className="h-12 w-full gap-2 bg-gradient-to-r from-primary to-ember text-primary-foreground shadow-lg shadow-ember/20"
+        className="h-12 w-full gap-2 shadow-lg shadow-black/30"
       >
         {isSubmitting ? (
           <>

@@ -27,15 +27,6 @@ export const RESTAURANT = {
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
 } as const;
 
-export type MenuCategory = {
-  id: string;
-  name: string;
-  urdu: string;
-  blurb: string;
-  icon: "flame" | "pot" | "bites" | "dessert";
-  items: string[];
-};
-
 export const BUFFET_TIERS = [
   {
     label: "Monday – Thursday",
@@ -60,69 +51,6 @@ export const BUFFET_INCLUDES = [
   "Salad bar, raita, chutneys & pickles",
   "Soft drinks, lassi and Kashmiri chai",
 ] as const;
-
-export const MENU_CATEGORIES: MenuCategory[] = [
-  {
-    id: "bbq",
-    name: "BBQ & Grills",
-    urdu: "باری بی کیو",
-    blurb:
-      "Charcoal counters that run all night — the same seekh recipe the family has grilled for years.",
-    icon: "flame",
-    items: [
-      "Beef & chicken seekh kebab",
-      "Chicken tikka, malai boti & kalmi tikka",
-      "Beef bihari kebab & mutton chops",
-      "Tandoori grilled fish (daily special)",
-      "Charcoal-grilled corn & vegetables",
-    ],
-  },
-  {
-    id: "handi",
-    name: "Traditional Handi",
-    urdu: "روایتی ہانڈی",
-    blurb:
-      "Slow clay-pot cooking that starts before dawn and simmers until the first guests arrive.",
-    icon: "pot",
-    items: [
-      "Chicken karahi, made to order",
-      "Mutton nihari, simmered overnight",
-      "Chicken haleem with crisp fried onions",
-      "Daal maash tarka & palak paneer",
-      "Chicken handi with tandoori naan",
-    ],
-  },
-  {
-    id: "fast-bites",
-    name: "Fast Bites",
-    urdu: "فاسٹ بائٹس",
-    blurb:
-      "Lahori street snacks and quick plates for the kids, the cousins and the midnight crowd.",
-    icon: "bites",
-    items: [
-      "Lahori chana chaat & dahi baray",
-      "Samosa, pakora & spring roll counter",
-      "Chicken shashlik sticks",
-      "Gol gappay with teekha pani",
-      "Crispy fries & loaded chicken bites",
-    ],
-  },
-  {
-    id: "desserts",
-    name: "Desi Desserts",
-    urdu: "دیسی میٹھا",
-    blurb:
-      "Warm mithai served straight from the degh — sweet endings for the whole table.",
-    icon: "dessert",
-    items: [
-      "Gajar ka halwa with khoya",
-      "Shahi kheer & gulab jamun",
-      "Kulfi falooda with rabri",
-      "Jalebi with warm milk",
-      "Seasonal fruit & rabri trifle",
-    ],
-  },
-];
 
 export const TESTIMONIALS = [
   {

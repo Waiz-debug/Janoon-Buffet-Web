@@ -31,7 +31,7 @@ export function SocialProof() {
     <section id="reviews" className="hearth-glow scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <SectionHeading
-          eyebrow="Social proof"
+          eyebrow="Reviews"
           title="4.6 stars from families across Lahore"
           description="Seventy-two Google reviews and counting — most of them from families who booked ahead, stayed late and came back the next weekend."
         />
@@ -43,7 +43,7 @@ export function SocialProof() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.4 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="flex flex-col justify-between gap-6 rounded-3xl border border-gold/25 bg-gradient-to-b from-gold/12 to-card/60 p-6"
+            className="flex flex-col justify-between gap-6 rounded-3xl border border-gold/25 bg-card/50 p-6"
           >
             <div className="flex flex-col gap-3">
               <div className="flex items-end gap-3">
@@ -89,7 +89,7 @@ export function SocialProof() {
                   </blockquote>
                 </div>
                 <figcaption className="flex items-center gap-3 border-t border-border/60 pt-4">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-gold/25 to-ember/20 text-sm font-semibold text-gold">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-gold/15 text-sm font-semibold text-gold">
                     {testimonial.name.charAt(0)}
                   </span>
                   <span>
@@ -114,7 +114,7 @@ export function SocialProof() {
               {RESTAURANT.instagramHandle}
             </p>
             <h3 className="mt-2 font-display text-2xl font-semibold">
-              Fresh off the coals, straight from our feed
+              Recently plated at Natha Singh Wala
             </h3>
           </div>
           <Button asChild variant="outline" className="gap-2 self-start border-gold/30">
