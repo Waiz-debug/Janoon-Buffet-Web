@@ -172,10 +172,10 @@ export function ContactFooter() {
               Manage a reservation
             </Link>
             <Link
-              to="/dashboard"
+              to="/access"
               className="transition-colors hover:text-foreground"
             >
-              Staff sign in
+              Staff &amp; admin access
             </Link>
           </div>
         </div>

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/convex/_generated/api";
 import {
+  clearReservationPointer,
   readReservationPointer,
   saveReservationPointer,
 } from "@/lib/last-reservation";

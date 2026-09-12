@@ -3,40 +3,55 @@ import { Flame, Lock, PanelRight, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "react-router";
 
-const ROLE_CARDS = [
+type RoleCard = {
+  id: "user" | "staff" | "admin";
+  label: string;
+  description: string;
+  cta: string;
+  icon: typeof Users;
+  pin: boolean;
+  accent: string;
+  glow: string;
+};
+
+const ROLE_CARDS: RoleCard[] = [
   {
     id: "user",
     label: "Customer",
     description:
-      "Browse the buffet menu, check today's specials, and book a table for your family without signing in.",
-    cta: "Open the buffet site",
+      "Tonight's buffet, the full menu and table booking — open to every guest, no sign-in required.",
+    cta: "Enter the restaurant",
     icon: Users,
-    href: "/",
-    accent: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20 hover:border-emerald-500/40 hover:bg-emerald-500/15",
+    pin: false,
+    accent:
+      "bg-emerald-500/10 text-emerald-300 border-emerald-500/20 hover:border-emerald-500/40",
     glow: "shadow-[0_0_18px_-4px_rgba(52,211,153,0.25)]",
   },
   {
     id: "staff",
     label: "Staff Portal",
     description:
-      "See live table reservations and mark arrivals, confirmations, and seating from the floor.",              cta: "Enter staff PIN",
-              icon: PanelRight,
-              accent: "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:border-sky-500/40 hover:bg-sky-500/15",
-              glow: "shadow-[0_0_18px_-4px_rgba(56,189,248,0.25)]",
-              pin: true,
-            },
-            {
-              id: "admin",
-              label: "Admin Portal",
-              description:
-                "Manage the live menu, update pricing, upload real photos, and oversee every reservation.",
-              cta: "Enter admin PIN",
-              icon: Lock,
-              accent: "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/15",
-              glow: "shadow-[0_0_18px_-4px_rgba(251,191,36,0.25)]",
-              pin: true,
-            },
-] as const;
+      "Tonight's bookings and the order feed, for the team working the floor.",
+    cta: "Staff sign-in",
+    icon: PanelRight,
+    pin: true,
+    accent:
+      "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:border-sky-500/40",
+    glow: "shadow-[0_0_18px_-4px_rgba(56,189,248,0.25)]",
+  },
+  {
+    id: "admin",
+    label: "Admin Portal",
+    description:
+      "Menu and pricing control, real restaurant photography and every reservation, in one place.",
+    cta: "Admin sign-in",
+    icon: Lock,
+    pin: true,
+    accent:
+      "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:border-amber-500/40",
+    glow: "shadow-[0_0_18px_-4px_rgba(251,191,36,0.25)]",
+  },
+];
 
 export default function AuthLanding() {
   return (
@@ -85,32 +100,33 @@ export default function AuthLanding() {
               Who are you coming in as?
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground">
-              Choose the portal you need. Guests keep the public buffet site;
-              staff and admin sign in through a PIN before anything inside opens.
+              Guests can walk straight in. The staff and admin doors open with a
+              PIN — entered once, then remembered for the day.
             </p>
           </motion.div>
 
           <div className="grid gap-5 sm:grid-cols-3">
             {ROLE_CARDS.map((role, index) => {
               const Icon = role.icon;
-              const delay = 0.12 * index;
               return (
                 <motion.div
                   key={role.id}
                   initial={{ opacity: 0, y: 18 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.45, delay, ease: "easeOut" }}
-                  className="group flex flex-col gap-4 rounded-2xl border bg-card/70 p-6 transition-colors hover:border-gold/25 hover:bg-card"
+                  transition={{
+                    duration: 0.45,
+                    delay: 0.12 * index,
+                    ease: "easeOut",
+                  }}
+                  className="group flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/70 p-6 transition-colors hover:border-gold/25 hover:bg-card"
                 >
                   <span
-                    className={`flex size-12 items-center justify-center rounded-2xl border ${role.accent} glow ${
-                      role.pin ? "cursor-pointer" : ""
-                    }`}
+                    className={`flex size-12 items-center justify-center rounded-2xl border ${role.accent} ${role.glow}`}
                   >
                     <Icon className="size-5" aria-hidden />
                   </span>
 
-                  <div>
+                  <div className="flex-1">
                     <h2 className="font-display text-lg font-semibold">
                       {role.label}
                     </h2>
@@ -119,43 +135,44 @@ export default function AuthLanding() {
                     </p>
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2">
                     {role.pin ? (
                       <Button
                         asChild
                         variant="outline"
-                        className={`border ${role.accent} gap-2`}
-                        onClick={() => {
-                          window.location.href = `/pin-auth?role=${role.id}`;
-                        }}
+                        className={`w-full gap-2 border ${role.accent}`}
                       >
-                        <Lock className="size-3.5" aria-hidden />
-                        {role.cta}
+                        <Link to={`/pin-auth?role=${role.id}`}>
+                          <Lock className="size-3.5" aria-hidden />
+                          {role.cta}
+                        </Link>
                       </Button>
                     ) : (
-                      <Link to={role.href}>
-                        <Button
-                          variant="default"
-                          size="lg"
-                          className="w-full gap-2 shadow-lg shadow-black/20"
-                        >
+                      <Button
+                        asChild
+                        size="lg"
+                        className="w-full gap-2 shadow-lg shadow-black/20"
+                      >
+                        <Link to="/">
                           {role.cta}
                           <span aria-hidden>→</span>
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     )}
                     <p className="text-[0.7rem] text-muted-foreground/80">
                       {role.pin
-                        ? "PIN: 01234 — stored locally for 24 hours"
+                        ? "PIN protected · remembered for 24 hours"
                         : "No account needed"}
                     </p>
                   </div>
-                </motion.div>              );
+                </motion.div>
+              );
             })}
           </div>
+
           <p className="mt-10 text-center text-xs text-muted-foreground/80">
-            Staff and admin portals are protected by PIN 01234. Sessions stay
-            local to this browser for 24 hours.
+            Staff and admin share the PIN 01234. Once verified, the session is
+            remembered on this device for 24 hours.
           </p>
         </div>
       </main>

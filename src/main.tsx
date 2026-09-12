@@ -1,6 +1,7 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { RequirePin } from "@/components/RequirePin";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -16,6 +17,9 @@ const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const MenuDetail = lazy(() => import("./pages/MenuDetail.tsx"));
 const ManageBooking = lazy(() => import("./pages/ManageBooking.tsx"));
 const PINAuth = lazy(() => import("./pages/PINAuth.tsx"));
+const AuthLanding = lazy(() => import("./pages/AuthLanding.tsx"));
+const StaffPortal = lazy(() => import("./pages/StaffPortal.tsx"));
+const AdminPortal = lazy(() => import("./pages/AdminPortal.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -140,7 +144,24 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Landing />} />
               <Route path="/menu/:slug" element={<MenuDetail />} />
               <Route path="/manage" element={<ManageBooking />} />
+              <Route path="/access" element={<AuthLanding />} />
               <Route path="/pin-auth" element={<PINAuth />} />
+              <Route
+                path="/staff"
+                element={
+                  <RequirePin role="staff">
+                    <StaffPortal />
+                  </RequirePin>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <RequirePin role="admin">
+                    <AdminPortal />
+                  </RequirePin>
+                }
+              />
               <Route
                 path="/auth"
                 element={<AuthPage redirectAfterAuth="/dashboard" />}

@@ -30,23 +30,6 @@ function slugify(name: string): string {
   return cleaned;
 }
 
-function collisionAvoid(
-  reference: string,
-  ctx: any,
-  table: string,
-  field: string,
-) {
-  const existing = ctx.db
-    .query(table)
-    .withIndex(field, (q) => q.eq(field, reference))
-    .unique();
-  if (existing) {
-    throw new Error(
-      `A record with that identifier already exists. Please choose another.`,
-    );
-  }
-}
-
 // ------------------------------------------------------------------ //
 // Category CRUD
 // ------------------------------------------------------------------ //
@@ -206,7 +189,9 @@ export const upsertDish = mutation({
       .withIndex("by_slug", (q) => q.eq("slug", targetSlug))
       .unique();
 
-    if (existing && args._id && existing._id !== args._id) {
+    // Creating a new dish whose generated slug collides with an existing one
+    // is an error; passing an explicit slug means we are editing that dish.
+    if (existing && !args.slug) {
       throw new Error(
         `A dish with the slug "${targetSlug}" already exists. Use a different name or edit the existing dish.`,
       );
@@ -297,7 +282,13 @@ export const registerAsset = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    collisionAvoid(args.assetId, ctx, "menuAssets", "assetId");
+    const existingAsset = await ctx.db
+      .query("menuAssets")
+      .withIndex("by_assetId", (q) => q.eq("assetId", args.assetId))
+      .unique();
+    if (existingAsset) {
+      throw new Error("That image has already been registered.");
+    }
 
     const id = await ctx.db.insert("menuAssets", {
       assetId: args.assetId,

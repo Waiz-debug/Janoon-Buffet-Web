@@ -397,11 +397,11 @@ export function ReservationForm() {
     setForm(initialForm());
   };
 
-  const handleCancelled = (reference: string) => {
+  const handleCancelled = () => {
     clearReservationPointer();
     setPointer(null);
     setNotice(
-      `Reservation ${reference} has been cancelled and removed. No table is being held.`,
+      "Your reservation has been cancelled and removed from the website. No table is being held.",
     );
   };
 
@@ -419,7 +419,6 @@ export function ReservationForm() {
         reservation={stored}
         onBookAnother={handleBookAnother}
         onCancelled={handleCancelled}
-        onSkip={undefined}
       />
     );
   }

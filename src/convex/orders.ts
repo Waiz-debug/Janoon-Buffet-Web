@@ -97,7 +97,7 @@ export const create = mutation({
       partySize: Math.min(Math.max(Math.floor(args.partySize) || 1, 1), 30),
       createdAt: now,
       seating: args.seating,
-      dishes: valid,
+      dishes: valid.map(([slug, count]) => ({ slug, count })),
       notes: args.notes?.trim() ? args.notes.trim().slice(0, 300) : undefined,
       status: ORDER_STATUSES.PENDING,
     };
