@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireStaff } from "./reservations";
 import type { Doc } from "./_generated/dataModel";
 
 type DeliveryOrder = Doc<"deliveryOrders">;
@@ -126,17 +125,18 @@ export const placeOrder = mutation({
   },
 });
 
-/** Staff desk feed, newest first. */
+/** Delivery desk feed, newest first. Access is enforced client-side by the
+ *  PIN-gated /deliveries route (same model as the public reservation lookups). */
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const rows = await ctx.db.query("deliveryOrders").collect();
     return rows.sort((a, b) => b.createdAt - a.createdAt) as DeliveryOrder[];
   },
 });
 
-/** Advance an order through the delivery lifecycle. Desk only. */
+/** Advance an order through the delivery lifecycle. Invoked only from the
+ *  PIN-gated delivery desk. */
 export const advanceStatus = mutation({
   args: {
     id: v.id("deliveryOrders"),
@@ -148,7 +148,6 @@ export const advanceStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     const order = await ctx.db.get(args.id);
     if (!order) throw new Error("That order no longer exists.");
     if (order.status === "delivered") {
