@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { deliveryStatusValidator } from "./schema";
 import type { Doc } from "./_generated/dataModel";
 
 type DeliveryOrder = Doc<"deliveryOrders">;
@@ -135,17 +136,37 @@ export const list = query({
   },
 });
 
+/** Headline numbers for the staff portal header strip. */
+export const stats = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("deliveryOrders").collect();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const placedToday = rows.filter((o) => o.createdAt >= todayStart.getTime());
+    const active = rows.filter((o) => o.status !== "delivered");
+    return {
+      /** Live orders in the kitchen or on a bike right now. */
+      active: active.length,
+      /** Orders placed since midnight, delivered or not. */
+      placedToday: placedToday.length,
+      /** Money collected from delivered orders today. */
+      earnedToday: placedToday
+        .filter((o) => o.status === "delivered")
+        .reduce((sum, o) => sum + o.total, 0),
+      /** Orders waiting for the counter to confirm. */
+      pending: rows.filter((o) => o.status === "placed").length,
+    };
+  },
+});
+
 /** Advance an order through the delivery lifecycle. Invoked only from the
  *  PIN-gated delivery desk. */
 export const advanceStatus = mutation({
   args: {
     id: v.id("deliveryOrders"),
-    status: v.union(
-      v.literal("confirmed"),
-      v.literal("cooking"),
-      v.literal("out-for-delivery"),
-      v.literal("delivered"),
-    ),
+    status: deliveryStatusValidator,
   },
   handler: async (ctx, args) => {
     const order = await ctx.db.get(args.id);
@@ -153,7 +174,10 @@ export const advanceStatus = mutation({
     if (order.status === "delivered") {
       throw new Error("That order is already delivered.");
     }
-    await ctx.db.patch(args.id, { status: args.status });
+    await ctx.db.patch(args.id, {
+      status: args.status,
+      deliveredAt: args.status === "delivered" ? Date.now() : undefined,
+    });
     return { id: args.id, status: args.status };
   },
 });
