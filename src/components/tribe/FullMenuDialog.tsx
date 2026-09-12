@@ -1,14 +1,8 @@
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
-import {
-  MENU_CATEGORIES,
-  DISHES,
-  dishesByCategory,
-  deliveryUnitPrice,
-  formatRupees,
-  type Dish,
-} from "@/lib/menu";
+import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
+import { formatRupees } from "@/lib/menu";
 import { BUFFET_TIERS } from "@/lib/restaurant";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,9 +16,8 @@ import {
 import { Check, Plus, UtensilsCrossed } from "lucide-react";
 import { Link } from "react-router";
 
-function DishCard({ dish }: { dish: Dish }) {
+function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
   const { add } = useCart();
-  const price = deliveryUnitPrice(dish.slug);
 
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/50 transition-colors hover:border-gold/35">
@@ -73,6 +66,8 @@ function DishCard({ dish }: { dish: Dish }) {
 }
 
 export function FullMenuDialog() {
+  const { categories, dishes, dishesByCategory, unitPrice } = useLiveSite();
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -84,7 +79,7 @@ export function FullMenuDialog() {
           <UtensilsCrossed className="size-4" aria-hidden />
           View Full Menu
           <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
-            {DISHES.length} dishes
+            {dishes.length} dishes
           </span>
         </Button>
       </DialogTrigger>
@@ -94,7 +89,7 @@ export function FullMenuDialog() {
             The complete menu
           </DialogTitle>
           <DialogDescription>
-            Every dish across our four counters — all included in the dine-in
+            Every dish across our counters — all included in the dine-in
             buffet, or available for Lahore delivery at the prices shown.
           </DialogDescription>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -112,9 +107,9 @@ export function FullMenuDialog() {
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-10">
-            {MENU_CATEGORIES.map((category) => {
+            {categories.map((category) => {
               const Icon = CATEGORY_ICONS[category.icon];
-              const dishes = dishesByCategory(category.id);
+              const catDishes = dishesByCategory(category.id);
               return (
                 <section key={category.id} aria-label={category.name}>
                   <header className="flex items-center gap-3">
@@ -129,14 +124,23 @@ export function FullMenuDialog() {
                     </div>
                   </header>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {dishes.map((dish) => (
-                      <DishCard key={dish.slug} dish={dish} />
+                    {catDishes.map((dish) => (
+                      <DishCard
+                        key={dish.slug}
+                        dish={dish}
+                        price={unitPrice(dish)}
+                      />
                     ))}
                   </div>
                 </section>
               );
             })}
           </div>
+          {dishes.length === 0 ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">
+              The menu is being updated — please check back shortly.
+            </p>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

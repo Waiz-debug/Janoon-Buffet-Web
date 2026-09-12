@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { Embers, HearthScene } from "@/components/tribe/HearthScene";
+import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
 import { scrollToSection } from "@/lib/scroll";
 import { motion } from "framer-motion";
@@ -39,6 +40,9 @@ const item = {
 };
 
 export function Hero() {
+  const { heroImage } = useLiveSite();
+  const backdrop = heroImage ?? RESTAURANT.heroImage;
+
   return (
     <section
       id="top"
@@ -47,7 +51,7 @@ export function Hero() {
       {/* Warm hearth backdrop: photo (if available) under the heritage scene art */}
       <div aria-hidden className="absolute inset-0 -z-20">
         <SmartImage
-          src={RESTAURANT.heroImage}
+          src={backdrop}
           alt=""
           loading="eager"
           className="h-full w-full object-cover opacity-30"

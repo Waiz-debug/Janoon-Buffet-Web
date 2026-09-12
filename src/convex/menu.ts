@@ -30,6 +30,88 @@ function slugify(name: string): string {
   return cleaned;
 }
 
+/** Media slots the public site reads. `hero` backs the landing page; gallery
+ *  slots 1-6 fill the Instagram-style grid on the reviews section. */
+export const MEDIA_SLOTS = [
+  "hero",
+  "gallery-1",
+  "gallery-2",
+  "gallery-3",
+  "gallery-4",
+  "gallery-5",
+  "gallery-6",
+] as const;
+
+function isValidSlot(slot: string): slot is (typeof MEDIA_SLOTS)[number] {
+  return (MEDIA_SLOTS as readonly string[]).includes(slot);
+}
+
+// ------------------------------------------------------------------ //
+// Live public reads — the customer site subscribes to these, so any   //
+// admin edit is reflected without a redeploy.                         //
+// ------------------------------------------------------------------ //
+
+/** Whether the menu has been seeded (drives the admin portal's first-run
+ *  auto-seed). Deliberately cheap: a single category count. */
+export const seedState = query({
+  args: {},
+  handler: async (ctx) => {
+    const categories = await ctx.db.query("menuCategories").collect();
+    return { seeded: categories.length > 0 };
+  },
+});
+
+/** The complete live menu: active categories with their active dishes. */
+export const publicMenu = query({
+  args: {},
+  handler: async (ctx) => {
+    const [categories, dishes] = await Promise.all([
+      ctx.db.query("menuCategories").collect(),
+      ctx.db.query("menuDishes").collect(),
+    ]);
+    return {
+      categories: categories
+        .filter((c) => c.active)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+      dishes: dishes
+        .filter((d) => d.active)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    };
+  },
+});
+
+/** Hero and gallery imagery for the public site. Rows without a URL are
+ *  omitted — the frontend then falls back to its themed default. */
+export const publicSiteMedia = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("siteMedia").collect();
+    const media: { slot: string; url: string; caption?: string }[] = [];
+    for (const row of rows) {
+      if (!row.url) continue;
+      media.push({ slot: row.slot, url: row.url, caption: row.caption });
+    }
+    return media;
+  },
+});
+
+/** Resolve a Convex storage id to a servable URL (used by the admin portal). */
+export const imageUrlFor = query({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});
+
+/** Admin view of all site media slots, including their storage ids. */
+export const listSiteMedia = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("siteMedia").collect();
+    return rows.sort((a, b) => a.slot.localeCompare(b.slot));
+  },
+});
+
 // ------------------------------------------------------------------ //
 // Category CRUD
 // ------------------------------------------------------------------ //
@@ -160,6 +242,7 @@ export const upsertDish = mutation({
     ),
     pairings: v.optional(v.array(v.string())),
     image: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     active: v.boolean(),
     featured: v.boolean(),
     sortOrder: v.number(),
@@ -197,6 +280,17 @@ export const upsertDish = mutation({
       );
     }
 
+    // A freshly uploaded photo arrives as a storage id; resolve it to its
+    // servable URL server-side so no temporary client URL is ever stored.
+    let resolvedImage = args.image?.trim() || undefined;
+    if (args.imageStorageId) {
+      const uploadedUrl = await ctx.storage.getUrl(args.imageStorageId);
+      if (!uploadedUrl) {
+        throw new Error("Could not resolve the uploaded image URL.");
+      }
+      resolvedImage = uploadedUrl;
+    }
+
     const dishDoc = {
       slug: targetSlug,
       name: args.name.trim(),
@@ -215,7 +309,8 @@ export const upsertDish = mutation({
         args.pairings?.length
           ? args.pairings.map((p) => p.trim())
           : undefined,
-      image: args.image?.trim() || undefined,
+      image: resolvedImage,
+      imageStorageId: args.imageStorageId,
       active: args.active,
       featured: args.featured,
       sortOrder: args.sortOrder,
@@ -225,7 +320,14 @@ export const upsertDish = mutation({
 
     let id: Id<"menuDishes">;
     if (existing) {
-      await ctx.db.patch(existing._id, dishDoc);
+      // Preserve notes/pairings when the edit form omits them (the admin
+      // editor does not yet manage those fields).
+      const { notes: _notes, pairings: _pairings, ...patchDoc } = dishDoc;
+      await ctx.db.patch(existing._id, {
+        ...patchDoc,
+        notes: args.notes?.length ? dishDoc.notes : existing.notes,
+        pairings: args.pairings?.length ? dishDoc.pairings : existing.pairings,
+      });
       id = existing._id;
     } else {
       id = await ctx.db.insert("menuDishes", dishDoc);
@@ -249,7 +351,187 @@ export const deleteDish = mutation({
 });
 
 // ------------------------------------------------------------------ //
-// Media asset upload + management
+// Image uploads — real files, kept in Convex file storage.            //
+// ------------------------------------------------------------------ //
+
+/** Step 1 of an upload: mint a short-lived direct-upload URL for the client. */
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+const IMAGE_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+]);
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+async function getUrlForStorage(
+  ctx: { storage: { getUrl: (id: Id<"_storage">) => Promise<string | null> } },
+  storageId: Id<"_storage"> | undefined,
+): Promise<string | undefined> {
+  if (!storageId) return undefined;
+  const url = await ctx.storage.getUrl(storageId);
+  return url ?? undefined;
+}
+
+/** Attach an uploaded image to a dish. The file is stored in Convex file
+ *  storage; the dish keeps both the storage id and its servable URL. */
+export const uploadDishImage = mutation({
+  args: {
+    slug: v.string(),
+    storageId: v.id("_storage"),
+    originalName: v.string(),
+    mimeType: v.string(),
+    bytes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (!IMAGE_MIME.has(args.mimeType)) {
+      throw new Error("Only JPEG, PNG, WebP, GIF or AVIF images are allowed.");
+    }
+    if (args.bytes > MAX_IMAGE_BYTES) {
+      throw new Error("Images must be 5 MB or smaller.");
+    }
+
+    const dish = await ctx.db
+      .query("menuDishes")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!dish) throw new Error("Dish not found.");
+
+    // Detach any previous in-app image so storage does not accumulate.
+    if (dish.imageStorageId) {
+      await ctx.storage.delete(dish.imageStorageId);
+    }
+
+    const url = await getUrlForStorage(ctx, args.storageId);
+    if (!url) throw new Error("Could not resolve the uploaded image URL.");
+
+    await ctx.db.patch(dish._id, {
+      image: url,
+      imageStorageId: args.storageId,
+    });
+
+    // Best-effort registry entry for the media library view.
+    const known = await ctx.db
+      .query("menuAssets")
+      .withIndex("by_assetId", (q) => q.eq("assetId", args.storageId))
+      .unique();
+    if (!known) {
+      await ctx.db.insert("menuAssets", {
+        assetId: args.storageId,
+        originalName: args.originalName.trim().slice(0, 120),
+        mimeType: args.mimeType,
+        url,
+        bytes: args.bytes,
+        uploadedById: "admin",
+        uploadedAt: Date.now(),
+        usedBy: ["dish"],
+      });
+    }
+
+    return { slug: args.slug, url };
+  },
+});
+
+/** Remove a dish's uploaded photo (falls the card back to its themed tile). */
+export const removeDishImage = mutation({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const dish = await ctx.db
+      .query("menuDishes")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!dish) throw new Error("Dish not found.");
+    if (dish.imageStorageId) {
+      await ctx.storage.delete(dish.imageStorageId);
+    }
+    await ctx.db.patch(dish._id, { image: undefined, imageStorageId: undefined });
+    return { slug: args.slug };
+  },
+});
+
+/** Publish an uploaded image into a site media slot (hero or gallery). */
+export const setSiteMedia = mutation({
+  args: {
+    slot: v.string(),
+    storageId: v.id("_storage"),
+    originalName: v.string(),
+    mimeType: v.string(),
+    bytes: v.number(),
+    caption: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!isValidSlot(args.slot)) {
+      throw new Error(`Unknown media slot "${args.slot}".`);
+    }
+    if (!IMAGE_MIME.has(args.mimeType)) {
+      throw new Error("Only JPEG, PNG, WebP, GIF or AVIF images are allowed.");
+    }
+    if (args.bytes > MAX_IMAGE_BYTES) {
+      throw new Error("Images must be 5 MB or smaller.");
+    }
+
+    const url = await getUrlForStorage(ctx, args.storageId);
+    if (!url) throw new Error("Could not resolve the uploaded image URL.");
+
+    const existing = await ctx.db
+      .query("siteMedia")
+      .withIndex("by_slot", (q) => q.eq("slot", args.slot))
+      .unique();
+
+    if (existing?.imageStorageId) {
+      await ctx.storage.delete(existing.imageStorageId);
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        url,
+        imageStorageId: args.storageId,
+        caption: args.caption?.trim() || existing.caption,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("siteMedia", {
+        slot: args.slot,
+        url,
+        imageStorageId: args.storageId,
+        caption: args.caption?.trim() || undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    return { slot: args.slot, url };
+  },
+});
+
+/** Clear a media slot — the public site returns to its themed default. */
+export const clearSiteMedia = mutation({
+  args: { slot: v.string() },
+  handler: async (ctx, args) => {
+    if (!isValidSlot(args.slot)) {
+      throw new Error(`Unknown media slot "${args.slot}".`);
+    }
+    const existing = await ctx.db
+      .query("siteMedia")
+      .withIndex("by_slot", (q) => q.eq("slot", args.slot))
+      .unique();
+    if (!existing) return { cleared: false };
+    if (existing.imageStorageId) {
+      await ctx.storage.delete(existing.imageStorageId);
+    }
+    await ctx.db.delete(existing._id);
+    return { cleared: true };
+  },
+});
+
+// ------------------------------------------------------------------ //
+// Media library
 // ------------------------------------------------------------------ //
 
 export const listAssets = query({
@@ -321,7 +603,7 @@ export const deleteAsset = mutation({
       .collect();
     for (const dish of linkedDishes) {
       if (dish.image === existing.url) {
-        await ctx.db.patch(dish._id, { image: undefined });
+        await ctx.db.patch(dish._id, { image: undefined, imageStorageId: undefined });
       }
     }
 
@@ -331,9 +613,30 @@ export const deleteAsset = mutation({
 });
 
 // ------------------------------------------------------------------ //
-// Admin helpers — seed + reset
+// Admin helpers — seed (with real delivery prices) + reset            //
 // ------------------------------------------------------------------ //
 
+const SEED_PRICES: Record<string, number> = {
+  "beef-seekh-kebab": 850,
+  "chicken-malai-boti": 750,
+  "chicken-tikka": 700,
+  "grilled-fish": 1200,
+  "mutton-nihari": 950,
+  "chicken-karahi": 1100,
+  "chicken-haleem": 650,
+  "palak-paneer": 600,
+  "lahori-chana-chaat": 400,
+  "dahi-baray": 400,
+  "samosa-pakora": 350,
+  "chicken-shashlik": 750,
+  "gajar-ka-halwa": 450,
+  "shahi-kheer": 450,
+  "kulfi-falooda": 500,
+  "gulab-jamun": 400,
+};
+
+/** Seed categories + dishes on first run. Prices seed the per-plate delivery
+ *  pricing so admins can adjust it in the portal from day one. */
 export const ensureSeedData = mutation({
   args: {},
   handler: async (ctx) => {
@@ -342,29 +645,13 @@ export const ensureSeedData = mutation({
       return { seeded: false, reason: "Menu already contains categories." };
     }
 
-    const now = Date.now();
-    const adminId = (await ctx.db.query("users").first())?._id ?? "seed";
-    const assetId = `seed-hero-${Date.now()}`;
-
-    await ctx.db.insert("menuAssets", {
-      assetId,
-      originalName: "placeholder-hero.jpg",
-      mimeType: "image/jpeg",
-      url:
-        "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=70",
-      bytes: 0,
-      uploadedById: adminId,
-      uploadedAt: now,
-      usedBy: ["hero"],
-    });
-
     const categories = [
       {
         id: "bbq",
         name: "BBQ & Grills",
         urdu: "باری بی کیو",
         blurb: "Charcoal counters that stay lit all night, working from recipes the family has grilled for years.",
-        icon: "flame",
+        icon: "flame" as const,
         sortOrder: 1,
         active: true,
       },
@@ -373,7 +660,7 @@ export const ensureSeedData = mutation({
         name: "Traditional Handi",
         urdu: "روایتی ہانڈی",
         blurb: "Slow clay-pot cooking that begins before dawn and simmers until the first guests sit down.",
-        icon: "pot",
+        icon: "pot" as const,
         sortOrder: 2,
         active: true,
       },
@@ -382,7 +669,7 @@ export const ensureSeedData = mutation({
         name: "Fast Bites",
         urdu: "فاسٹ بائٹس",
         blurb: "Lahori street plates and lighter bites for children, cousins and the midnight crowd.",
-        icon: "bites",
+        icon: "bites" as const,
         sortOrder: 3,
         active: true,
       },
@@ -391,20 +678,30 @@ export const ensureSeedData = mutation({
         name: "Desi Desserts",
         urdu: "دیسی میٹھا",
         blurb: "Warm mithai lifted straight from the degh, served until the last table leaves.",
-        icon: "dessert",
+        icon: "dessert" as const,
         sortOrder: 4,
         active: true,
       },
     ];
 
     for (const c of categories) {
-      await ctx.db.insert("menuCategories", {
-        ...c,
-        icon: validateIcon(c.icon),
-      });
+      await ctx.db.insert("menuCategories", c);
     }
 
-    const dishes: any[] = [
+    const dishes: {
+      slug: string;
+      name: string;
+      urdu: string;
+      categoryId: string;
+      summary: string;
+      description: string;
+      notes: { label: string; value: string }[];
+      pairings: string[];
+      active: boolean;
+      featured: boolean;
+      sortOrder: number;
+      pricePerPlate: number;
+    }[] = [
       {
         slug: "beef-seekh-kebab",
         name: "Beef Seekh Kebab",
@@ -419,12 +716,10 @@ export const ensureSeedData = mutation({
           { label: "Served with", value: "Mint chutney & tandoor bread" },
         ],
         pairings: ["chicken-malai-boti", "mutton-nihari"],
-        image:
-          "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: true,
         sortOrder: 1,
-        pricePerPlate: 0,
+        pricePerPlate: 850,
       },
       {
         slug: "chicken-malai-boti",
@@ -440,12 +735,10 @@ export const ensureSeedData = mutation({
           { label: "Served with", value: "Garlic yoghurt & salad" },
         ],
         pairings: ["beef-seekh-kebab", "chicken-shashlik"],
-        image:
-          "https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: true,
         sortOrder: 2,
-        pricePerPlate: 0,
+        pricePerPlate: 750,
       },
       {
         slug: "chicken-tikka",
@@ -461,12 +754,10 @@ export const ensureSeedData = mutation({
           { label: "Cut", value: "Bone-in leg and thigh" },
         ],
         pairings: ["beef-seekh-kebab", "lahori-chana-chaat"],
-        image:
-          "https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 3,
-        pricePerPlate: 0,
+        pricePerPlate: 700,
       },
       {
         slug: "grilled-fish",
@@ -482,12 +773,10 @@ export const ensureSeedData = mutation({
           { label: "Served with", value: "Imli chutney & lemon" },
         ],
         pairings: ["chicken-tikka", "shahi-kheer"],
-        image:
-          "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: true,
         sortOrder: 4,
-        pricePerPlate: 0,
+        pricePerPlate: 1200,
       },
       {
         slug: "mutton-nihari",
@@ -503,12 +792,10 @@ export const ensureSeedData = mutation({
           { label: "Served with", value: "Ginger, chilli & lemon" },
         ],
         pairings: ["beef-seekh-kebab", "palak-paneer"],
-        image:
-          "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: true,
         sortOrder: 1,
-        pricePerPlate: 0,
+        pricePerPlate: 950,
       },
       {
         slug: "chicken-karahi",
@@ -524,12 +811,10 @@ export const ensureSeedData = mutation({
           { label: "Served with", value: "Tandoori naan" },
         ],
         pairings: ["palak-paneer", "kulfi-falooda"],
-        image:
-          "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 2,
-        pricePerPlate: 0,
+        pricePerPlate: 1100,
       },
       {
         slug: "chicken-haleem",
@@ -545,12 +830,10 @@ export const ensureSeedData = mutation({
           { label: "Toppings", value: "Fried onion, ginger, lemon" },
         ],
         pairings: ["beef-seekh-kebab", "gulab-jamun"],
-        image:
-          "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 3,
-        pricePerPlate: 0,
+        pricePerPlate: 650,
       },
       {
         slug: "palak-paneer",
@@ -566,12 +849,10 @@ export const ensureSeedData = mutation({
           { label: "Best with", value: "Tandoori naan or sheermal" },
         ],
         pairings: ["mutton-nihari", "chicken-karahi"],
-        image:
-          "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 4,
-        pricePerPlate: 0,
+        pricePerPlate: 600,
       },
       {
         slug: "lahori-chana-chaat",
@@ -587,12 +868,10 @@ export const ensureSeedData = mutation({
           { label: "Spice", value: "Medium, tangy" },
         ],
         pairings: ["dahi-baray", "samosa-pakora"],
-        image:
-          "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 1,
-        pricePerPlate: 0,
+        pricePerPlate: 400,
       },
       {
         slug: "dahi-baray",
@@ -608,12 +887,10 @@ export const ensureSeedData = mutation({
           { label: "Spice", value: "Mild" },
         ],
         pairings: ["lahori-chana-chaat", "shahi-kheer"],
-        image:
-          "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 2,
-        pricePerPlate: 0,
+        pricePerPlate: 400,
       },
       {
         slug: "samosa-pakora",
@@ -629,12 +906,10 @@ export const ensureSeedData = mutation({
           { label: "Availability", value: "All hours" },
         ],
         pairings: ["chicken-shashlik", "kulfi-falooda"],
-        image:
-          "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 3,
-        pricePerPlate: 0,
+        pricePerPlate: 350,
       },
       {
         slug: "chicken-shashlik",
@@ -650,12 +925,10 @@ export const ensureSeedData = mutation({
           { label: "Served", value: "On the skewer" },
         ],
         pairings: ["chicken-malai-boti", "samosa-pakora"],
-        image:
-          "https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 4,
-        pricePerPlate: 0,
+        pricePerPlate: 750,
       },
       {
         slug: "gajar-ka-halwa",
@@ -664,19 +937,17 @@ export const ensureSeedData = mutation({
         categoryId: "desserts",
         summary: "Winter carrots cooked down with khoya and ghee.",
         description:
-          "Grated carrots are cooked slowly in ghee until the moisture lifts, then finished with khoya, sugar and a handful of Pistachio.",
+          "Grated carrots are cooked slowly in ghee until the moisture lifts, then finished with khoya, sugar and a handful of pistachio.",
         notes: [
           { label: "Cooking time", value: "Three hours, stirred by hand" },
           { label: "Served", value: "Warm" },
           { label: "Richness", value: "Khoya and pure ghee" },
         ],
         pairings: ["shahi-kheer", "kulfi-falooda"],
-        image:
-          "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 1,
-        pricePerPlate: 0,
+        pricePerPlate: 450,
       },
       {
         slug: "shahi-kheer",
@@ -692,12 +963,10 @@ export const ensureSeedData = mutation({
           { label: "Flavouring", value: "Saffron & cardamom" },
         ],
         pairings: ["gulab-jamun", "dahi-baray"],
-        image:
-          "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 2,
-        pricePerPlate: 0,
+        pricePerPlate: 450,
       },
       {
         slug: "kulfi-falooda",
@@ -713,12 +982,10 @@ export const ensureSeedData = mutation({
           { label: "Flavouring", value: "Rose syrup & pistachio" },
         ],
         pairings: ["gajar-ka-halwa", "chicken-karahi"],
-        image:
-          "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: true,
         sortOrder: 3,
-        pricePerPlate: 0,
+        pricePerPlate: 500,
       },
       {
         slug: "gulab-jamun",
@@ -734,12 +1001,10 @@ export const ensureSeedData = mutation({
           { label: "Syrup", value: "Cardamom & rose water" },
         ],
         pairings: ["shahi-kheer", "chicken-haleem"],
-        image:
-          "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=1200&q=70",
         active: true,
         featured: false,
         sortOrder: 4,
-        pricePerPlate: 0,
+        pricePerPlate: 400,
       },
     ];
 

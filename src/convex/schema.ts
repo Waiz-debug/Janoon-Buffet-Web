@@ -169,6 +169,8 @@ const schema = defineSchema(
       notes: v.optional(v.array(v.object({ label: v.string(), value: v.string() }))),
       pairings: v.optional(v.array(v.string())),
       image: v.optional(v.string()),
+      /** Convex file storage id of the uploaded photo, when stored in-app. */
+      imageStorageId: v.optional(v.id("_storage")),
       /** When true the dish is visible on the public menu. */
       active: v.boolean(),
       featured: v.boolean(),
@@ -206,6 +208,17 @@ const schema = defineSchema(
       .index("by_assetId", ["assetId"])
       .index("by_uploadedById", ["uploadedById"])
       .index("by_url", ["url"]),
+
+    /** Public site imagery managed from the admin portal. One row per slot:
+     *  the hero backdrop and each Instagram-style gallery tile. When a slot
+     *  has no row (or no URL) the frontend falls back to its themed default. */
+    siteMedia: defineTable({
+      slot: v.string(),
+      caption: v.optional(v.string()),
+      url: v.optional(v.string()),
+      imageStorageId: v.optional(v.id("_storage")),
+      updatedAt: v.number(),
+    }).index("by_slot", ["slot"]),
 
     /** À-la-carte delivery orders placed from the public cart. Pricing is
      *  computed server-side at placement time and stored on the order. */

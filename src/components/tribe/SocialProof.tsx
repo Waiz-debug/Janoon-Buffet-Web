@@ -1,6 +1,7 @@
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { Button } from "@/components/ui/button";
+import { useLiveSite } from "@/hooks/use-live-site";
 import { GALLERY, RESTAURANT, TESTIMONIALS } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import { Instagram, Star } from "lucide-react";
@@ -27,6 +28,12 @@ function StarRating({ value }: { value: number }) {
 }
 
 export function SocialProof() {
+  const { gallery } = useLiveSite();
+  const posts = GALLERY.map((post, index) => ({
+    ...post,
+    image: gallery[index]?.url ?? post.image,
+  }));
+
   return (
     <section id="reviews" className="hearth-glow scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
@@ -126,7 +133,7 @@ export function SocialProof() {
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {GALLERY.map((post, index) => (
+          {posts.map((post, index) => (
             <motion.a
               key={post.caption}
               href={RESTAURANT.instagramUrl}

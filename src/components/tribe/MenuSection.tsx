@@ -3,14 +3,8 @@ import { FullMenuDialog } from "@/components/tribe/FullMenuDialog";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
-import {
-  MENU_CATEGORIES,
-  SIGNATURE_SLUGS,
-  dishesByCategory,
-  deliveryUnitPrice,
-  formatRupees,
-  getDish,
-} from "@/lib/menu";
+import { useLiveSite } from "@/hooks/use-live-site";
+import { formatRupees } from "@/lib/menu";
 import { BUFFET_INCLUDES, BUFFET_TIERS } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -19,10 +13,18 @@ import { Link } from "react-router";
 
 export function MenuSection() {
   const { add } = useCart();
+  const {
+    categories,
+    getDish,
+    dishesByCategory,
+    unitPrice,
+  } = useLiveSite();
 
-  const signatures = SIGNATURE_SLUGS.map((slug) => getDish(slug)).filter(
-    (dish): dish is NonNullable<typeof dish> => Boolean(dish),
-  );
+  const signatures = ["beef-seekh-kebab", "mutton-nihari", "grilled-fish", "kulfi-falooda"]
+    .map((slug) => getDish(slug))
+    .filter((dish): dish is NonNullable<typeof dish> => Boolean(dish));
+
+  const special = getDish("grilled-fish");
 
   return (
     <section id="menu" className="scroll-mt-24 py-20 sm:py-28">
@@ -74,7 +76,7 @@ export function MenuSection() {
           })}
         </div>
 
-        <div className="mt-6 flex flex-col gap-5 rounded-2xl border border-border/70 bg-card/40 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/40 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid gap-3 sm:grid-cols-2">
             {BUFFET_INCLUDES.map((include) => (
               <div key={include} className="flex items-center gap-2.5 text-sm">
@@ -136,14 +138,14 @@ export function MenuSection() {
                           add({
                             slug: dish.slug,
                             name: dish.name,
-                            unitPrice: deliveryUnitPrice(dish.slug),
+                            unitPrice: unitPrice(dish),
                           })
                         }
                         className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/15"
                         aria-label={`Add ${dish.name} to delivery order`}
                       >
                         <Plus className="size-3.5" aria-hidden />
-                        {formatRupees(deliveryUnitPrice(dish.slug))}
+                        {formatRupees(unitPrice(dish))}
                       </button>
                       <Link
                         to={`/menu/${dish.slug}`}
@@ -162,7 +164,7 @@ export function MenuSection() {
 
         {/* Counters */}
         <div className="mt-16 grid gap-5 md:grid-cols-2">
-          {MENU_CATEGORIES.map((category, index) => {
+          {categories.map((category, index) => {
             const Icon = CATEGORY_ICONS[category.icon];
             const dishes = dishesByCategory(category.id);
             return (
@@ -213,14 +215,14 @@ export function MenuSection() {
                           add({
                             slug: dish.slug,
                             name: dish.name,
-                            unitPrice: deliveryUnitPrice(dish.slug),
+                            unitPrice: unitPrice(dish),
                           })
                         }
                         className="my-2 inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold/25 px-2 py-1 text-xs font-medium text-gold transition-colors hover:bg-gold/10"
                         aria-label={`Add ${dish.name} to delivery order`}
                       >
                         <Plus className="size-3" aria-hidden />
-                        {formatRupees(deliveryUnitPrice(dish.slug))}
+                        {formatRupees(unitPrice(dish))}
                       </button>
                     </li>
                   ))}
@@ -230,29 +232,31 @@ export function MenuSection() {
           })}
         </div>
 
-        <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-gold/25 bg-gold/[0.06] p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-4">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-gold/25 text-gold">
-              <Sparkles className="size-5" aria-hidden />
-            </span>
-            <div>
-              <h3 className="font-display text-lg font-semibold">
-                Daily special · Charcoal-grilled fish
-              </h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                Whole fish marinated overnight, grilled to order and carved at the
-                counter, laid out fresh from seven in the evening while it lasts.
-              </p>
+        {/* Daily special — highlights the charcoal-grilled fish when live */}
+        {special ? (
+          <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-gold/25 bg-gold/[0.06] p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-gold/25 text-gold">
+                <Sparkles className="size-5" aria-hidden />
+              </span>
+              <div>
+                <h3 className="font-display text-lg font-semibold">
+                  Daily special · {special.name}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {special.summary}
+                </p>
+              </div>
             </div>
+            <Link
+              to={`/menu/${special.slug}`}
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gold/30 px-4 py-2.5 text-xs tracking-[0.16em] text-gold uppercase transition-colors hover:bg-gold/10"
+            >
+              View the dish
+              <ArrowUpRight className="size-3.5" aria-hidden />
+            </Link>
           </div>
-          <Link
-            to="/menu/grilled-fish"
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gold/30 px-4 py-2.5 text-xs tracking-[0.16em] text-gold uppercase transition-colors hover:bg-gold/10"
-          >
-            View the dish
-            <ArrowUpRight className="size-3.5" aria-hidden />
-          </Link>
-        </div>
+        ) : null}
       </div>
     </section>
   );

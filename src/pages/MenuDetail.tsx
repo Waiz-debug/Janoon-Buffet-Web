@@ -6,11 +6,9 @@ import { Button } from "@/components/ui/button";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import {
   DISHES,
-  dishesByCategory,
   getCategory,
-  getDish,
-  getPairings,
 } from "@/lib/menu";
+import { useLiveSite } from "@/hooks/use-live-site";
 import { BUFFET_TIERS, RESTAURANT } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUpRight, CalendarCheck, Check, Phone } from "lucide-react";
@@ -20,6 +18,7 @@ import { Link, useParams } from "react-router";
 export default function MenuDetail() {
   const { slug } = useParams<{ slug: string }>();
   const goToSection = useGoToSection();
+  const { getDish, dishesByCategory, unitPrice } = useLiveSite();
   const dish = slug ? getDish(slug) : undefined;
 
   useEffect(() => {
@@ -55,9 +54,11 @@ export default function MenuDetail() {
     );
   }
 
-  const category = getCategory(dish.categoryId);
+  const category = getCategory(dish.categoryId as never);
   const Icon = category ? CATEGORY_ICONS[category.icon] : undefined;
-  const pairings = getPairings(dish);
+  const pairings = (dish.pairings ?? [])
+    .map((paired) => getDish(paired))
+    .filter((paired): paired is NonNullable<typeof paired> => Boolean(paired));
   const alsoTry = dishesByCategory(dish.categoryId).filter(
     (item) => item.slug !== dish.slug,
   );

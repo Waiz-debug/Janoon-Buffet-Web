@@ -11,7 +11,28 @@ type DeliveryOrder = Doc<"deliveryOrders">;
 const DELIVERY_FEE = 150;
 const FREE_DELIVERY_THRESHOLD = 2500;
 
-function deliveryUnitPrice(slug: string): number {
+async function deliveryUnitPrice(
+  ctx: {
+    db: {
+      query: (name: "menuDishes") => {
+        withIndex: (
+          index: "by_slug",
+          fn: (q: any) => any,
+        ) => { unique: () => Promise<Doc<"menuDishes"> | null> };
+      };
+    };
+  },
+  slug: string,
+): Promise<number> {
+  // Admin-set price wins when the dish exists and carries one; the static
+  // table is the fallback for dishes without a managed price.
+  const dish = await ctx.db
+    .query("menuDishes")
+    .withIndex("by_slug", (q) => q.eq("slug", slug))
+    .unique();
+  if (dish?.pricePerPlate && dish.pricePerPlate > 0) {
+    return dish.pricePerPlate;
+  }
   const prices: Record<string, number> = {
     "beef-seekh-kebab": 850,
     "chicken-malai-boti": 750,
@@ -82,7 +103,12 @@ export const placeOrder = mutation({
       throw new Error("Please choose your area in Lahore.");
     }
 
-    const lines = [];
+    const lines: {
+      slug: string;
+      name: string;
+      count: number;
+      unitPrice: number;
+    }[] = [];
     for (const item of args.items) {
       const count = Math.floor(Number(item.count));
       if (!item.slug || count < 1) continue;
@@ -90,7 +116,7 @@ export const placeOrder = mutation({
         slug: item.slug,
         name: item.name.trim().slice(0, 80),
         count: Math.min(count, 20),
-        unitPrice: deliveryUnitPrice(item.slug),
+        unitPrice: await deliveryUnitPrice(ctx, item.slug),
       });
     }
     if (lines.length === 0) {
