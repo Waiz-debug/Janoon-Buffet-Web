@@ -15,6 +15,7 @@ const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const MenuDetail = lazy(() => import("./pages/MenuDetail.tsx"));
 const ManageBooking = lazy(() => import("./pages/ManageBooking.tsx"));
+const PINAuth = lazy(() => import("./pages/PINAuth.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -139,6 +140,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Landing />} />
               <Route path="/menu/:slug" element={<MenuDetail />} />
               <Route path="/manage" element={<ManageBooking />} />
+              <Route path="/pin-auth" element={<PINAuth />} />
               <Route
                 path="/auth"
                 element={<AuthPage redirectAfterAuth="/dashboard" />}

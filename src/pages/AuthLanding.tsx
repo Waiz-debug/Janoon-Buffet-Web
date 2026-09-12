@@ -146,7 +146,7 @@ export default function AuthLanding() {
                     )}
                     <p className="text-[0.7rem] text-muted-foreground/80">
                       {role.pin
-                        ? "PIN: 01234 — kept private to this device session"
+                        ? "PIN: 01234 — stored locally for 24 hours"
                         : "No account needed"}
                     </p>
                   </div>

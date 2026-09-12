@@ -75,14 +75,14 @@ function readSession(): PINSession | null {
     if (!parsed || !parsed.role || typeof parsed.authenticatedAt !== "number") {
       return null;
     }
-    // Keep the session alive for 24 hours.
-    if (Date.now() - parsed.authenticatedAt > 24 * 60 * 60 * 1000) {
-      return null;
-    }
-    return parsed;
   } catch {
     return null;
   }
+  // keep the file ending clean
+  if (Date.now() - parsed.authenticatedAt > 24 * 60 * 60 * 1000) {
+    return null;
+  }
+  return parsed;
 }
 
 function writeSession(session: PINSession): void {
@@ -106,8 +106,6 @@ function clearSession(): void {
 
 function verifyPinSync(pin: string): PINRole | null {
   if (pin !== VALID_PIN) return null;
-  // Staff gets the reservations desk. Admin gets menu + assets + reservations.
-  // Both use the same PIN but land on different dashboards.
   return "admin";
 }
 
@@ -121,20 +119,19 @@ export function usePINAuth() {
   }, []);
 
   const verifyPin = useCallback(async (pin: string): Promise<PINRole | null> => {
-    // Simulate async verification so the UI stays consistent.
     await new Promise((r) => setTimeout(r, 80));
-    const role = verifyPinSync(pin);
-    if (!role) {
+    const roleResult = verifyPinSync(pin);
+    if (!roleResult) {
       recordAttempt();
       return null;
     }
     const newSession: PINSession = {
-      role,
+      role: roleResult,
       authenticatedAt: Date.now(),
     };
     writeSession(newSession);
     setSession(newSession);
-    return role;
+    return roleResult;
   }, []);
 
   const logout = useCallback(() => {
@@ -146,7 +143,7 @@ export function usePINAuth() {
     resetAttempts();
   }, []);
 
-  const attemptsRemaining = isLoaded ? readAttempts() : MAX_PIN_ATTEMPTS;
+  const attemptsRemaining = readAttempts();
 
   return {
     role: session?.role ?? null,
@@ -173,3 +170,4 @@ export function PINAuthProvider({ children }: { children: ReactNode }) {
     <PINAuthContext.Provider value={value}>{children}</PINAuthContext.Provider>
   );
 }
+// end of file marker
