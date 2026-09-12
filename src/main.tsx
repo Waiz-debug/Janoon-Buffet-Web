@@ -189,8 +189,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
-          </BrowserRouter>
           <CartDrawer />
+          </BrowserRouter>
         </CartProvider>
         <Toaster />
       </ConvexAuthProvider>
