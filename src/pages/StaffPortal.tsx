@@ -11,9 +11,10 @@ const DESK_ITEMS = [
   },
   {
     icon: ConciergeBell,
-    title: "Order feed",
-    body: "Buffet orders streaming in from the counters, tracked from prep to served.",
-    ready: false,
+    title: "Delivery orders",
+    body: "À-la-carte orders headed across Lahore — confirm, cook, dispatch and mark delivered.",
+    ready: true,
+    action: { label: "Open delivery desk", href: "/deliveries" },
   },
   {
     icon: Clock3,

@@ -2,6 +2,8 @@ import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { RequirePin } from "@/components/RequirePin";
+import { CartDrawer } from "@/components/tribe/CartDrawer";
+import { CartProvider } from "@/hooks/use-cart";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -19,6 +21,8 @@ const MenuDetail = lazy(() => import("./pages/MenuDetail.tsx"));
 const ManageBooking = lazy(() => import("./pages/ManageBooking.tsx"));
 const StaffPortal = lazy(() => import("./pages/StaffPortal.tsx"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal.tsx"));
+const OrderPage = lazy(() => import("./pages/Order.tsx"));
+const Deliveries = lazy(() => import("./pages/Deliveries.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -135,7 +139,8 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
+        <CartProvider>
+          <BrowserRouter>
           <RouteSyncer />
           <ScrollToHash />
           <Suspense fallback={<RouteLoading />}>
@@ -143,6 +148,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Gateway />} />
               <Route path="/restaurant" element={<RestaurantSite />} />
               <Route path="/menu/:slug" element={<MenuDetail />} />
+              <Route path="/order" element={<OrderPage />} />
               <Route path="/manage" element={<ManageBooking />} />
               <Route
                 path="/staff"
@@ -172,10 +178,20 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
+              <Route
+                path="/deliveries"
+                element={
+                  <RequirePin role="staff">
+                    <Deliveries />
+                  </RequirePin>
+                }
+              />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
-        </BrowserRouter>
+          </BrowserRouter>
+          <CartDrawer />
+        </CartProvider>
         <Toaster />
       </ConvexAuthProvider>
     </RootErrorBoundary>

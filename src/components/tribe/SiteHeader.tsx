@@ -1,9 +1,10 @@
 import { useGoToSection } from "@/hooks/use-go-to-section";
+import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
 import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarCheck, Flame, Menu, Phone, X } from "lucide-react";
+import { CalendarCheck, Flame, Menu, Phone, ShoppingBag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
@@ -17,6 +18,7 @@ const NAV_LINKS = [
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { itemCount, openCart } = useCart();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -73,6 +75,19 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openCart}
+            aria-label={`Open delivery cart (${itemCount} items)`}
+            className="relative flex size-10 items-center justify-center rounded-xl border border-border/70 text-foreground transition-colors hover:border-gold/40"
+          >
+            <ShoppingBag className="size-4" aria-hidden />
+            {itemCount > 0 ? (
+              <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[0.65rem] font-semibold text-background">
+                {itemCount > 9 ? "9+" : itemCount}
+              </span>
+            ) : null}
+          </button>
           <a
             href={RESTAURANT.phoneHref}
             className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
@@ -128,6 +143,18 @@ export function SiteHeader() {
                 >
                   <CalendarCheck className="size-4" aria-hidden />
                   Book Buffet
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setOpen(false);
+                    openCart();
+                  }}
+                  className="w-full gap-2"
+                >
+                  <ShoppingBag className="size-4" aria-hidden />
+                  Delivery cart{itemCount > 0 ? ` (${itemCount})` : ""}
                 </Button>
                 <Button asChild variant="outline" className="w-full gap-2">
                   <a href={RESTAURANT.phoneHref}>

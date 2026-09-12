@@ -369,3 +369,41 @@ export const SIGNATURE_SLUGS = [
   "grilled-fish",
   "kulfi-falooda",
 ] as const;
+
+
+/* ------------------------------------------------------------------ */
+/* Delivery pricing — mirrors the table in convex/delivery.ts, which  */
+/* computes the authoritative total server-side at order time.        */
+/* ------------------------------------------------------------------ */
+
+export const DELIVERY_FEE = 150;
+export const FREE_DELIVERY_THRESHOLD = 2500;
+
+/** Per-plate delivery prices in whole rupees. */
+const DELIVERY_PRICES: Record<string, number> = {
+  "beef-seekh-kebab": 850,
+  "chicken-malai-boti": 750,
+  "chicken-tikka": 700,
+  "grilled-fish": 1200,
+  "mutton-nihari": 950,
+  "chicken-karahi": 1100,
+  "chicken-haleem": 650,
+  "palak-paneer": 600,
+  "lahori-chana-chaat": 400,
+  "dahi-baray": 400,
+  "samosa-pakora": 350,
+  "chicken-shashlik": 750,
+  "gajar-ka-halwa": 450,
+  "shahi-kheer": 450,
+  "kulfi-falooda": 500,
+  "gulab-jamun": 400,
+};
+
+export function deliveryUnitPrice(slug: string): number {
+  return DELIVERY_PRICES[slug] ?? 600;
+}
+
+/** `850` → `"Rs 850"` */
+export function formatRupees(amount: number): string {
+  return `Rs ${amount.toLocaleString("en-PK")}`;
+}

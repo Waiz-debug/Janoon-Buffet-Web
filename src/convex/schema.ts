@@ -38,6 +38,24 @@ export const seatingValidator = v.union(
 );
 export type Seating = Infer<typeof seatingValidator>;
 
+/** Delivery lifecycle for à-la-carte orders brought to a guest's address. */
+export const DELIVERY_STATUSES = {
+  PLACED: "placed",
+  CONFIRMED: "confirmed",
+  COOKING: "cooking",
+  OUT_FOR_DELIVERY: "out-for-delivery",
+  DELIVERED: "delivered",
+} as const;
+
+export const deliveryStatusValidator = v.union(
+  v.literal(DELIVERY_STATUSES.PLACED),
+  v.literal(DELIVERY_STATUSES.CONFIRMED),
+  v.literal(DELIVERY_STATUSES.COOKING),
+  v.literal(DELIVERY_STATUSES.OUT_FOR_DELIVERY),
+  v.literal(DELIVERY_STATUSES.DELIVERED),
+);
+export type DeliveryStatus = Infer<typeof deliveryStatusValidator>;
+
 // "Buffet orders" placed at the settling-in counter. Kept separate from
 // reservations because an order is per-person plates, not a table booking.
 export const ORDER_STATUSES = {
@@ -188,6 +206,35 @@ const schema = defineSchema(
       .index("by_assetId", ["assetId"])
       .index("by_uploadedById", ["uploadedById"])
       .index("by_url", ["url"]),
+
+    /** À-la-carte delivery orders placed from the public cart. Pricing is
+     *  computed server-side at placement time and stored on the order. */
+    deliveryOrders: defineTable({
+      reference: v.string(),
+      customerName: v.string(),
+      /** Digits only, e.g. 03228543333. */
+      phone: v.string(),
+      address: v.string(),
+      area: v.string(),
+      notes: v.optional(v.string()),
+      items: v.array(
+        v.object({
+          slug: v.string(),
+          name: v.string(),
+          count: v.number(),
+          unitPrice: v.number(),
+        }),
+      ),
+      itemsTotal: v.number(),
+      deliveryFee: v.number(),
+      total: v.number(),
+      status: deliveryStatusValidator,
+      createdAt: v.number(),
+      deliveredAt: v.optional(v.number()),
+    })
+      .index("by_status", ["status"])
+      .index("by_reference", ["reference"])
+      .index("by_createdAt", ["createdAt"]),
 
     // add other tables here
   },

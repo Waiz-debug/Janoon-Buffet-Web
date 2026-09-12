@@ -1,19 +1,24 @@
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
+import { useCart } from "@/hooks/use-cart";
 import {
   MENU_CATEGORIES,
   SIGNATURE_SLUGS,
   dishesByCategory,
+  deliveryUnitPrice,
+  formatRupees,
   getDish,
 } from "@/lib/menu";
 import { BUFFET_INCLUDES, BUFFET_TIERS } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { ArrowUpRight, Check, Sparkles } from "lucide-react";
+import { ArrowUpRight, Check, Plus, Sparkles } from "lucide-react";
 import { Link } from "react-router";
 
 export function MenuSection() {
+  const { add } = useCart();
+
   const signatures = SIGNATURE_SLUGS.map((slug) => getDish(slug)).filter(
     (dish): dish is NonNullable<typeof dish> => Boolean(dish),
   );
@@ -118,10 +123,30 @@ export function MenuSection() {
                     <p className="text-xs leading-relaxed text-muted-foreground">
                       {dish.summary}
                     </p>
-                    <span className="mt-auto inline-flex items-center gap-1.5 pt-3 text-[0.7rem] tracking-[0.16em] text-gold uppercase">
-                      View dish
-                      <ArrowUpRight className="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                    </span>
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          add({
+                            slug: dish.slug,
+                            name: dish.name,
+                            unitPrice: deliveryUnitPrice(dish.slug),
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/15"
+                        aria-label={`Add ${dish.name} to delivery order`}
+                      >
+                        <Plus className="size-3.5" aria-hidden />
+                        {formatRupees(deliveryUnitPrice(dish.slug))}
+                      </button>
+                      <Link
+                        to={`/menu/${dish.slug}`}
+                        className="inline-flex items-center gap-1.5 text-[0.7rem] tracking-[0.16em] text-gold uppercase"
+                      >
+                        View dish
+                        <ArrowUpRight className="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                      </Link>
+                    </div>
                   </div>
                 </Link>
               </motion.div>
@@ -161,10 +186,10 @@ export function MenuSection() {
 
                 <ul className="mt-4 flex flex-col divide-y divide-border/60 border-t border-border/60">
                   {dishes.map((dish) => (
-                    <li key={dish.slug}>
+                    <li key={dish.slug} className="flex items-center gap-3">
                       <Link
                         to={`/menu/${dish.slug}`}
-                        className="group flex items-start justify-between gap-4 py-3"
+                        className="group flex min-w-0 flex-1 items-start justify-between gap-4 py-3"
                       >
                         <span className="min-w-0">
                           <span className="block text-sm font-medium transition-colors group-hover:text-gold">
@@ -176,6 +201,21 @@ export function MenuSection() {
                         </span>
                         <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-gold" />
                       </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          add({
+                            slug: dish.slug,
+                            name: dish.name,
+                            unitPrice: deliveryUnitPrice(dish.slug),
+                          })
+                        }
+                        className="my-2 inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold/25 px-2 py-1 text-xs font-medium text-gold transition-colors hover:bg-gold/10"
+                        aria-label={`Add ${dish.name} to delivery order`}
+                      >
+                        <Plus className="size-3" aria-hidden />
+                        {formatRupees(deliveryUnitPrice(dish.slug))}
+                      </button>
                     </li>
                   ))}
                 </ul>
