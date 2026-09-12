@@ -1,4 +1,5 @@
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
+import { FullMenuDialog } from "@/components/tribe/FullMenuDialog";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
@@ -32,6 +33,11 @@ export function MenuSection() {
           description="Every seat includes the full spread — live charcoal BBQ, slow-cooked handi, Lahori fast bites and dessert straight from the degh. Weekend and festive nights add further cuts, including our charcoal-grilled fish. Select any dish to read how it is prepared."
           align="center"
         />
+
+        {/* Full catalog — the entire menu, one click away */}
+        <div className="mt-8 flex justify-center">
+          <FullMenuDialog />
+        </div>
 
         {/* Pricing */}
         <div className="mt-12 grid gap-4 sm:grid-cols-3">

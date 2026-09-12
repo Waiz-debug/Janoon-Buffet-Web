@@ -1,0 +1,144 @@
+import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
+import { SmartImage } from "@/components/tribe/SmartImage";
+import { useCart } from "@/hooks/use-cart";
+import {
+  MENU_CATEGORIES,
+  DISHES,
+  dishesByCategory,
+  deliveryUnitPrice,
+  formatRupees,
+  type Dish,
+} from "@/lib/menu";
+import { BUFFET_TIERS } from "@/lib/restaurant";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Check, Plus, UtensilsCrossed } from "lucide-react";
+import { Link } from "react-router";
+
+function DishCard({ dish }: { dish: Dish }) {
+  const { add } = useCart();
+  const price = deliveryUnitPrice(dish.slug);
+
+  return (
+    <div className="group flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/50 transition-colors hover:border-gold/35">
+      <div className="relative aspect-[5/3] overflow-hidden">
+        <SmartImage
+          src={dish.image}
+          alt={dish.name}
+          loading="lazy"
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+      </div>
+      <div className="flex flex-1 flex-col gap-1 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <h4 className="font-display text-sm font-semibold leading-snug">
+            {dish.name}
+          </h4>
+          <span className="shrink-0 text-xs font-medium text-gold tabular-nums">
+            {formatRupees(price)}
+          </span>
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {dish.summary}
+        </p>
+        <div className="mt-auto flex items-center gap-2 pt-3">
+          <button
+            type="button"
+            onClick={() =>
+              add({ slug: dish.slug, name: dish.name, unitPrice: price })
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/20"
+            aria-label={`Add ${dish.name} to delivery order`}
+          >
+            <Plus className="size-3.5" aria-hidden />
+            Add to cart
+          </button>
+          <Link
+            to={`/menu/${dish.slug}`}
+            className="text-[0.7rem] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-gold"
+          >
+            Details
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function FullMenuDialog() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          size="lg"
+          className="h-12 gap-2 shadow-lg shadow-black/30"
+        >
+          <UtensilsCrossed className="size-4" aria-hidden />
+          View Full Menu
+          <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
+            {DISHES.length} dishes
+          </span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="flex max-h-[88vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+        <DialogHeader className="gap-1.5 border-b border-border/70 px-6 py-5 text-left">
+          <DialogTitle className="font-display text-xl font-semibold">
+            The complete menu
+          </DialogTitle>
+          <DialogDescription>
+            Every dish across our four counters — all included in the dine-in
+            buffet, or available for Lahore delivery at the prices shown.
+          </DialogDescription>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {BUFFET_TIERS.map((tier) => (
+              <span
+                key={tier.label}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gold/25 bg-gold/[0.08] px-3 py-1 text-xs text-muted-foreground"
+              >
+                <Check className="size-3 text-gold" aria-hidden />
+                Dine-in buffet {tier.price} · {tier.label}
+              </span>
+            ))}
+          </div>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col gap-10">
+            {MENU_CATEGORIES.map((category) => {
+              const Icon = CATEGORY_ICONS[category.icon];
+              const dishes = dishesByCategory(category.id);
+              return (
+                <section key={category.id} aria-label={category.name}>
+                  <header className="flex items-center gap-3">
+                    <span className="flex size-9 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
+                      <Icon className="size-4" aria-hidden />
+                    </span>
+                    <div>
+                      <h3 className="font-display text-lg font-semibold">
+                        {category.name}
+                      </h3>
+                      <p className="text-xs text-gold/70">{category.urdu}</p>
+                    </div>
+                  </header>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {dishes.map((dish) => (
+                      <DishCard key={dish.slug} dish={dish} />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

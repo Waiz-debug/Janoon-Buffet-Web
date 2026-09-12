@@ -3,8 +3,9 @@ import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 /**
- * Jump to a landing-page section from anywhere in the app: scrolls when the
- * visitor already sits on the landing page, otherwise routes to `/#section`.
+ * Jump to a public-site section from anywhere in the app: scrolls when the
+ * visitor already sits on the restaurant page, otherwise routes to
+ * `/restaurant#section` so the ScrollToHash handler lands on the right block.
  */
 export function useGoToSection() {
   const navigate = useNavigate();
@@ -12,8 +13,8 @@ export function useGoToSection() {
 
   return useCallback(
     (id: string) => {
-      if (pathname !== "/") {
-        navigate(`/#${id}`);
+      if (pathname !== "/restaurant") {
+        navigate(`/restaurant#${id}`);
         return;
       }
       if (id === "top") {

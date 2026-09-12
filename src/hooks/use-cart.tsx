@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 
 export type CartItem = {
   slug: string;
@@ -83,7 +84,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       return [...current, { ...item, count: 1 }];
     });
-    setIsOpen(true);
+    // Quiet confirmation only — the guest keeps browsing. Navigation happens
+    // exclusively when they click the cart or checkout buttons themselves.
+    toast.success(`${item.name} added to your order`, {
+      action: { label: "View cart", onClick: () => setIsOpen(true) },
+    });
   }, []);
 
   const setCount = useCallback((slug: string, count: number) => {
