@@ -11,13 +11,12 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 // Lazy load route components for better code splitting
-const Landing = lazy(() => import("./pages/Landing.tsx"));
+const Gateway = lazy(() => import("./pages/AuthLanding.tsx"));
+const RestaurantSite = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const MenuDetail = lazy(() => import("./pages/MenuDetail.tsx"));
 const ManageBooking = lazy(() => import("./pages/ManageBooking.tsx"));
-const PINAuth = lazy(() => import("./pages/PINAuth.tsx"));
-const AuthLanding = lazy(() => import("./pages/AuthLanding.tsx"));
 const StaffPortal = lazy(() => import("./pages/StaffPortal.tsx"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -141,11 +140,10 @@ createRoot(document.getElementById("root")!).render(
           <ScrollToHash />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<Gateway />} />
+              <Route path="/restaurant" element={<RestaurantSite />} />
               <Route path="/menu/:slug" element={<MenuDetail />} />
               <Route path="/manage" element={<ManageBooking />} />
-              <Route path="/access" element={<AuthLanding />} />
-              <Route path="/pin-auth" element={<PINAuth />} />
               <Route
                 path="/staff"
                 element={

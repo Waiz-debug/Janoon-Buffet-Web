@@ -22,7 +22,7 @@ export function PortalFrame({
 
   const signOut = () => {
     clearPinSession();
-    navigate("/access", { replace: true });
+    navigate("/", { replace: true });
   };
 
   return (
@@ -33,7 +33,7 @@ export function PortalFrame({
 
       <header className="border-b border-border/70 bg-background/70 px-4 py-4 backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <Link to="/access" className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3">
             <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
               <Flame className="size-4" aria-hidden />
             </span>
@@ -48,7 +48,7 @@ export function PortalFrame({
           </Link>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
-              <Link to="/">Public site</Link>
+              <Link to="/restaurant">Public site</Link>
             </Button>
             <Button
               variant="outline"

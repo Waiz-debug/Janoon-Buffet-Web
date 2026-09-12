@@ -175,7 +175,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              to="/"
+              to="/restaurant"
               className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
             >
               View website

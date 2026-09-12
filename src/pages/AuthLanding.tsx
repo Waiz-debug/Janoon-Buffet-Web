@@ -1,7 +1,14 @@
-import { Button } from "@/components/ui/button";
-import { Flame, Lock, PanelRight, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router";
+import { AlertCircle, Flame, Lock, PanelRight, Users } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  portalPathFor,
+  usePinSession,
+  type PINRole,
+} from "@/hooks/use-pin-auth";
 
 type RoleCard = {
   id: "user" | "staff" | "admin";
@@ -54,6 +61,61 @@ const ROLE_CARDS: RoleCard[] = [
 ];
 
 export default function AuthLanding() {
+  const navigate = useNavigate();
+  const { session, isLoaded, verify } = usePinSession();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modalRole = searchParams.get("unlock");
+
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [attempts, setAttempts] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  // A live 24-hour session goes straight to its portal — no re-entry.
+  useEffect(() => {
+    if (isLoaded && session) {
+      navigate(portalPathFor(session.role), { replace: true });
+    }
+  }, [isLoaded, session, navigate]);
+
+  // ?unlock=staff|admin deep-link opens the modal directly.
+  useEffect(() => {
+    if (modalRole !== "staff" && modalRole !== "admin") return;
+    setPin("");
+    setError(null);
+  }, [modalRole]);
+
+  const openModal = (role: PINRole) => {
+    setError(null);
+    setPin("");
+    setSearchParams({ unlock: role }, { replace: true });
+  };
+
+  const closeModal = () => {
+    setSearchParams({}, { replace: true });
+    setPin("");
+    setError(null);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const role = modalRole;
+    if ((role !== "staff" && role !== "admin") || pin.length !== 5) return;
+    setSubmitting(true);
+    try {
+      if (verify(pin, role)) {
+        navigate(portalPathFor(role), { replace: true });
+        return;
+      }
+      setAttempts((count) => count + 1);
+      setError("That PIN is not correct. Please try again.");
+      setPin("");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="relative flex min-h-screen flex-col bg-background">
       {/* Warm hearth backdrop */}
@@ -76,10 +138,10 @@ export default function AuthLanding() {
             </div>
           </div>
           <Link
-            to="/"
+            to="/restaurant"
             className="text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            Back to restaurant site
+            Skip to the restaurant site
           </Link>
         </div>
       </header>
@@ -138,14 +200,13 @@ export default function AuthLanding() {
                   <div className="flex flex-col gap-2">
                     {role.pin ? (
                       <Button
-                        asChild
+                        type="button"
                         variant="outline"
                         className={`w-full gap-2 border ${role.accent}`}
+                        onClick={() => openModal(role.id as PINRole)}
                       >
-                        <Link to={`/pin-auth?role=${role.id}`}>
-                          <Lock className="size-3.5" aria-hidden />
-                          {role.cta}
-                        </Link>
+                        <Lock className="size-3.5" aria-hidden />
+                        {role.cta}
                       </Button>
                     ) : (
                       <Button
@@ -153,7 +214,7 @@ export default function AuthLanding() {
                         size="lg"
                         className="w-full gap-2 shadow-lg shadow-black/20"
                       >
-                        <Link to="/">
+                        <Link to="/restaurant">
                           {role.cta}
                           <span aria-hidden>→</span>
                         </Link>
@@ -176,7 +237,152 @@ export default function AuthLanding() {
           </p>
         </div>
       </main>
+
+      {modalRole ? (
+        <PinModal
+          role={modalRole as PINRole}
+          pin={pin}
+          error={error}
+          attempts={attempts}
+          submitting={submitting}
+          onPinChange={(value) => {
+            setPin(value);
+            setError(null);
+          }}
+          onSubmit={handleSubmit}
+          onClose={closeModal}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function PinModal({
+  role,
+  pin,
+  error,
+  attempts,
+  submitting,
+  onPinChange,
+  onSubmit,
+  onClose,
+}: {
+  role: PINRole;
+  pin: string;
+  error: string | null;
+  attempts: number;
+  submitting: boolean;
+  onPinChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  const copy =
+    role === "staff"
+      ? {
+          label: "Staff Portal",
+          blurb: "Live table reservations and the order feed for the floor team.",
+        }
+      : {
+          label: "Admin Portal",
+          blurb:
+            "Menu and pricing control, restaurant photography and every reservation.",
+        };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${copy.label} PIN verification`}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <motion.div
+        key={attempts}
+        initial={attempts > 0 ? { x: [0, -8, 8, -5, 5, 0] } : { scale: 0.96, opacity: 0 }}
+        animate={{ x: 0, scale: 1, opacity: 1 }}
+        transition={{ duration: 0.35 }}
+        className="w-full max-w-sm rounded-2xl border border-border/70 bg-card p-8 shadow-2xl shadow-black/40"
+      >
+        <div className="flex flex-col items-center text-center">
+          <span className="flex size-12 items-center justify-center rounded-2xl border border-gold/25 bg-gold/10 text-gold">
+            <Lock className="size-5" aria-hidden />
+          </span>
+          <h2 className="mt-4 font-display text-xl font-semibold">
+            {copy.label}
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            {copy.blurb}
+          </p>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
+          <label
+            htmlFor="portal-pin"
+            className="text-center text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase"
+          >
+            Enter the 5-digit PIN
+          </label>
+          <Input
+            id="portal-pin"
+            autoFocus
+            value={pin}
+            onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 5))}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="•••••"
+            className="h-12 text-center font-mono text-lg tracking-[0.6em]"
+            aria-label="Access PIN"
+            aria-invalid={Boolean(error)}
+          />
+
+          {error ? (
+            <motion.p
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300"
+              role="alert"
+            >
+              <AlertCircle className="size-4 shrink-0" aria-hidden />
+              {error}
+            </motion.p>
+          ) : null}
+
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="flex-1"
+              disabled={pin.length !== 5 || submitting}
+            >
+              Unlock
+            </Button>
+          </div>
+        </form>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground/80">
+          Once verified, this device stays unlocked for 24 hours.
+        </p>
+      </motion.div>
+    </motion.div>
   );
 }
 

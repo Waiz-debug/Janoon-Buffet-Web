@@ -12,7 +12,8 @@ export function RequirePin({
   children: ReactNode;
 }) {
   if (!readPinSession()) {
-    return <Navigate to={`/pin-auth?role=${role}`} replace />;
+    // Back to the gateway landing page with the PIN modal pre-opened.
+    return <Navigate to={`/?unlock=${role}`} replace />;
   }
   return <>{children}</>;
 }

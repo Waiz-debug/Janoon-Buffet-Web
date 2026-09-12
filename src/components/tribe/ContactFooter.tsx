@@ -172,7 +172,7 @@ export function ContactFooter() {
               Manage a reservation
             </Link>
             <Link
-              to="/access"
+              to="/"
               className="transition-colors hover:text-foreground"
             >
               Staff &amp; admin access
