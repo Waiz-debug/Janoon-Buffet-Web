@@ -1,9 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertCircle, Flame, Lock, PanelRight, Users } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  ChefHat,
+  Clock,
+  Flame,
+  Lock,
+  MapPin,
+  PanelRight,
+  Phone,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   portalPathFor,
   usePinSession,
@@ -12,51 +23,85 @@ import {
 
 type RoleCard = {
   id: "user" | "staff" | "admin";
+  eyebrow: string;
   label: string;
   description: string;
   cta: string;
+  footnote: string;
   icon: typeof Users;
   pin: boolean;
-  accent: string;
-  glow: string;
+  tone: keyof typeof TONES;
 };
+
+const TONES = {
+  gold: {
+    iconWrap:
+      "border-gold/35 bg-gradient-to-br from-gold/25 via-gold/10 to-transparent text-gold shadow-[0_0_32px_-10px_rgba(227,179,65,0.55)]",
+    cardHover:
+      "hover:border-gold/40 hover:shadow-[0_28px_64px_-28px_rgba(227,179,65,0.32)]",
+    hairline: "via-gold/60",
+    glow: "bg-gold/10",
+    cta: "border-gold/35 bg-gold/10 text-gold hover:border-gold/60 hover:bg-gold/15",
+    watermark: "text-gold/[0.045] group-hover:text-gold/[0.09]",
+  },
+  ember: {
+    iconWrap:
+      "border-ember/35 bg-gradient-to-br from-ember/25 via-ember/10 to-transparent text-ember shadow-[0_0_32px_-10px_rgba(201,106,58,0.55)]",
+    cardHover:
+      "hover:border-ember/40 hover:shadow-[0_28px_64px_-28px_rgba(201,106,58,0.32)]",
+    hairline: "via-ember/60",
+    glow: "bg-ember/10",
+    cta: "border-ember/35 bg-ember/10 text-ember hover:border-ember/60 hover:bg-ember/15",
+    watermark: "text-ember/[0.045] group-hover:text-ember/[0.09]",
+  },
+  brass: {
+    iconWrap:
+      "border-ember/40 bg-gradient-to-br from-gold/25 via-ember/15 to-transparent text-gold shadow-[0_0_32px_-10px_rgba(227,179,65,0.55)]",
+    cardHover:
+      "hover:border-gold/45 hover:shadow-[0_28px_64px_-28px_rgba(227,179,65,0.34)]",
+    hairline: "via-gold/50",
+    glow: "bg-gold/10",
+    cta: "border-gold/35 bg-gradient-to-r from-gold/15 to-ember/10 text-gold hover:border-gold/60 hover:from-gold/25 hover:to-ember/15",
+    watermark: "text-gold/[0.045] group-hover:text-gold/[0.09]",
+  },
+} as const;
 
 const ROLE_CARDS: RoleCard[] = [
   {
     id: "user",
-    label: "Customer",
+    eyebrow: "Dining room · Open access",
+    label: "User",
     description:
-      "Tonight's buffet, the full menu and table booking — open to every guest, no sign-in required.",
-    cta: "Enter the restaurant",
+      "Browse the full menu, check the buffet tiers, order delivery and book a table — everything a guest needs, no sign-in.",
+    cta: "Enter as guest",
+    footnote: "No account needed",
     icon: Users,
     pin: false,
-    accent:
-      "bg-emerald-500/10 text-emerald-300 border-emerald-500/20 hover:border-emerald-500/40",
-    glow: "shadow-[0_0_18px_-4px_rgba(52,211,153,0.25)]",
+    tone: "gold",
   },
   {
     id: "staff",
-    label: "Staff Portal",
+    eyebrow: "Floor & delivery operations",
+    label: "Staff",
     description:
-      "Tonight's bookings and the order feed, for the team working the floor.",
-    cta: "Staff sign-in",
+      "Live delivery orders with customer details, itemised bills and one-tap status updates for the team on the floor.",
+    cta: "Open Staff Portal",
+    footnote: "5-digit PIN · 24-hour session",
     icon: PanelRight,
     pin: true,
-    accent:
-      "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:border-sky-500/40",
-    glow: "shadow-[0_0_18px_-4px_rgba(56,189,248,0.25)]",
+    tone: "ember",
   },
   {
     id: "admin",
-    label: "Admin Portal",
+    eyebrow: "Menu, pricing & media",
+    label: "Admin",
     description:
-      "Menu and pricing control, real restaurant photography and every reservation, in one place.",
-    cta: "Admin sign-in",
-    icon: Lock,
+      "Edit dishes and prices in real time, upload authentic restaurant photography and manage every reservation.",
+    cta: "Open Admin Portal",
+    footnote: "5-digit PIN · 24-hour session",
+    icon: ShieldCheck,
     pin: true,
-    accent:
-      "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:border-amber-500/40",
-    glow: "shadow-[0_0_18px_-4px_rgba(251,191,36,0.25)]",
+    tone: "brass",
   },
 ];
 
@@ -67,7 +112,6 @@ export default function AuthLanding() {
   const [searchParams, setSearchParams] = useSearchParams();
   const modalRole = searchParams.get("unlock");
 
-  const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -79,177 +123,220 @@ export default function AuthLanding() {
     }
   }, [isLoaded, session, navigate]);
 
-  // ?unlock=staff|admin deep-link opens the modal directly.
-  useEffect(() => {
-    if (modalRole !== "staff" && modalRole !== "admin") return;
-    setPin("");
-    setError(null);
-  }, [modalRole]);
-
   const openModal = (role: PINRole) => {
     setError(null);
-    setPin("");
     setSearchParams({ unlock: role }, { replace: true });
   };
 
   const closeModal = () => {
     setSearchParams({}, { replace: true });
-    setPin("");
     setError(null);
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleVerify = (value: string) => {
     const role = modalRole;
-    if ((role !== "staff" && role !== "admin") || pin.length !== 5) return;
+    if ((role !== "staff" && role !== "admin") || value.length !== 5) return;
     setSubmitting(true);
-    try {
-      if (verify(pin, role)) {
-        navigate(portalPathFor(role), { replace: true });
-        return;
-      }
-      setAttempts((count) => count + 1);
-      setError("That PIN is not correct. Please try again.");
-      setPin("");
-    } finally {
-      setSubmitting(false);
+    if (verify(value, role)) {
+      navigate(portalPathFor(role), { replace: true });
+      return;
     }
+    setAttempts((count) => count + 1);
+    setError("That PIN is not correct. Please try again.");
+    setSubmitting(false);
   };
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background">
       {/* Warm hearth backdrop */}
       <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute inset-0 hearth-glow" />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_0%,transparent_45%,rgba(0,0,0,0.4)_100%)]"
+        />
         <HeroAmbience />
       </div>
 
       {/* Top bar */}
-      <header className="relative z-10 border-b border-border/70 bg-background/70 px-4 py-4 backdrop-blur-xl sm:px-6">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <header className="relative z-10 border-b border-border/60 bg-background/60 px-4 py-4 backdrop-blur-xl sm:px-8">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
-              <Flame className="size-4" aria-hidden />
+            <span className="flex size-11 items-center justify-center rounded-xl border border-gold/30 bg-gradient-to-br from-gold/25 via-gold/10 to-transparent text-gold shadow-[0_0_28px_-8px_rgba(227,179,65,0.6)]">
+              <Flame className="size-5" aria-hidden />
             </span>
             <div>
-              <p className="font-display text-lg font-semibold">Tribe of Taste</p>
-              <p className="text-[0.65rem] tracking-[0.2em] text-gold/80 uppercase">
-                Lahore · 24/7 open buffet
+              <p className="font-display text-lg font-semibold leading-tight">
+                Tribe of Taste
+              </p>
+              <p className="text-[0.62rem] font-medium uppercase tracking-[0.24em] text-gold/75">
+                Lahore · Open 24 hours
               </p>
             </div>
           </div>
           <Link
             to="/restaurant"
-            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="group inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
           >
-            Skip to the restaurant site
+            Restaurant site
+            <ArrowRight
+              className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5"
+              aria-hidden
+            />
           </Link>
         </div>
       </header>
 
       {/* Content */}
-      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-16 sm:px-6">
-        <div className="w-full max-w-4xl">
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-14 sm:px-6 sm:py-20">
+        <div className="w-full max-w-5xl">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="mb-12 text-center"
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            className="mb-12 text-center sm:mb-14"
           >
-            <span className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[0.7rem] tracking-[0.2em] text-gold uppercase">
+            <span className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-gold/10 px-4 py-1.5 text-[0.68rem] font-medium uppercase tracking-[0.22em] text-gold">
+              <Lock className="size-3" aria-hidden />
               Secure access
             </span>
-            <h1 className="mt-5 font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-              Who are you coming in as?
+            <h1 className="mt-6 font-display text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+              One hearth, <span className="text-gold">three doors.</span>
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground">
-              Guests can walk straight in. The staff and admin doors open with a
-              PIN — entered once, then remembered for the day.
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
+              Guests walk straight into the dining room — no account needed.
+              Staff and management enter through their own PIN-protected doors,
+              unlocked once and remembered for 24 hours.
             </p>
           </motion.div>
 
-          <div className="grid gap-5 sm:grid-cols-3">
-            {ROLE_CARDS.map((role, index) => {
-              const Icon = role.icon;
+          <div className="grid gap-5 sm:grid-cols-3 sm:gap-6">
+            {ROLE_CARDS.map((card, index) => {
+              const Icon = card.icon;
+              const tone = TONES[card.tone];
               return (
-                <motion.div
-                  key={role.id}
-                  initial={{ opacity: 0, y: 18 }}
+                <motion.article
+                  key={card.id}
+                  initial={{ opacity: 0, y: 22 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    duration: 0.45,
-                    delay: 0.12 * index,
+                    duration: 0.5,
+                    delay: 0.12 + index * 0.1,
                     ease: "easeOut",
                   }}
-                  className="group flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/70 p-6 transition-colors hover:border-gold/25 hover:bg-card"
+                  whileHover={{ y: -6 }}
+                  className={`group relative flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/60 p-6 backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-300 hover:bg-card/90 ${tone.cardHover}`}
                 >
+                  {/* Hairline that lights up on hover */}
+                  <div
+                    aria-hidden
+                    className={`absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 ${tone.hairline}`}
+                  />
+                  {/* Warm glow pooling in the corner */}
+                  <div
+                    aria-hidden
+                    className={`pointer-events-none absolute -right-14 -top-14 size-36 rounded-full blur-3xl opacity-0 transition-opacity duration-500 group-hover:opacity-100 ${tone.glow}`}
+                  />
+                  {/* Oversized watermark icon */}
+                  <Icon
+                    aria-hidden
+                    className={`pointer-events-none absolute -bottom-7 -right-6 size-28 transition-all duration-500 group-hover:scale-110 ${tone.watermark}`}
+                  />
+                  <span className="absolute right-5 top-5 font-display text-xs tracking-[0.3em] text-muted-foreground/40">
+                    0{index + 1}
+                  </span>
+
                   <span
-                    className={`flex size-12 items-center justify-center rounded-2xl border ${role.accent} ${role.glow}`}
+                    className={`flex size-12 items-center justify-center rounded-2xl border transition-transform duration-300 group-hover:scale-110 ${tone.iconWrap}`}
                   >
                     <Icon className="size-5" aria-hidden />
                   </span>
 
-                  <div className="flex-1">
-                    <h2 className="font-display text-lg font-semibold">
-                      {role.label}
+                  <div className="relative mt-5 flex-1">
+                    <p className="text-[0.65rem] font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                      {card.eyebrow}
+                    </p>
+                    <h2 className="mt-1.5 font-display text-xl font-semibold">
+                      {card.label}
                     </h2>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {role.description}
+                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                      {card.description}
                     </p>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    {role.pin ? (
+                  <div className="relative mt-6 flex flex-col gap-2.5">
+                    {card.pin ? (
                       <Button
                         type="button"
                         variant="outline"
-                        className={`w-full gap-2 border ${role.accent}`}
-                        onClick={() => openModal(role.id as PINRole)}
+                        className={`group/cta w-full gap-2 ${tone.cta}`}
+                        onClick={() => openModal(card.id as PINRole)}
                       >
                         <Lock className="size-3.5" aria-hidden />
-                        {role.cta}
+                        {card.cta}
+                        <ArrowRight className="size-4 transition-transform duration-300 group-hover/cta:translate-x-1" />
                       </Button>
                     ) : (
                       <Button
                         asChild
                         size="lg"
-                        className="w-full gap-2 shadow-lg shadow-black/20"
+                        className="group/cta w-full gap-2 bg-gradient-to-r from-gold to-ember font-semibold text-primary-foreground shadow-lg shadow-black/30 transition-shadow duration-300 hover:shadow-[0_14px_36px_-12px_rgba(227,179,65,0.45)]"
                       >
                         <Link to="/restaurant">
-                          {role.cta}
-                          <span aria-hidden>→</span>
+                          {card.cta}
+                          <ArrowRight className="size-4 transition-transform duration-300 group-hover/cta:translate-x-1" />
                         </Link>
                       </Button>
                     )}
-                    <p className="text-[0.7rem] text-muted-foreground/80">
-                      {role.pin
-                        ? "PIN protected · remembered for 24 hours"
-                        : "No account needed"}
+                    <p className="text-center text-[0.7rem] text-muted-foreground/80">
+                      {card.footnote}
                     </p>
                   </div>
-                </motion.div>
+                </motion.article>
               );
             })}
           </div>
 
-          <p className="mt-10 text-center text-xs text-muted-foreground/80">
-            Staff and admin share the PIN 01234. Once verified, the session is
-            remembered on this device for 24 hours.
-          </p>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.45 }}
+            className="mt-12 flex flex-col items-center gap-5 sm:mt-14"
+          >
+            <div className="brass-rule h-px w-44" aria-hidden />
+            <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2.5 text-xs text-muted-foreground/85">
+              <span className="inline-flex items-center gap-2">
+                <Clock className="size-3.5 text-gold/70" aria-hidden />
+                Open 24 hours
+              </span>
+              <a
+                href="tel:+923228543333"
+                className="inline-flex items-center gap-2 transition-colors hover:text-gold"
+              >
+                <Phone className="size-3.5 text-gold/70" aria-hidden />
+                0322 8543333
+              </a>
+              <span className="inline-flex items-center gap-2">
+                <MapPin className="size-3.5 text-gold/70" aria-hidden />
+                Natha Singh Wala · near DHA Phase 5, Lahore
+              </span>
+            </div>
+            <p className="max-w-md text-center text-[0.7rem] leading-relaxed text-muted-foreground/60">
+              Staff and admin share the PIN 01234. A verified session stays
+              unlocked on this device for 24 hours.
+            </p>
+          </motion.div>
         </div>
       </main>
 
       {modalRole ? (
         <PinModal
           role={modalRole as PINRole}
-          pin={pin}
           error={error}
           attempts={attempts}
           submitting={submitting}
-          onPinChange={(value) => {
-            setPin(value);
-            setError(null);
-          }}
-          onSubmit={handleSubmit}
+          onVerify={handleVerify}
+          onClearError={() => setError(null)}
           onClose={closeModal}
         />
       ) : null}
@@ -259,23 +346,31 @@ export default function AuthLanding() {
 
 function PinModal({
   role,
-  pin,
   error,
   attempts,
   submitting,
-  onPinChange,
-  onSubmit,
+  onVerify,
+  onClearError,
   onClose,
 }: {
   role: PINRole;
-  pin: string;
   error: string | null;
   attempts: number;
   submitting: boolean;
-  onPinChange: (value: string) => void;
-  onSubmit: (event: React.FormEvent) => void;
+  onVerify: (value: string) => void;
+  onClearError: () => void;
   onClose: () => void;
 }) {
+  const [digits, setDigits] = useState<string[]>(["", "", "", "", ""]);
+  const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+
+  // Fresh boxes on open and after a wrong attempt, focused and ready.
+  useEffect(() => {
+    setDigits(["", "", "", "", ""]);
+    const timer = window.setTimeout(() => inputsRef.current[0]?.focus(), 60);
+    return () => window.clearTimeout(timer);
+  }, [role, attempts]);
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -284,22 +379,90 @@ function PinModal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
+  const focusIndex = (index: number) => {
+    inputsRef.current[Math.max(0, Math.min(4, index))]?.focus();
+  };
+
+  const handleChange = (index: number, raw: string) => {
+    const clean = raw.replace(/\D/g, "");
+    if (!clean) return;
+    onClearError();
+    const next = [...digits];
+    const chars = clean.slice(0, 5 - index).split("");
+    for (let i = 0; i < chars.length; i++) next[index + i] = chars[i];
+    setDigits(next);
+    focusIndex(Math.min(index + chars.length, 4));
+    if (next.every((digit) => digit !== "")) onVerify(next.join(""));
+  };
+
+  const handleKeyDown = (
+    index: number,
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      onClearError();
+      const next = [...digits];
+      if (next[index]) {
+        next[index] = "";
+        setDigits(next);
+      } else if (index > 0) {
+        next[index - 1] = "";
+        setDigits(next);
+        focusIndex(index - 1);
+      }
+      return;
+    }
+    if (event.key === "ArrowLeft" && index > 0) {
+      event.preventDefault();
+      focusIndex(index - 1);
+    }
+    if (event.key === "ArrowRight" && index < 4) {
+      event.preventDefault();
+      focusIndex(index + 1);
+    }
+  };
+
+  const handlePaste = (
+    index: number,
+    event: React.ClipboardEvent<HTMLInputElement>,
+  ) => {
+    const text = event.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 5);
+    if (!text) return;
+    event.preventDefault();
+    onClearError();
+    const next = ["", "", "", "", ""];
+    for (let i = 0; i < text.length; i++) next[i] = text[i];
+    setDigits(next);
+    focusIndex(Math.min(text.length, 4));
+    if (text.length === 5) onVerify(text);
+  };
+
   const copy =
     role === "staff"
       ? {
+          icon: ChefHat,
           label: "Staff Portal",
-          blurb: "Live table reservations and the order feed for the floor team.",
+          blurb:
+            "Live deliveries and the reservation desk for the floor team.",
         }
       : {
+          icon: ShieldCheck,
           label: "Admin Portal",
           blurb:
             "Menu and pricing control, restaurant photography and every reservation.",
         };
+  const RoleIcon = copy.icon;
+  const complete = digits.every((digit) => digit !== "");
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
@@ -310,14 +473,28 @@ function PinModal({
     >
       <motion.div
         key={attempts}
-        initial={attempts > 0 ? { x: [0, -8, 8, -5, 5, 0] } : { scale: 0.96, opacity: 0 }}
-        animate={{ x: 0, scale: 1, opacity: 1 }}
-        transition={{ duration: 0.35 }}
-        className="w-full max-w-sm rounded-2xl border border-border/70 bg-card p-8 shadow-2xl shadow-black/40"
+        initial={
+          attempts > 0
+            ? { x: 0 }
+            : { scale: 0.95, opacity: 0, y: 12 }
+        }
+        animate={
+          attempts > 0
+            ? { x: [0, -10, 10, -6, 6, 0] }
+            : { scale: 1, opacity: 1, y: 0 }
+        }
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-border/70 bg-card p-6 shadow-[0_44px_90px_-30px_rgba(0,0,0,0.9)] sm:p-8"
       >
-        <div className="flex flex-col items-center text-center">
-          <span className="flex size-12 items-center justify-center rounded-2xl border border-gold/25 bg-gold/10 text-gold">
-            <Lock className="size-5" aria-hidden />
+        <div className="brass-rule absolute inset-x-8 top-0 h-px" aria-hidden />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-20 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full bg-gold/10 blur-3xl"
+        />
+
+        <div className="relative flex flex-col items-center text-center">
+          <span className="flex size-12 items-center justify-center rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/25 via-gold/10 to-transparent text-gold shadow-[0_0_28px_-8px_rgba(227,179,65,0.55)]">
+            <RoleIcon className="size-5" aria-hidden />
           </span>
           <h2 className="mt-4 font-display text-xl font-semibold">
             {copy.label}
@@ -327,25 +504,43 @@ function PinModal({
           </p>
         </div>
 
-        <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
+        <form
+          className="relative mt-7 flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (complete) onVerify(digits.join(""));
+          }}
+        >
           <label
-            htmlFor="portal-pin"
-            className="text-center text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase"
+            id="portal-pin-label"
+            className="text-center text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
           >
             Enter the 5-digit PIN
           </label>
-          <Input
-            id="portal-pin"
-            autoFocus
-            value={pin}
-            onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 5))}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder="•••••"
-            className="h-12 text-center font-mono text-lg tracking-[0.6em]"
-            aria-label="Access PIN"
-            aria-invalid={Boolean(error)}
-          />
+          <div
+            className="flex justify-center gap-2 sm:gap-3"
+            role="group"
+            aria-labelledby="portal-pin-label"
+          >
+            {digits.map((digit, index) => (
+              <input
+                key={index}
+                ref={(el) => {
+                  inputsRef.current[index] = el;
+                }}
+                value={digit}
+                onChange={(event) => handleChange(index, event.target.value)}
+                onKeyDown={(event) => handleKeyDown(index, event)}
+                onPaste={(event) => handlePaste(index, event)}
+                onFocus={(event) => event.currentTarget.select()}
+                inputMode="numeric"
+                autoComplete={index === 0 ? "one-time-code" : "off"}
+                aria-label={`PIN digit ${index + 1}`}
+                className="size-12 rounded-xl border border-input bg-background/60 text-center font-display text-xl font-semibold text-foreground caret-gold transition-all duration-200 placeholder:text-muted-foreground/30 hover:border-gold/30 focus:border-gold/60 focus:bg-background focus:ring-2 focus:ring-gold/25 focus:outline-none sm:size-14 sm:text-2xl"
+                placeholder="·"
+              />
+            ))}
+          </div>
 
           {error ? (
             <motion.p
@@ -370,15 +565,15 @@ function PinModal({
             </Button>
             <Button
               type="submit"
-              className="flex-1"
-              disabled={pin.length !== 5 || submitting}
+              className="flex-1 bg-gradient-to-r from-gold to-ember font-semibold text-primary-foreground"
+              disabled={!complete || submitting}
             >
               Unlock
             </Button>
           </div>
         </form>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground/80">
+        <p className="relative mt-6 text-center text-xs text-muted-foreground/80">
           Once verified, this device stays unlocked for 24 hours.
         </p>
       </motion.div>
@@ -391,7 +586,9 @@ function HeroAmbience() {
     <div
       aria-hidden
       className="absolute inset-x-0 top-0 h-[55vh] overflow-hidden"
-      style={{ maskImage: "linear-gradient(to bottom, black 40%, transparent 100%)" }}
+      style={{
+        maskImage: "linear-gradient(to bottom, black 40%, transparent 100%)",
+      }}
     >
       {/* Soft ember glow behind the hero text */}
       <div className="absolute left-1/2 top-0 h-72 w-[90%] -translate-x-1/2 bg-gradient-to-b from-gold/10 via-transparent to-transparent blur-3xl" />
