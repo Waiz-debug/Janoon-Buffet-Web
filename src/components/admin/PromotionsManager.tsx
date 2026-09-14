@@ -6,63 +6,79 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Flame, Loader2, Megaphone, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import {
+  Clock,
+  Flame,
+  ImagePlus,
+  Loader2,
+  Megaphone,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-
-type Accent = "gold" | "emerald" | "ember";
 
 type PromotionDraft = {
   title: string;
   headline: string;
   body: string;
-  accent: Accent;
   visible: boolean;
+  expiresAtInput: string;
+  pendingStorageId: string | null;
+  pendingPreviewUrl: string | null;
+  imageRemoved: boolean;
 };
 
 const emptyDraft: PromotionDraft = {
   title: "",
   headline: "",
   body: "",
-  accent: "gold",
   visible: true,
+  expiresAtInput: "",
+  pendingStorageId: null,
+  pendingPreviewUrl: null,
+  imageRemoved: false,
 };
 
-const ACCENT_PRESETS: Record<Accent, { label: string; preview: string }> = {
-  gold: {
-    label: "Gold",
-    preview:
-      "border-gold/20 bg-gradient-to-r from-gold/10 via-gold/[0.06] to-ember/10 text-gold",
-  },
-  emerald: {
-    label: "Green",
-    preview:
-      "border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 via-emerald-500/[0.06] to-emerald-500/5 text-emerald-400",
-  },
-  ember: {
-    label: "Red",
-    preview:
-      "border-red-500/20 bg-gradient-to-r from-red-500/10 via-red-500/[0.06] to-red-500/5 text-red-400",
-  },
-};
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+]);
 
-const ACCENT_COLORS: Record<Accent, string> = {
-  gold: "text-gold",
-  emerald: "text-emerald-400",
-  ember: "text-red-400",
-};
+function parseExpiry(input: string): number | undefined {
+  if (!input) return undefined;
+  const t = new Date(input).getTime();
+  return isNaN(t) ? undefined : t;
+}
+
+function toDatetimeLocal(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function PromotionsManager() {
   const promos = useQuery(api.promotions.listAll);
   const createPromo = useMutation(api.promotions.create);
   const updatePromo = useMutation(api.promotions.update);
-  const toggleVis = useMutation(api.promotions.toggleVisibility);
   const removePromo = useMutation(api.promotions.remove);
+  const removePromoImage = useMutation(api.promotions.removeImage);
+  const toggleVis = useMutation(api.promotions.toggleVisibility);
+  const generateUploadUrl = useMutation(api.promotions.generateBannerUploadUrl);
 
   const [draft, setDraft] = useState<PromotionDraft | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startCreate = () => {
     setDraft({ ...emptyDraft });
@@ -74,17 +90,84 @@ export function PromotionsManager() {
     title: string;
     headline: string;
     body?: string;
-    accent: Accent;
     visible: boolean;
+    imageUrl?: string;
+    imageStorageId?: string;
+    expiresAt?: number;
   }) => {
     setDraft({
       title: promo.title,
       headline: promo.headline,
       body: promo.body ?? "",
-      accent: promo.accent,
       visible: promo.visible,
+      expiresAtInput: promo.expiresAt ? toDatetimeLocal(promo.expiresAt) : "",
+      pendingStorageId: null,
+      pendingPreviewUrl: null,
+      imageRemoved: false,
     });
     setEditingId(promo._id);
+  };
+
+  const handleImageSelect = async (file: File) => {
+    if (!ALLOWED_TYPES.has(file.type)) {
+      toast.error("Only JPEG, PNG, WebP, GIF or AVIF images are allowed.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error("Images must be 5 MB or smaller.");
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const url = await generateUploadUrl();
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error(`Upload failed (${response.status})`);
+      const { storageId } = (await response.json()) as { storageId: string };
+      const previewUrl = URL.createObjectURL(file);
+      setDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              pendingStorageId: storageId,
+              pendingPreviewUrl: previewUrl,
+              imageRemoved: false,
+            }
+          : prev,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Upload failed. Try again.",
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (editingId) {
+      try {
+        await removePromoImage({ id: editingId as never });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not remove image.",
+        );
+        return;
+      }
+    }
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            pendingStorageId: null,
+            pendingPreviewUrl: null,
+            imageRemoved: true,
+          }
+        : prev,
+    );
   };
 
   const save = async () => {
@@ -95,14 +178,16 @@ export function PromotionsManager() {
     }
     setIsSaving(true);
     try {
+      const expiresAt = parseExpiry(draft.expiresAtInput);
       if (editingId) {
         await updatePromo({
           id: editingId as never,
           title: draft.title,
           headline: draft.headline,
           body: draft.body || undefined,
-          accent: draft.accent,
           visible: draft.visible,
+          imageStorageId: (draft.pendingStorageId as never) || undefined,
+          expiresAt,
         });
         toast.success("Promotion updated — live on the site");
       } else {
@@ -110,8 +195,9 @@ export function PromotionsManager() {
           title: draft.title,
           headline: draft.headline,
           body: draft.body || undefined,
-          accent: draft.accent,
           visible: draft.visible,
+          imageStorageId: (draft.pendingStorageId as never) || undefined,
+          expiresAt,
         });
         toast.success(
           draft.visible
@@ -122,9 +208,7 @@ export function PromotionsManager() {
       setDraft(null);
       setEditingId(null);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not save.",
-      );
+      toast.error(error instanceof Error ? error.message : "Could not save.");
     } finally {
       setIsSaving(false);
     }
@@ -136,9 +220,7 @@ export function PromotionsManager() {
       const result = await toggleVis({ id: id as never });
       toast.success(result.visible ? "Promotion is now live" : "Promotion hidden");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not toggle.",
-      );
+      toast.error(error instanceof Error ? error.message : "Could not toggle.");
     } finally {
       setBusyId(null);
     }
@@ -151,15 +233,26 @@ export function PromotionsManager() {
       await removePromo({ id: id as never });
       toast.success("Promotion deleted");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not delete.",
-      );
+      toast.error(error instanceof Error ? error.message : "Could not delete.");
     } finally {
       setBusyId(null);
     }
   };
 
   const all = promos ?? [];
+
+  const getEditorImageUrl = () => {
+    if (!draft) return null;
+    if (draft.imageRemoved) return null;
+    if (draft.pendingPreviewUrl) return draft.pendingPreviewUrl;
+    if (editingId) {
+      const existing = all.find((p) => p._id === editingId);
+      return existing?.imageUrl || null;
+    }
+    return null;
+  };
+
+  const editorImageUrl = getEditorImageUrl();
 
   return (
     <div className="flex flex-col gap-6">
@@ -174,7 +267,6 @@ export function PromotionsManager() {
         </Button>
       </div>
 
-      {/* Editor */}
       <AnimatePresence>
         {draft ? (
           <motion.div
@@ -208,40 +300,41 @@ export function PromotionsManager() {
                     id="promo-title"
                     value={draft.title}
                     placeholder="e.g. Eid Weekend Offer"
-                    onChange={(e) =>
-                      setDraft({ ...draft, title: e.target.value })
-                    }
+                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                   />
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <Label>Accent colour</Label>
-                  <div className="flex gap-2">
-                    {(Object.keys(ACCENT_PRESETS) as Accent[]).map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setDraft({ ...draft, accent: key })}
-                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${
-                          draft.accent === key
-                            ? "border-foreground/40 bg-foreground/10"
-                            : "border-border/70 hover:border-foreground/20"
-                        }`}
-                      >
-                        <span
-                          className={`size-3 rounded-full ${
-                            key === "gold"
-                              ? "bg-gold"
-                              : key === "emerald"
-                                ? "bg-emerald-500"
-                                : "bg-red-500"
-                          }`}
-                          aria-hidden
-                        />
-                        {ACCENT_PRESETS[key].label}
-                      </button>
-                    ))}
+                  <Label htmlFor="promo-expires">
+                    Expires <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <div className="relative">
+                    <Clock
+                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      id="promo-expires"
+                      type="datetime-local"
+                      value={draft.expiresAtInput}
+                      onChange={(e) =>
+                        setDraft({ ...draft, expiresAtInput: e.target.value })
+                      }
+                      className="pl-9"
+                    />
                   </div>
+                  {draft.expiresAtInput && parseExpiry(draft.expiresAtInput) && (
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(draft.expiresAtInput).toLocaleDateString("en-PK", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      — banner auto-removes at this time
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2 sm:col-span-2">
@@ -250,25 +343,85 @@ export function PromotionsManager() {
                     id="promo-headline"
                     value={draft.headline}
                     placeholder="e.g. Eid Special — Family of 4 eats for Rs 7,500"
-                    onChange={(e) =>
-                      setDraft({ ...draft, headline: e.target.value })
-                    }
+                    onChange={(e) => setDraft({ ...draft, headline: e.target.value })}
                   />
                 </div>
 
                 <div className="flex flex-col gap-2 sm:col-span-2">
                   <Label htmlFor="promo-body">
-                    Body text{" "}
-                    <span className="text-muted-foreground">(optional)</span>
+                    Body text <span className="text-muted-foreground">(optional)</span>
                   </Label>
                   <Textarea
                     id="promo-body"
                     rows={2}
                     value={draft.body}
-                    placeholder="e.g. Valid Friday–Sunday, dine-in only. Book your table now!"
-                    onChange={(e) =>
-                      setDraft({ ...draft, body: e.target.value })
-                    }
+                    placeholder="e.g. Valid Friday–Sunday, dine-in only."
+                    onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <Label>
+                    Banner image <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  {editorImageUrl ? (
+                    <div className="relative overflow-hidden rounded-xl border border-border/70">
+                      <img
+                        src={editorImageUrl}
+                        alt="Banner preview"
+                        className="w-full object-cover"
+                        style={{ maxHeight: 200 }}
+                      />
+                      <div className="absolute right-2 top-2 flex gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploading}
+                          className="gap-1.5 bg-background/80 backdrop-blur"
+                        >
+                          <Upload className="size-3.5" aria-hidden />
+                          Replace
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleRemoveImage}
+                          className="gap-1.5"
+                        >
+                          <Trash2 className="size-3.5" aria-hidden />
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border/70 bg-card/30 p-8 text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
+                    >
+                      {isUploading ? (
+                        <Loader2 className="size-6 animate-spin" aria-hidden />
+                      ) : (
+                        <ImagePlus className="size-6" aria-hidden />
+                      )}
+                      <span className="text-sm">
+                        {isUploading ? "Uploading…" : "Click to upload a banner graphic"}
+                      </span>
+                      <span className="text-xs">JPEG, PNG, WebP · max 5 MB</span>
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImageSelect(file);
+                      e.target.value = "";
+                    }}
                   />
                 </div>
 
@@ -276,49 +429,71 @@ export function PromotionsManager() {
                   <span className="text-sm">Visible on public site</span>
                   <Switch
                     checked={draft.visible}
-                    onCheckedChange={(checked) =>
-                      setDraft({ ...draft, visible: checked })
-                    }
+                    onCheckedChange={(checked) => setDraft({ ...draft, visible: checked })}
                   />
                 </label>
               </div>
 
-              {/* Live preview */}
               {draft.headline ? (
                 <div className="mt-5">
                   <p className="mb-2 text-xs text-muted-foreground">
                     Preview — how customers will see it:
                   </p>
-                  <div
-                    className={`overflow-hidden rounded-xl border bg-gradient-to-r ${ACCENT_PRESETS[draft.accent].preview}`}
-                  >
-                    <div className="flex items-center justify-center gap-3 px-4 py-2.5 text-center">
-                      <Flame
-                        className={`size-3.5 shrink-0 ${ACCENT_COLORS[draft.accent]}`}
-                        aria-hidden
+                  {editorImageUrl ? (
+                    <div className="relative overflow-hidden rounded-xl border border-gold/20">
+                      <img
+                        src={editorImageUrl}
+                        alt="Banner background"
+                        className="w-full object-cover"
+                        style={{ maxHeight: 160 }}
                       />
-                      <p className="text-xs font-medium sm:text-sm">
-                        <span className="font-semibold">{draft.headline}</span>
-                        {draft.body ? (
-                          <>
-                            {" "}
-                            — {draft.body}
-                          </>
-                        ) : null}
-                      </p>
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 px-4 text-center">
+                        <div>
+                          <p className="text-sm font-bold text-white sm:text-base">
+                            {draft.headline}
+                          </p>
+                          {draft.body && (
+                            <p className="mt-1 text-xs text-white/80">{draft.body}</p>
+                          )}
+                          {draft.expiresAtInput && parseExpiry(draft.expiresAtInput) && (
+                            <p className="mt-1.5 text-xs text-gold">
+                              Expires{" "}
+                              {new Date(draft.expiresAtInput).toLocaleDateString("en-PK", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-gold/20 bg-gradient-to-r from-gold/10 via-gold/[0.06] to-ember/10">
+                      <div className="flex items-center justify-center gap-3 px-4 py-2.5 text-center">
+                        <Flame className="size-3.5 shrink-0 text-gold" aria-hidden />
+                        <p className="text-xs font-medium sm:text-sm">
+                          <span className="font-semibold">{draft.headline}</span>
+                          {draft.body ? <> — {draft.body}</> : null}
+                          {draft.expiresAtInput && parseExpiry(draft.expiresAtInput) && (
+                            <span className="ml-2 text-gold">
+                              · Expires{" "}
+                              {new Date(draft.expiresAtInput).toLocaleDateString("en-PK", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : null}
 
               <div className="mt-5 flex items-center justify-end gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setDraft(null);
-                    setEditingId(null);
-                  }}
-                >
+                <Button variant="outline" onClick={() => { setDraft(null); setEditingId(null); }}>
                   Cancel
                 </Button>
                 <Button onClick={save} disabled={isSaving} className="gap-2">
@@ -335,83 +510,91 @@ export function PromotionsManager() {
         ) : null}
       </AnimatePresence>
 
-      {/* Promotions list */}
       <div className="flex flex-col gap-3">
-        {all.map((promo) => (
-          <div
-            key={promo._id}
-            className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/50 p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`size-2.5 rounded-full ${
-                    promo.accent === "gold"
-                      ? "bg-gold"
-                      : promo.accent === "emerald"
-                        ? "bg-emerald-500"
-                        : "bg-red-500"
-                  }`}
-                  aria-hidden
-                />
-                <p className="truncate text-sm font-semibold">{promo.title}</p>
-                {!promo.visible && (
-                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[0.6rem] text-muted-foreground">
-                    Hidden
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 truncate text-sm text-muted-foreground">
-                {promo.headline}
-              </p>
-              {promo.body ? (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {promo.body}
+        {all.map((promo) => {
+          const isExpired = promo.expiresAt && promo.expiresAt < Date.now();
+          return (
+            <div
+              key={promo._id}
+              className={`flex flex-col gap-3 rounded-2xl border bg-card/50 p-4 sm:flex-row sm:items-center sm:justify-between ${
+                isExpired ? "border-border/40 opacity-60" : "border-border/70"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  {promo.imageUrl ? (
+                    <img src={promo.imageUrl} alt="" className="size-8 rounded-lg object-cover" />
+                  ) : (
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-gold/10">
+                      <Flame className="size-4 text-gold" aria-hidden />
+                    </span>
+                  )}
+                  <p className="truncate text-sm font-semibold">{promo.title}</p>
+                  {!promo.visible && (
+                    <span className="rounded-full border border-border/70 px-2 py-0.5 text-[0.6rem] text-muted-foreground">
+                      Hidden
+                    </span>
+                  )}
+                  {isExpired && (
+                    <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[0.6rem] text-red-400">
+                      Expired
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 truncate text-sm text-muted-foreground">
+                  {promo.headline}
                 </p>
-              ) : null}
-            </div>
+                <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+                  {promo.body && <span className="truncate">{promo.body}</span>}
+                  {promo.expiresAt && (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <Clock className="size-3" aria-hidden />
+                      {isExpired
+                        ? "Expired"
+                        : `Expires ${new Date(promo.expiresAt).toLocaleDateString("en-PK", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+                    </span>
+                  )}
+                </div>
+              </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busyId === promo._id}
-                onClick={() => toggle(promo._id)}
-                className="gap-1.5"
-              >
-                {promo.visible ? "Hide" : "Show"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={busyId === promo._id}
-                aria-label={`Edit ${promo.title}`}
-                onClick={() => startEdit(promo)}
-              >
-                <Pencil className="size-3.5" aria-hidden />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={busyId === promo._id}
-                aria-label={`Delete ${promo.title}`}
-                onClick={() => remove(promo._id)}
-              >
-                <Trash2 className="size-3.5 text-destructive" aria-hidden />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busyId === promo._id}
+                  onClick={() => toggle(promo._id)}
+                  className="gap-1.5"
+                >
+                  {promo.visible ? "Hide" : "Show"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={busyId === promo._id}
+                  aria-label={`Edit ${promo.title}`}
+                  onClick={() => startEdit(promo)}
+                >
+                  <Pencil className="size-3.5" aria-hidden />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={busyId === promo._id}
+                  aria-label={`Delete ${promo.title}`}
+                  onClick={() => remove(promo._id)}
+                >
+                  <Trash2 className="size-3.5 text-destructive" aria-hidden />
+                </Button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {all.length === 0 && !draft ? (
           <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
-            <Megaphone
-              className="mx-auto mb-3 size-6 text-muted-foreground"
-              aria-hidden
-            />
+            <Megaphone className="mx-auto mb-3 size-6 text-muted-foreground" aria-hidden />
             <p className="text-sm text-muted-foreground">
-              No promotions yet. Create one to broadcast a banner to all
-              visitors.
+              No promotions yet. Create one to broadcast a banner to all visitors.
             </p>
           </div>
         ) : null}

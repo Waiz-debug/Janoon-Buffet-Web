@@ -263,14 +263,14 @@ const schema = defineSchema(
       headline: v.string(),
       /** Supporting body text (optional). */
       body: v.optional(v.string()),
-      /** Accent colour token: "gold" | "emerald" | "ember". */
-      accent: v.union(
-        v.literal("gold"),
-        v.literal("emerald"),
-        v.literal("ember"),
-      ),
       /** When true the banner is live on the public site. */
       visible: v.boolean(),
+      /** Banner image URL (uploaded by admin). */
+      imageUrl: v.optional(v.string()),
+      /** Convex storage id for the uploaded banner image. */
+      imageStorageId: v.optional(v.id("_storage")),
+      /** Optional expiry timestamp (ms since epoch). Banner auto-hides after this. */
+      expiresAt: v.optional(v.number()),
       createdAt: v.number(),
       updatedAt: v.number(),
     })
