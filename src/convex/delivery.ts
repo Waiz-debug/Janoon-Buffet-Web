@@ -152,13 +152,31 @@ export const placeOrder = mutation({
   },
 });
 
-/** Delivery desk feed, newest first. Access is enforced client-side by the
- *  PIN-gated /deliveries route (same model as the public reservation lookups). */
+/** Delivery desk feed (staff), newest first. Shows every order including
+ *  delivered ones — access is enforced by the PIN-gated routes. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("deliveryOrders").collect();
     return rows.sort((a, b) => b.createdAt - a.createdAt) as DeliveryOrder[];
+  },
+});
+
+/** Public-facing feed: delivered orders are automatically hidden 30 minutes
+ *  after delivery so the user's live tracking view stays clean. */
+const HIDE_DELIVERED_AFTER_MS = 30 * 60 * 1000;
+
+export const listVisible = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("deliveryOrders").collect();
+    const now = Date.now();
+    const visible = rows.filter((o) => {
+      if (o.status !== "delivered") return true;
+      if (o.deliveredAt && now - o.deliveredAt > HIDE_DELIVERED_AFTER_MS) return false;
+      return true;
+    });
+    return visible.sort((a, b) => b.createdAt - a.createdAt) as DeliveryOrder[];
   },
 });
 
@@ -187,8 +205,10 @@ export const stats = query({
   },
 });
 
-/** Advance an order through the delivery lifecycle. Invoked only from the
- *  PIN-gated delivery desk. */
+/** Advance an order through the simplified 2-step delivery lifecycle.
+ *  placed → confirmed (staff acknowledges the order)
+ *  confirmed → delivered (order completed, timestamped and archived)
+ *  Invoked from the PIN-gated staff portal. */
 export const advanceStatus = mutation({
   args: {
     id: v.id("deliveryOrders"),
@@ -200,10 +220,21 @@ export const advanceStatus = mutation({
     if (order.status === "delivered") {
       throw new Error("That order is already delivered.");
     }
-    await ctx.db.patch(args.id, {
-      status: args.status,
-      deliveredAt: args.status === "delivered" ? Date.now() : undefined,
-    });
+    const valid: Record<string, string[]> = {
+      placed: ["confirmed"],
+      confirmed: ["delivered"],
+    };
+    const allowed = valid[order.status];
+    if (!allowed || !allowed.includes(args.status)) {
+      throw new Error(
+        `Cannot move from "${order.status}" to "${args.status}".`,
+      );
+    }
+    const patch: Partial<DeliveryOrder> = { status: args.status };
+    if (args.status === "delivered") {
+      patch.deliveredAt = Date.now();
+    }
+    await ctx.db.patch(args.id, patch);
     return { id: args.id, status: args.status };
   },
 });

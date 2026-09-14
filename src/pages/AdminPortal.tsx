@@ -1,6 +1,7 @@
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
+import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -86,7 +87,11 @@ export default function AdminPortal() {
           />
         </TabsContent>
 
-        <TabsContent value="photos">
+        <TabsContent value="photos" className="flex flex-col gap-8">
+          <SignaturePhotoManager
+            dishes={dishes}
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+          />
           <PhotoManager />
         </TabsContent>
       </Tabs>

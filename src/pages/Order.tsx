@@ -8,15 +8,14 @@ import { useCart } from "@/hooks/use-cart";
 import { formatRupees, FREE_DELIVERY_THRESHOLD } from "@/lib/menu";
 import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { useMutation } from "convex/react";
-import {
-  Bike,
+import { useMutation } from "convex/react";import { Bike,
   CheckCircle2,
   ChevronLeft,
   Loader2,
   MapPin,
   ShoppingBag,
 } from "lucide-react";
+import { OrderTracker } from "@/components/tribe/OrderTracker";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -114,6 +113,7 @@ export default function Order() {
               <Link to="/manage">Manage a reservation</Link>
             </Button>
           </div>
+          <OrderTracker customerPhone={phone} />
         </main>
         <ContactFooter />
       </div>

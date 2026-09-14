@@ -21,14 +21,6 @@ import { toast } from "sonner";
 
 type DeliveryOrder = Doc<"deliveryOrders">;
 
-const STATUS_LABELS: Record<DeliveryStatus, string> = {
-  placed: "placed",
-  confirmed: "confirmed",
-  cooking: "cooking",
-  "out-for-delivery": "out for delivery",
-  delivered: "completed",
-};
-
 function StatCard({
   icon: Icon,
   value,
@@ -98,7 +90,8 @@ export default function StaffPortal() {
     setBusyId(order._id);
     try {
       await advanceStatus({ id: order._id, status });
-      toast.success(`${order.reference} → ${STATUS_LABELS[status]}`);
+      const label = status === "confirmed" ? "confirmed" : "delivered";
+      toast.success(`${order.reference} → ${label}`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -191,8 +184,8 @@ export default function StaffPortal() {
               <DeliveryOrderCard
                 key={order._id}
                 order={order}
-                onAdvance={(o) => setStatus(o, "out-for-delivery")}
-                onSetStatus={setStatus}
+                onConfirm={(o) => setStatus(o, "confirmed")}
+                onDeliver={(o) => setStatus(o, "delivered")}
                 busy={busyId === order._id}
               />
             ))}
@@ -215,9 +208,9 @@ export default function StaffPortal() {
               <DeliveryOrderCard
                 key={order._id}
                 order={order}
-                onAdvance={(o) => setStatus(o, "out-for-delivery")}
-                onSetStatus={setStatus}
-                busy={busyId === order._id}
+                onConfirm={() => {}}
+                onDeliver={() => {}}
+                busy={false}
               />
             ))}
           </div>

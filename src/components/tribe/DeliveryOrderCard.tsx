@@ -2,29 +2,24 @@ import type { Doc } from "@/convex/_generated/dataModel";
 import type { DeliveryStatus } from "@/convex/schema";
 import { formatRupees } from "@/lib/menu";
 import { cn } from "@/lib/utils";
-import { Bike, MapPin, PackageCheck, Phone } from "lucide-react";
+import { CheckCircle2, MapPin, PackageCheck, Phone } from "lucide-react";
 
 type DeliveryOrder = Doc<"deliveryOrders">;
 
-/** The three-stage toggle the floor team drives orders through. */
-const STAGES: { status: DeliveryStatus; label: string }[] = [
-  { status: "placed", label: "Pending" },
-  { status: "out-for-delivery", label: "Out for delivery" },
-  { status: "delivered", label: "Completed" },
-];
-
 export function DeliveryOrderCard({
   order,
-  onAdvance,
-  onSetStatus,
+  onConfirm,
+  onDeliver,
   busy,
 }: {
   order: DeliveryOrder;
-  onAdvance: (order: DeliveryOrder) => void;
-  onSetStatus: (order: DeliveryOrder, status: DeliveryStatus) => void;
+  onConfirm: (order: DeliveryOrder) => void;
+  onDeliver: (order: DeliveryOrder) => void;
   busy: boolean;
 }) {
-  const activeIndex = STAGES.findIndex((stage) => stage.status === order.status);
+  const isPlaced = order.status === "placed";
+  const isConfirmed = order.status === "confirmed";
+  const isDelivered = order.status === "delivered";
 
   return (
     <article className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/60 p-5">
@@ -37,11 +32,19 @@ export function DeliveryOrderCard({
             {order.customerName}
           </p>
         </div>
-        {order.status === "delivered" ? (
+        {isDelivered ? (
           <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-emerald-300 uppercase">
             Completed
           </span>
-        ) : null}
+        ) : isConfirmed ? (
+          <span className="inline-flex items-center rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-gold uppercase">
+            Confirmed
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-amber-300 uppercase">
+            Pending
+          </span>
+        )}
       </header>
 
       <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
@@ -82,57 +85,41 @@ export function DeliveryOrderCard({
 
       {order.notes ? (
         <p className="rounded-xl border border-gold/25 bg-gold/[0.06] px-3 py-2 text-xs text-muted-foreground">
-          “{order.notes}”
+          "{order.notes}"
         </p>
       ) : null}
 
-      {/* Status toggle: tap any stage to move the order there. Backward
-          moves are disabled — history is not rewritten from the floor. */}
-      <div
-        role="group"
-        aria-label={`Delivery status for ${order.reference}`}
-        className="grid grid-cols-3 gap-1 rounded-xl border border-border/70 bg-background/40 p-1"
-      >
-        {STAGES.map((stage, index) => {
-          const reached = index <= activeIndex;
-          const forward = index > activeIndex;
-          return (
+      {/* Two-step action buttons */}
+      {!isDelivered && (
+        <div className="flex gap-2">
+          {isPlaced && (
             <button
-              key={stage.status}
               type="button"
-              disabled={!forward || busy}
-              aria-pressed={index === activeIndex}
-              onClick={() => onSetStatus(order, stage.status)}
+              disabled={busy}
+              onClick={() => onConfirm(order)}
               className={cn(
-                "rounded-lg px-2 py-2 text-xs font-medium transition-colors",
-                index === activeIndex
-                  ? order.status === "delivered"
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-gold/15 text-gold"
-                  : reached
-                    ? "text-muted-foreground"
-                    : "text-muted-foreground hover:bg-gold/10 hover:text-gold",
-                (!forward || busy) && "cursor-default disabled:opacity-100",
+                "flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm font-medium text-gold transition-colors hover:bg-gold/20 disabled:opacity-50",
               )}
             >
-              {stage.label}
+              <CheckCircle2 className="size-4" aria-hidden />
+              Confirm Order
             </button>
-          );
-        })}
-      </div>
-
-      {/* Intermediate jumps: confirm / cook / dispatch in one tap. */}
-      {order.status === "placed" || order.status === "confirmed" || order.status === "cooking" ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onAdvance(order)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm font-medium text-gold transition-colors hover:bg-gold/15 disabled:opacity-50"
-        >
-          <Bike className="size-4" aria-hidden />
-          Send out for delivery
-        </button>
-      ) : null}
+          )}
+          {isConfirmed && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDeliver(order)}
+              className={cn(
+                "flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50",
+              )}
+            >
+              <PackageCheck className="size-4" aria-hidden />
+              Mark Delivered
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 }
@@ -153,9 +140,6 @@ export function DeliveryOrderRow({ order }: { order: DeliveryOrder }) {
       <span className="shrink-0 text-sm font-semibold tabular-nums text-gold">
         {formatRupees(order.total)}
       </span>
-      {order.status === "out-for-delivery" ? (
-        <PackageCheck className="size-4 shrink-0 text-gold" aria-hidden />
-      ) : null}
     </div>
   );
 }

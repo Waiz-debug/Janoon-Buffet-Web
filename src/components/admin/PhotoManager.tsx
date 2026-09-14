@@ -81,89 +81,13 @@ export function PhotoManager() {
     }
   };
 
-  const hero = bySlot.get("hero");
-  const galleryLabel = (slot: string) =>
-    `Tile ${GALLERY_SLOTS.indexOf(slot as never) + 1}`;
-
   return (
     <div className="flex flex-col gap-6">
-      {/* Hero backdrop */}
-      <div className="rounded-2xl border border-gold/30 bg-card/60 p-5">
-        <h3 className="font-display text-base font-semibold">Hero backdrop</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The wide photo behind the landing hero. A real photo of the open-air
-          seating at Natha Singh Wala works best here.
-        </p>
-
-        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-          <span className="flex h-32 w-full max-w-sm items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-background/60">
-            {hero?.url ? (
-              <img
-                src={hero.url}
-                alt="Current hero backdrop"
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="px-6 text-center text-xs text-muted-foreground">
-                No custom photo yet — guests currently see the themed default
-              </span>
-            )}
-          </span>
-
-          <div className="flex flex-col gap-2">
-            <input
-              id="hero-photo-input"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-              className="sr-only"
-              disabled={isUploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                void upload(file).then((result) =>
-                  result ? publish("hero", result) : undefined,
-                );
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isUploading}
-              onClick={() =>
-                document.getElementById("hero-photo-input")?.click()
-              }
-              className="gap-2"
-            >
-              {isUploading ? (
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              ) : (
-                <ImagePlus className="size-3.5" aria-hidden />
-              )}
-              {isUploading ? "Uploading…" : "Choose photo"}
-            </Button>
-            {hero ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => void clearSlot("hero")}
-                className="gap-1.5 text-muted-foreground"
-              >
-                <X className="size-3.5" aria-hidden />
-                Reset to default
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
       {/* Gallery tiles */}
       <div>
         <h3 className="font-display text-base font-semibold">Gallery tiles</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          The six tiles under “Recently plated” on the reviews section. Upload
+          The six tiles under "Recently plated" on the reviews section. Upload
           real photos of dishes and the terrace to replace the defaults.
         </p>
 
