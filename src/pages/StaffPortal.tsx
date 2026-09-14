@@ -15,11 +15,53 @@ import {
   PackageOpen,
   Timer,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
+/** Play a short ascending two-tone chime via the Web Audio API. */
+function playOrderChime() {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    // First tone — low
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(523.25, now); // C5
+    gain1.gain.setValueAtTime(0.3, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.25);
+    // Second tone — high
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(659.25, now + 0.15); // E5
+    gain2.gain.setValueAtTime(0.001, now);
+    gain2.gain.setValueAtTime(0.35, now + 0.15);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now + 0.15);
+    osc2.stop(now + 0.5);
+    // Clean up after playback
+    setTimeout(() => ctx.close(), 600);
+  } catch {
+    /* AudioContext blocked — fail silently */
+  }
+}
+
 type DeliveryOrder = Doc<"deliveryOrders">;
+
+type FreshOrder = {
+  id: string;
+  name: string;
+  itemCount: number;
+  total: number;
+  reference: string;
+};
 
 function StatCard({
   icon: Icon,
@@ -58,6 +100,8 @@ export default function StaffPortal() {
   const advanceStatus = useMutation(api.delivery.advanceStatus);
   const [busyId, setBusyId] = useState<string | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
+  const [freshOrder, setFreshOrder] = useState<FreshOrder | null>(null);
+  const freshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     document.title = `Staff portal · ${RESTAURANT.name}`;
@@ -77,6 +121,19 @@ export default function StaffPortal() {
     );
     if (fresh.length > 0) {
       const order = fresh[0];
+      // Play audible chime
+      playOrderChime();
+      // Show prominent alert overlay (auto-dismiss after 8s)
+      setFreshOrder({
+        id: order._id as unknown as string,
+        name: order.customerName,
+        itemCount: order.items.length,
+        total: order.total,
+        reference: order.reference,
+      });
+      if (freshTimer.current) clearTimeout(freshTimer.current);
+      freshTimer.current = setTimeout(() => setFreshOrder(null), 8000);
+      // Standard toast as backup
       toast.success("New delivery order received", {
         description: `${order.customerName} · ${order.items.length} ${
           order.items.length === 1 ? "item" : "items"
@@ -113,6 +170,47 @@ export default function StaffPortal() {
       title="The floor desk"
       description="Everything the evening team needs while the terrace is full — the live delivery feed, order totals and the bookings desk, in one place."
     >
+      {/* Prominent new-order alert overlay */}
+      <AnimatePresence>
+        {freshOrder ? (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="mb-6 overflow-hidden rounded-2xl border-2 border-gold/50 bg-gradient-to-r from-gold/15 via-gold/10 to-ember/15 p-5 shadow-[0_0_40px_rgba(212,168,83,0.15)]"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-gold/40 bg-gold/20 text-gold animate-pulse">
+                  <Bike className="size-6" aria-hidden />
+                </span>
+                <div>
+                  <p className="font-display text-lg font-bold text-gold">
+                    New order!
+                  </p>
+                  <p className="text-sm text-foreground">
+                    <span className="font-semibold">{freshOrder.name}</span> · {" "}
+                    {freshOrder.itemCount} {freshOrder.itemCount === 1 ? "item" : "items"} · {" "}
+                    Rs {freshOrder.total.toLocaleString("en-PK")}
+                  </p>
+                  <p className="font-mono text-xs tracking-[0.14em] text-gold/70">
+                    {freshOrder.reference}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFreshOrder(null)}
+                className="rounded-lg border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       {/* Live counters */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard

@@ -249,6 +249,34 @@ const schema = defineSchema(
       .index("by_reference", ["reference"])
       .index("by_createdAt", ["createdAt"]),
 
+    // ------------------------------------------------------------------ //
+    // Promotions & announcement banners — admin-controlled, broadcast      //
+    // live to every public visitor via Convex's reactive queries.          //
+    // ------------------------------------------------------------------ //
+
+    /** Promotional banners visible on the public site. Only active rows
+     *  with `visible: true` are shown to customers. */
+    promotions: defineTable({
+      /** Short label shown in the admin list. */
+      title: v.string(),
+      /** Bold headline text on the public banner. */
+      headline: v.string(),
+      /** Supporting body text (optional). */
+      body: v.optional(v.string()),
+      /** Accent colour token: "gold" | "emerald" | "ember". */
+      accent: v.union(
+        v.literal("gold"),
+        v.literal("emerald"),
+        v.literal("ember"),
+      ),
+      /** When true the banner is live on the public site. */
+      visible: v.boolean(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_visible", ["visible"])
+      .index("by_createdAt", ["createdAt"]),
+
     // add other tables here
   },
   {

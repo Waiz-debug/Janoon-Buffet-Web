@@ -1,6 +1,7 @@
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
+import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { Button } from "@/components/ui/button";
@@ -42,7 +43,7 @@ export default function AdminPortal() {
   return (
     <PortalFrame
       badge="Admin portal"
-      title="Menu, photos & counters"
+      title="Menu, photos & promotions"
       description="Every change here is live on the customer site the moment you save — no redeploy needed, no refresh on the guest's side."
     >
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -64,6 +65,7 @@ export default function AdminPortal() {
           <TabsTrigger value="dishes">Dishes &amp; prices</TabsTrigger>
           <TabsTrigger value="counters">Counters</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
+          <TabsTrigger value="promos">Promotions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dishes">
@@ -93,6 +95,10 @@ export default function AdminPortal() {
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           />
           <PhotoManager />
+        </TabsContent>
+
+        <TabsContent value="promos">
+          <PromotionsManager />
         </TabsContent>
       </Tabs>
 
