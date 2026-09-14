@@ -1,3 +1,4 @@
+import { OpenStatus } from "@/components/tribe/OpenStatus";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export function SiteHeader() {
             <span className="mt-0.5 text-[0.65rem] tracking-[0.2em] text-gold/80 uppercase">
               Lahore · 24/7
             </span>
+            <OpenStatus className="mt-1 hidden text-[0.6rem] lg:inline-flex" />
           </span>
         </button>
 

@@ -87,19 +87,36 @@ export function CartDrawer() {
         ) : (
           <>
             <ul className="flex-1 divide-y divide-border/60 overflow-y-auto px-5">
-              {items.map((line) => (
-                <li key={line.slug} className="flex items-center gap-3 py-4">
+              {items.map((line) => {
+                const key = line.weight ? `${line.slug}:${line.weight}` : line.slug;
+                const weightLabel = line.weight ? line.weight.replace(/-/g, " ") : null;
+                return (
+                <li key={key} className="flex items-center gap-3 py-4">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{line.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {formatRupees(line.unitPrice)} each
+                      {weightLabel ? (
+                        <span className="ml-1.5 rounded-md border border-gold/20 bg-gold/[0.06] px-1.5 py-0.5 text-gold">
+                          {weightLabel}
+                        </span>
+                      ) : null}
                     </p>
+                    {line.addons && line.addons.length > 0 ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {line.addons.map((addon) => (
+                          <span key={addon.id} className="rounded-md border border-border/60 px-1.5 py-0.5 text-[0.6rem] text-muted-foreground">
+                            + {addon.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       aria-label={`One less ${line.name}`}
-                      onClick={() => setCount(line.slug, line.count - 1)}
+                      onClick={() => setCount(key, line.count - 1)}
                       className="flex size-7 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
                     >
                       <Minus className="size-3" aria-hidden />
@@ -110,7 +127,7 @@ export function CartDrawer() {
                     <button
                       type="button"
                       aria-label={`One more ${line.name}`}
-                      onClick={() => setCount(line.slug, line.count + 1)}
+                      onClick={() => setCount(key, line.count + 1)}
                       className="flex size-7 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
                     >
                       <Plus className="size-3" aria-hidden />
@@ -119,13 +136,14 @@ export function CartDrawer() {
                   <button
                     type="button"
                     aria-label={`Remove ${line.name}`}
-                    onClick={() => remove(line.slug)}
+                    onClick={() => remove(key)}
                     className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-rose-300"
                   >
                     <Trash2 className="size-3.5" aria-hidden />
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
 
             <footer className="border-t border-border/70 px-5 py-4">

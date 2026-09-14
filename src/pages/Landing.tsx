@@ -3,14 +3,16 @@ import { ContactFooter } from "@/components/tribe/ContactFooter";
 import { Hero } from "@/components/tribe/Hero";
 import { LocationMap } from "@/components/tribe/LocationMap";
 import { MenuSection } from "@/components/tribe/MenuSection";
+import { PreOrderSection } from "@/components/tribe/PreOrderSection";
 import { PromoBanner } from "@/components/tribe/PromoBanner";
 import { ReservationSection } from "@/components/tribe/ReservationSection";
 import { SiteHeader } from "@/components/tribe/SiteHeader";
 import { SocialProof } from "@/components/tribe/SocialProof";
+import { AddOnsStrip } from "@/components/tribe/AddOnsStrip";
 import { Button } from "@/components/ui/button";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { RESTAURANT } from "@/lib/restaurant";
-import { CalendarCheck, Phone } from "lucide-react";
+import { CalendarCheck, Phone } from "lucide-react"
 
 export default function Landing() {
   const goToSection = useGoToSection();
@@ -24,6 +26,8 @@ export default function Landing() {
         <Hero />
         <AboutVibe />
         <MenuSection />
+        <AddOnsStrip />
+        <PreOrderSection />
         <SocialProof />
         <div className="py-16 sm:py-20">
           <LocationMap />

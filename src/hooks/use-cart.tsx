@@ -9,11 +9,21 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+export type CartAddOn = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 export type CartItem = {
   slug: string;
   name: string;
   unitPrice: number;
   count: number;
+  /** Weight variant id, e.g. "half-kg" or "full-kg". Undefined = standard portion. */
+  weight?: string;
+  /** Selected add-ons for this line item. */
+  addons?: CartAddOn[];
 };
 
 const STORAGE_KEY = "tribe-of-taste:cart";
@@ -25,7 +35,13 @@ type CartContextValue = {
   isOpen: boolean;
   openCart: () => void;
   closeCart: () => void;
-  add: (item: { slug: string; name: string; unitPrice: number }) => void;
+  add: (item: {
+    slug: string;
+    name: string;
+    unitPrice: number;
+    weight?: string;
+    addons?: CartAddOn[];
+  }) => void;
   setCount: (slug: string, count: number) => void;
   remove: (slug: string) => void;
   clear: () => void;
@@ -72,37 +88,60 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [items, isLoaded]);
 
-  const add = useCallback((item: { slug: string; name: string; unitPrice: number }) => {
+  const add = useCallback((item: {
+    slug: string;
+    name: string;
+    unitPrice: number;
+    weight?: string;
+    addons?: CartAddOn[];
+  }) => {
+    // Build a unique key: slug + weight variant. Same dish with different
+    // weight is a separate line in the cart.
+    const key = item.weight ? `${item.slug}:${item.weight}` : item.slug;
     setItems((current) => {
-      const existing = current.find((line) => line.slug === item.slug);
+      const existing = current.find((line) => {
+        const lineKey = line.weight ? `${line.slug}:${line.weight}` : line.slug;
+        return lineKey === key;
+      });
       if (existing) {
-        return current.map((line) =>
-          line.slug === item.slug
+        return current.map((line) => {
+          const lineKey = line.weight ? `${line.slug}:${line.weight}` : line.slug;
+          return lineKey === key
             ? { ...line, count: Math.min(line.count + 1, 20) }
-            : line,
-        );
+            : line;
+        });
       }
       return [...current, { ...item, count: 1 }];
     });
-    // Quiet confirmation only — the guest keeps browsing. Navigation happens
-    // exclusively when they click the cart or checkout buttons themselves.
-    toast.success(`${item.name} added to your order`, {
+    const weightLabel = item.weight ? ` (${item.weight.replace(/-/g, " ")})` : "";
+    toast.success(`${item.name}${weightLabel} added to your order`, {
       action: { label: "View cart", onClick: () => setIsOpen(true) },
     });
   }, []);
 
   const setCount = useCallback((slug: string, count: number) => {
+    // slug here may be the composite "slug:weight" key
     setItems((current) =>
       count <= 0
-        ? current.filter((line) => line.slug !== slug)
-        : current.map((line) =>
-            line.slug === slug ? { ...line, count: Math.min(count, 20) } : line,
-          ),
+        ? current.filter((line) => {
+            const key = line.weight ? `${line.slug}:${line.weight}` : line.slug;
+            return key !== slug;
+          })
+        : current.map((line) => {
+            const key = line.weight ? `${line.slug}:${line.weight}` : line.slug;
+            return key === slug ? { ...line, count: Math.min(count, 20) } : line;
+          }),
     );
   }, []);
 
   const remove = useCallback((slug: string) => {
-    setItems((current) => current.filter((line) => line.slug !== slug));
+    // slug may be composite "slug:weight"
+    setItems((current) =>
+      current.filter((line) => {
+        const key = line.weight ? `${line.slug}:${line.weight}` : line.slug;
+        return key !== slug;
+      }),
+    );
   }, []);
 
   const clear = useCallback(() => setItems([]), []);

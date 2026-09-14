@@ -4,12 +4,93 @@ import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite } from "@/hooks/use-live-site";
-import { formatRupees } from "@/lib/menu";
+import { DEFAULT_WEIGHTS, formatRupees, WEIGHTED_SLUGS } from "@/lib/menu";
 import { BUFFET_INCLUDES, BUFFET_TIERS } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUpRight, Check, Plus, Sparkles } from "lucide-react";
+import { ArrowUpRight, Check, Plus, Scale, Sparkles } from "lucide-react";
 import { Link } from "react-router";
+
+function DishRow({
+  dish,
+  unitPrice,
+  add,
+}: {
+  dish: { slug: string; name: string; summary: string; weights?: { id: string; label: string; priceDelta: number }[] };
+  unitPrice: (dish: { slug: string; pricePerPlate?: number }) => number;
+  add: (item: { slug: string; name: string; unitPrice: number; weight?: string }) => void;
+}) {
+  const base = unitPrice(dish);
+  const hasWeights = dish.weights && dish.weights.length > 0;
+  const [selectedWeight, setSelectedWeight] = useState(
+    hasWeights ? dish.weights![0].id : undefined,
+  );
+  const weightOption = hasWeights
+    ? dish.weights!.find((w) => w.id === selectedWeight)
+    : undefined;
+  const price = base + (weightOption?.priceDelta ?? 0);
+
+  return (
+    <li className="flex flex-col gap-2 py-3">
+      <div className="flex items-center gap-3">
+        <Link
+          to={`/menu/${dish.slug}`}
+          className="group flex min-w-0 flex-1 items-start justify-between gap-4"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-medium transition-colors group-hover:text-gold">
+              {dish.name}
+            </span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+              {dish.summary}
+            </span>
+          </span>
+          <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-gold" />
+        </Link>
+        <button
+          type="button"
+          onClick={() =>
+            add({
+              slug: dish.slug,
+              name: dish.name,
+              unitPrice: price,
+              weight: selectedWeight,
+            })
+          }
+          className="my-1 inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold/25 px-2 py-1 text-xs font-medium text-gold transition-colors hover:bg-gold/10"
+          aria-label={`Add ${dish.name} to delivery order`}
+        >
+          <Plus className="size-3" aria-hidden />
+          {formatRupees(price)}
+        </button>
+      </div>
+      {hasWeights ? (
+        <div className="flex items-center gap-2 pl-0">
+          <Scale className="size-3 text-gold/60" aria-hidden />
+          <div className="flex gap-1.5">
+            {dish.weights!.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => setSelectedWeight(w.id)}
+                className={cn(
+                  "rounded-lg border px-2.5 py-1 text-[0.65rem] font-medium transition-colors",
+                  selectedWeight === w.id
+                    ? "border-gold/40 bg-gold/10 text-gold"
+                    : "border-border/70 text-muted-foreground hover:border-gold/20 hover:text-foreground",
+                )}
+              >
+                {w.label}
+                {w.priceDelta > 0 ? ` +${formatRupees(w.priceDelta)}` : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </li>
+  );
+}
 
 export function MenuSection() {
   const { add } = useCart();
@@ -194,37 +275,7 @@ export function MenuSection() {
 
                 <ul className="mt-4 flex flex-col divide-y divide-border/60 border-t border-border/60">
                   {dishes.map((dish) => (
-                    <li key={dish.slug} className="flex items-center gap-3">
-                      <Link
-                        to={`/menu/${dish.slug}`}
-                        className="group flex min-w-0 flex-1 items-start justify-between gap-4 py-3"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium transition-colors group-hover:text-gold">
-                            {dish.name}
-                          </span>
-                          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-                            {dish.summary}
-                          </span>
-                        </span>
-                        <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-gold" />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          add({
-                            slug: dish.slug,
-                            name: dish.name,
-                            unitPrice: unitPrice(dish),
-                          })
-                        }
-                        className="my-2 inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold/25 px-2 py-1 text-xs font-medium text-gold transition-colors hover:bg-gold/10"
-                        aria-label={`Add ${dish.name} to delivery order`}
-                      >
-                        <Plus className="size-3" aria-hidden />
-                        {formatRupees(unitPrice(dish))}
-                      </button>
-                    </li>
+                    <DishRow key={dish.slug} dish={dish} unitPrice={unitPrice} add={add} />
                   ))}
                 </ul>
               </motion.article>

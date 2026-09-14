@@ -14,6 +14,13 @@ export type MenuCategory = {
   icon: "flame" | "pot" | "bites" | "dessert";
 };
 
+export type WeightOption = {
+  id: string;
+  label: string;
+  /** Price delta added to the base per-plate price. */
+  priceDelta: number;
+};
+
 export type Dish = {
   slug: string;
   name: string;
@@ -27,6 +34,8 @@ export type Dish = {
   /** Slugs of dishes served well alongside this one. */
   pairings: string[];
   image: string;
+  /** Weight/portion options (e.g. Half KG / Full KG) for shareable dishes. */
+  weights?: WeightOption[];
 };
 
 const unsplash = (id: string, width = 1200) =>
@@ -152,6 +161,10 @@ export const DISHES: Dish[] = [
     urdu: "مٹن نہاری",
     categoryId: "handi",
     summary: "Simmered overnight until the meat gives way to the spoon.",
+    weights: [
+      { id: "half-kg", label: "Half KG", priceDelta: 0 },
+      { id: "full-kg", label: "Full KG", priceDelta: 600 },
+    ],
     description:
       "Bone-in mutton is sealed in its own stock at dawn and left to simmer through the day with a slow-roasted spice blend and marrow. By nightfall the gravy is glossy and the meat collapses at a touch of the spoon — best mopped up with a hot tandoori naan.",
     notes: [
@@ -168,6 +181,10 @@ export const DISHES: Dish[] = [
     urdu: "چکن کڑاہی",
     categoryId: "handi",
     summary: "Tomato, ginger and green chilli, finished in the wok.",
+    weights: [
+      { id: "half-kg", label: "Half KG", priceDelta: 0 },
+      { id: "full-kg", label: "Full KG", priceDelta: 500 },
+    ],
     description:
       "Cooked to order in a black iron karahi, our chicken is tossed with crushed tomato, julienned ginger and whole green chillies until the oil separates and the sauce turns deep red. Nothing is pre-cooked, so it arrives at the table still catching its breath.",
     notes: [
@@ -184,6 +201,10 @@ export const DISHES: Dish[] = [
     urdu: "چکن حلیم",
     categoryId: "handi",
     summary: "Wheat, lentils and chicken pounded into a velvet porridge.",
+    weights: [
+      { id: "half-kg", label: "Half KG", priceDelta: 0 },
+      { id: "full-kg", label: "Full KG", priceDelta: 400 },
+    ],
     description:
       "Cracked wheat and five lentils are cooked down with shredded chicken for hours, then pounded smooth with a wooden masher until the texture turns silken. It is finished with crisp fried onions, ginger and a squeeze of lemon.",
     notes: [
@@ -402,6 +423,40 @@ const DELIVERY_PRICES: Record<string, number> = {
 export function deliveryUnitPrice(slug: string): number {
   return DELIVERY_PRICES[slug] ?? 600;
 }
+
+/** Add-ons that accompany any main dish order (sides, bread, salads). */
+export type AddOn = {
+  id: string;
+  name: string;
+  urdu: string;
+  price: number;
+  /** Category hint for grouping in the add-on picker. */
+  group: "bread" | "side" | "drink";
+};
+
+export const ADDONS: AddOn[] = [
+  { id: "afghani-naan", name: "Afghani Naan", urdu: "افغانی نان", price: 80, group: "bread" },
+  { id: "tandoori-naan", name: "Tandoori Naan", urdu: "تندوری نان", price: 60, group: "bread" },
+  { id: "sheermal", name: "Sheermal", urdu: "شیرمال", price: 70, group: "bread" },
+  { id: "raita", name: "Raita", urdu: "رائتہ", price: 50, group: "side" },
+  { id: "green-salad", name: "Green Salad", urdu: "سلاد", price: 60, group: "side" },
+  { id: "pickles", name: "Mixed Pickles", urdu: "اچار", price: 40, group: "side" },
+  { id: "mint-lassi", name: "Mint Lassi", urdu: "لسی", price: 120, group: "drink" },
+  { id: "kashmiri-chai", name: "Kashmiri Chai", urdu: "کشمیری چائے", price: 150, group: "drink" },
+];
+
+/** Slugs for dishes that support weight/portion-based pricing. */
+export const WEIGHTED_SLUGS = [
+  "chicken-karahi",
+  "mutton-nihari",
+  "chicken-haleem",
+] as const;
+
+/** Default weight options for weighted dishes. */
+export const DEFAULT_WEIGHTS: WeightOption[] = [
+  { id: "half-kg", label: "Half KG", priceDelta: 0 },
+  { id: "full-kg", label: "Full KG", priceDelta: 500 },
+];
 
 /** `850` → `"Rs 850"` */
 export function formatRupees(amount: number): string {
