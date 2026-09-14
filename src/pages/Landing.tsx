@@ -1,7 +1,9 @@
 import { AboutVibe } from "@/components/tribe/AboutVibe";
 import { ContactFooter } from "@/components/tribe/ContactFooter";
 import { Hero } from "@/components/tribe/Hero";
+import { LocationMap } from "@/components/tribe/LocationMap";
 import { MenuSection } from "@/components/tribe/MenuSection";
+import { PromoBanner } from "@/components/tribe/PromoBanner";
 import { ReservationSection } from "@/components/tribe/ReservationSection";
 import { SiteHeader } from "@/components/tribe/SiteHeader";
 import { SocialProof } from "@/components/tribe/SocialProof";
@@ -15,6 +17,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PromoBanner />
       <SiteHeader />
 
       <main className="pb-20 sm:pb-0">
@@ -22,6 +25,9 @@ export default function Landing() {
         <AboutVibe />
         <MenuSection />
         <SocialProof />
+        <div className="py-16 sm:py-20">
+          <LocationMap />
+        </div>
         <ReservationSection />
       </main>
 

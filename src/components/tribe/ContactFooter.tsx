@@ -40,7 +40,7 @@ export function ContactFooter() {
   const goToSection = useGoToSection();
 
   return (
-    <footer id="visit" className="scroll-mt-24 border-t border-border/60 bg-card/30">
+    <footer className="border-t border-border/60 bg-card/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
         {/* Final call to action */}
         <div className="flex flex-col items-start justify-between gap-6 rounded-3xl border border-gold/25 bg-card/50 p-8 sm:flex-row sm:items-center">
