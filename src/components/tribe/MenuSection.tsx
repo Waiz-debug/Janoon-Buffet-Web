@@ -4,7 +4,7 @@ import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite } from "@/hooks/use-live-site";
-import { DEFAULT_WEIGHTS, formatRupees, WEIGHTED_SLUGS } from "@/lib/menu";
+import { formatRupees } from "@/lib/menu";
 import { BUFFET_INCLUDES, BUFFET_TIERS } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { useState } from "react";

@@ -18,7 +18,7 @@ import { Link, useParams } from "react-router";
 export default function MenuDetail() {
   const { slug } = useParams<{ slug: string }>();
   const goToSection = useGoToSection();
-  const { getDish, dishesByCategory, unitPrice } = useLiveSite();
+  const { getDish, dishesByCategory } = useLiveSite();
   const dish = slug ? getDish(slug) : undefined;
 
   useEffect(() => {
