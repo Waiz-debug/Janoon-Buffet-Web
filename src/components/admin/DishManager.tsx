@@ -11,10 +11,14 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/convex/_generated/api";
-import type { LiveDish } from "@/hooks/use-live-site";
+import {
+  deleteDish,
+  removeDishImage,
+  setDishImage,
+  upsertDish,
+  type MenuDishRow,
+} from "@/lib/db";
 import { formatRupees } from "@/lib/menu";
-import { useMutation } from "convex/react";
 import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -56,14 +60,9 @@ export function DishManager({
   dishes,
   categories,
 }: {
-  dishes: LiveDish[];
+  dishes: MenuDishRow[];
   categories: CategoryOption[];
 }) {
-  const upsertDish = useMutation(api.menu.upsertDish);
-  const deleteDish = useMutation(api.menu.deleteDish);
-  const setDishImage = useMutation(api.menu.uploadDishImage);
-  const removeDishImage = useMutation(api.menu.removeDishImage);
-
   const [editing, setEditing] = useState<Draft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
@@ -77,7 +76,7 @@ export function DishManager({
     setEditing(emptyDraft(fallback, nextSort));
   };
 
-  const startEdit = (dish: LiveDish) => {
+  const startEdit = (dish: MenuDishRow) => {
     setEditing({
       slug: dish.slug,
       name: dish.name,
@@ -109,12 +108,10 @@ export function DishManager({
         categoryId: editing.categoryId,
         summary: editing.summary.trim() || undefined,
         description: editing.description.trim() || undefined,
-        notes: undefined,
-        pairings: undefined,
         image: editing.pendingStorageId
           ? undefined
           : editing.image.trim() || undefined,
-        imageStorageId: (editing.pendingStorageId ?? undefined) as never,
+        imagePath: editing.pendingStorageId ?? undefined,
         active: editing.active,
         featured: editing.featured,
         sortOrder: editing.sortOrder,
@@ -137,7 +134,7 @@ export function DishManager({
     }
   };
 
-  const remove = async (dish: LiveDish) => {
+  const remove = async (dish: MenuDishRow) => {
     if (
       !window.confirm(
         `Remove ${dish.name} from the public menu? This cannot be undone.`,
@@ -147,7 +144,7 @@ export function DishManager({
     }
     setDeletingSlug(dish.slug);
     try {
-      await deleteDish({ slug: dish.slug });
+      await deleteDish(dish.slug);
       toast.success(`${dish.name} removed from the menu`);
     } catch (error) {
       toast.error(
@@ -277,16 +274,8 @@ export function DishManager({
                 // storage URL). Creating: hold a preview until the dish is
                 // saved, then the URL is persisted with the form.
                 if (editing.slug) {
-                  void setDishImage({
-                    slug: editing.slug,
-                    storageId: upload.storageId as never,
-                    originalName: upload.name,
-                    mimeType: upload.mimeType,
-                    bytes: upload.bytes,
-                  })
-                    .then((result) =>
-                      setEditing({ ...editing, image: result.url }),
-                    )
+                  void setDishImage(editing.slug, upload.storageId)
+                    .then((url) => setEditing({ ...editing, image: url }))
                     .catch(() => toast.error("Could not attach the photo."));
                 } else {
                   setEditing({
@@ -298,7 +287,7 @@ export function DishManager({
               }}
               onCleared={() => {
                 if (editing.slug) {
-                  void removeDishImage({ slug: editing.slug }).catch(() =>
+                  void removeDishImage(editing.slug).catch(() =>
                     toast.error("Could not remove the photo."),
                   );
                 }

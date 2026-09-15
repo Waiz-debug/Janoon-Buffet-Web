@@ -1,9 +1,11 @@
 import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
-import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
-import type { DeliveryStatus } from "@/convex/schema";
+import { useDeliveryOrders } from "@/hooks/use-live-db";
+import {
+  advanceDeliveryStatus,
+  type DeliveryOrder,
+  type DeliveryStatus,
+} from "@/lib/db";
 import { RESTAURANT } from "@/lib/restaurant";
-import { useMutation, useQuery } from "convex/react";
 import {
   Bike,
   CheckCircle2,
@@ -16,11 +18,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-type DeliveryOrder = Doc<"deliveryOrders">;
-
 export default function Deliveries() {
-  const orders = useQuery(api.delivery.list);
-  const advanceStatus = useMutation(api.delivery.advanceStatus);
+  const orders = useDeliveryOrders();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,7 +29,7 @@ export default function Deliveries() {
   const setStatus = async (order: DeliveryOrder, status: DeliveryStatus) => {
     setBusyId(order._id);
     try {
-      await advanceStatus({ id: order._id, status });
+      await advanceDeliveryStatus(order._id, status);
       const label = status === "confirmed" ? "confirmed" : "delivered";
       toast.success(`${order.reference} → ${label}`);
     } catch (error) {

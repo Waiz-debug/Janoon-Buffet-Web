@@ -1,4 +1,4 @@
-import type { ReservationStatus } from "@/convex/schema";
+import type { ReservationStatus } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {

@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { api } from "@/convex/_generated/api";
-import type { LiveDish } from "@/hooks/use-live-site";
 import { useImageUpload } from "@/hooks/use-image-upload";
+import {
+  removeDishImage,
+  setDishImage,
+  type MenuDishRow,
+} from "@/lib/db";
 import { formatRupees } from "@/lib/menu";
-import { useMutation } from "convex/react";
 import { ImagePlus, Loader2, Star, X } from "lucide-react";
 import { useId } from "react";
 import { toast } from "sonner";
@@ -17,7 +19,7 @@ export function SignaturePhotoManager({
   dishes,
   categories,
 }: {
-  dishes: LiveDish[];
+  dishes: MenuDishRow[];
   categories: { id: string; name: string }[];
 }) {
   const signatureDishes = dishes.filter((d) => d.featured);
@@ -66,26 +68,18 @@ function SignatureCard({
   dish,
   categoryName,
 }: {
-  dish: LiveDish;
+  dish: MenuDishRow;
   categoryName: string;
 }) {
   const inputId = useId();
-  const setDishImage = useMutation(api.menu.uploadDishImage);
-  const removeDishImage = useMutation(api.menu.removeDishImage);
-  const { isUploading, upload } = useImageUpload();
+  const { isUploading, upload } = useImageUpload("signature");
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
     const result = await upload(file);
     if (!result) return;
     try {
-      await setDishImage({
-        slug: dish.slug,
-        storageId: result.storageId as never,
-        originalName: result.name,
-        mimeType: result.mimeType,
-        bytes: result.bytes,
-      });
+      await setDishImage(dish.slug, result.storageId);
       toast.success(`${dish.name} photo updated — live on the site`);
     } catch {
       toast.error(`Could not update ${dish.name} photo`);
@@ -94,7 +88,7 @@ function SignatureCard({
 
   const handleRemove = async () => {
     try {
-      await removeDishImage({ slug: dish.slug });
+      await removeDishImage(dish.slug);
       toast.success(`${dish.name} photo removed`);
     } catch {
       toast.error(`Could not remove ${dish.name} photo`);

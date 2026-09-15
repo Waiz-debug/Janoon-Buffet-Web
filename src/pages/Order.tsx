@@ -3,12 +3,13 @@ import { ContactFooter } from "@/components/tribe/ContactFooter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/convex/_generated/api";
 import { useCart } from "@/hooks/use-cart";
+import { placeDeliveryOrder } from "@/lib/db";
 import { formatRupees, FREE_DELIVERY_THRESHOLD } from "@/lib/menu";
 import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { useMutation } from "convex/react";import { Bike,
+import {
+  Bike,
   CheckCircle2,
   ChevronLeft,
   Loader2,
@@ -38,7 +39,6 @@ type Placed = { reference: string; total: number };
 export default function Order() {
   const navigate = useNavigate();
   const { items, itemsTotal, itemCount, setCount, clear } = useCart();
-  const placeOrder = useMutation(api.delivery.placeOrder);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -61,7 +61,7 @@ export default function Order() {
     if (items.length === 0 || isPlacing) return;
     setIsPlacing(true);
     try {
-      const result = await placeOrder({
+      const result = await placeDeliveryOrder({
         customerName: name,
         phone,
         address,

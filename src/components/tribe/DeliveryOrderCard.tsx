@@ -1,10 +1,7 @@
-import type { Doc } from "@/convex/_generated/dataModel";
-import type { DeliveryStatus } from "@/convex/schema";
+import type { DeliveryOrder } from "@/lib/db";
 import { formatRupees } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, MapPin, PackageCheck, Phone } from "lucide-react";
-
-type DeliveryOrder = Doc<"deliveryOrders">;
 
 export function DeliveryOrderCard({
   order,

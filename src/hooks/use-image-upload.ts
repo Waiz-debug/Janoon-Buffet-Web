@@ -1,22 +1,5 @@
-import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
+import { uploadImage, type UploadedImage } from "@/lib/db";
 import { useCallback, useState } from "react";
-
-export type UploadedImage = {
-  storageId: string;
-  name: string;
-  mimeType: string;
-  bytes: number;
-};
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "image/avif",
-]);
 
 export type UploadState = {
   isUploading: boolean;
@@ -24,13 +7,11 @@ export type UploadState = {
 };
 
 /**
- * Shared flow for admin image uploads:
- *  1. request a short-lived Convex upload URL
- *  2. POST the file to it
- *  3. hand the resulting storage id to the caller's mutation
+ * Shared flow for admin image uploads: push the file to the public Supabase
+ * storage bucket and hand the resulting object path to the caller, which
+ * stores it on the dish, gallery slot or promotion row.
  */
-export function useImageUpload() {
-  const generateUploadUrl = useMutation(api.menu.generateUploadUrl);
+export function useImageUpload(folder?: string) {
   const [state, setState] = useState<UploadState>({
     isUploading: false,
     error: null,
@@ -38,34 +19,11 @@ export function useImageUpload() {
 
   const upload = useCallback(
     async (file: File): Promise<UploadedImage | null> => {
-      if (!ALLOWED_TYPES.has(file.type)) {
-        setState({ isUploading: false, error: "Only JPEG, PNG, WebP, GIF or AVIF images are allowed." });
-        return null;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        setState({ isUploading: false, error: "Images must be 5 MB or smaller." });
-        return null;
-      }
-
       setState({ isUploading: true, error: null });
       try {
-        const url = await generateUploadUrl();
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!response.ok) {
-          throw new Error(`Upload failed (${response.status})`);
-        }
-        const { storageId } = (await response.json()) as { storageId: string };
+        const result = await uploadImage(file, folder);
         setState({ isUploading: false, error: null });
-        return {
-          storageId,
-          name: file.name,
-          mimeType: file.type,
-          bytes: file.size,
-        };
+        return result;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Upload failed. Try again.";
@@ -73,7 +31,7 @@ export function useImageUpload() {
         return null;
       }
     },
-    [generateUploadUrl],
+    [folder],
   );
 
   return { ...state, upload };

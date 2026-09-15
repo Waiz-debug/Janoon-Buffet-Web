@@ -1,22 +1,20 @@
-import { api } from "@/convex/_generated/api";
+import { useVisibleDeliveryOrders } from "@/hooks/use-live-db";
 import { formatRupees } from "@/lib/menu";
-import { useQuery } from "convex/react";
 import { CheckCircle2, Clock, Loader2, MapPin, Phone } from "lucide-react";
 
 const HIDE_DELIVERED_MS = 30 * 60 * 1000;
 
 /**
  * Live order tracker shown to the customer after checkout. Subscribes to the
- * public `listVisible` feed and filters client-side for the 30-minute auto-hide
- * on the user's phone (the backend `listVisible` already handles this, but this
- * adds a client-side double-check for instant responsiveness).
+ * public delivery feed and re-applies the 30-minute auto-hide locally so the
+ * tracking disappears on the guest's phone the moment it lapses.
  */
 export function OrderTracker({
   customerPhone,
 }: {
   customerPhone?: string;
 }) {
-  const allOrders = useQuery(api.delivery.listVisible);
+  const allOrders = useVisibleDeliveryOrders();
 
   if (allOrders === undefined) {
     return (

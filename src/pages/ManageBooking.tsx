@@ -7,7 +7,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/convex/_generated/api";
+import { useReservationLookup } from "@/hooks/use-live-db";
+import { cancelReservationByGuest } from "@/lib/db";
 import {
   clearReservationPointer,
   readReservationPointer,
@@ -19,7 +20,6 @@ import {
   formatPhone,
   formatTime,
 } from "@/lib/restaurant";
-import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   CalendarCheck,
@@ -57,11 +57,10 @@ export default function ManageBooking() {
 
   // The reservation is always fetched from the database for the lookup in
   // state, so a refresh (or a desk-side change) re-loads it on first render.
-  const reservation = useQuery(
-    api.reservations.findByReference,
-    lookup ?? "skip",
+  const reservation = useReservationLookup(
+    lookup?.reference ?? null,
+    lookup?.phone ?? "",
   );
-  const cancelByGuest = useMutation(api.reservations.cancelByGuest);
 
   // Server-render fallback: hydrate the stored pointer once mounted.
   useEffect(() => {
@@ -121,10 +120,7 @@ export default function ManageBooking() {
     const reference = reservation.reference;
     setIsCancelling(true);
     try {
-      await cancelByGuest({
-        reference,
-        phone: reservation.phone,
-      });
+      await cancelReservationByGuest(reference, reservation.phone);
       clearReservationPointer();
       setConfirmingCancel(false);
       setLookup(null);

@@ -10,9 +10,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
-import type { ReservationStatus } from "@/convex/schema";
+import { useReservationLookup } from "@/hooks/use-live-db";
+import {
+  cancelReservationByGuest,
+  createReservation,
+  type Reservation,
+  type ReservationStatus,
+} from "@/lib/db";
 import {
   clearReservationPointer,
   readReservationPointer,
@@ -27,7 +31,6 @@ import {
   todayKey,
 } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   CalendarClock,
@@ -109,11 +112,10 @@ function ConfirmationPanel({
   onBookAnother,
   onCancelled,
 }: {
-  reservation: Doc<"reservations">;
+  reservation: Reservation;
   onBookAnother: () => void;
   onCancelled: () => void;
 }) {
-  const cancelByGuest = useMutation(api.reservations.cancelByGuest);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -124,10 +126,7 @@ function ConfirmationPanel({
   const handleCancel = async () => {
     setIsCancelling(true);
     try {
-      await cancelByGuest({
-        reference: reservation.reference,
-        phone: reservation.phone,
-      });
+      await cancelReservationByGuest(reservation.reference, reservation.phone);
       setConfirmingCancel(false);
       toast.success("Reservation cancelled", {
         description: `Reference ${reservation.reference} has been released.`,
@@ -273,7 +272,6 @@ function ConfirmationPanel({
 }
 
 export function ReservationForm() {
-  const createReservation = useMutation(api.reservations.create);
   const [form, setForm] = useState<BookingForm>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -292,9 +290,12 @@ export function ReservationForm() {
     setHydrated(true);
   }, [hydrated]);
 
-  // The record is re-fetched from Convex on every render pass, so a refresh —
-  // or a status change made on the reservations desk — never goes stale.
-  const stored = useQuery(api.reservations.findByReference, pointer ?? "skip");
+  // The record is re-read from Supabase on every change to the bookings table,
+  // so a refresh — or a status change made at the desk — never goes stale.
+  const stored = useReservationLookup(
+    pointer?.reference ?? null,
+    pointer?.phone ?? "",
+  );
 
   // A pointer that no longer resolves (booking purged) should not trap the guest.
   useEffect(() => {

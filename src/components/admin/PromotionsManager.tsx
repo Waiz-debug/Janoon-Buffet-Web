@@ -3,8 +3,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { usePromotions } from "@/hooks/use-live-db";
+import {
+  deletePromotion,
+  removePromotionImage,
+  savePromotion,
+  togglePromotion,
+  uploadImage,
+} from "@/lib/db";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Clock,
@@ -43,15 +49,6 @@ const emptyDraft: PromotionDraft = {
   imageRemoved: false,
 };
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "image/avif",
-]);
-
 function parseExpiry(input: string): number | undefined {
   if (!input) return undefined;
   const t = new Date(input).getTime();
@@ -65,13 +62,7 @@ function toDatetimeLocal(ms: number): string {
 }
 
 export function PromotionsManager() {
-  const promos = useQuery(api.promotions.listAll);
-  const createPromo = useMutation(api.promotions.create);
-  const updatePromo = useMutation(api.promotions.update);
-  const removePromo = useMutation(api.promotions.remove);
-  const removePromoImage = useMutation(api.promotions.removeImage);
-  const toggleVis = useMutation(api.promotions.toggleVisibility);
-  const generateUploadUrl = useMutation(api.promotions.generateBannerUploadUrl);
+  const promos = usePromotions(false);
 
   const [draft, setDraft] = useState<PromotionDraft | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -92,7 +83,7 @@ export function PromotionsManager() {
     body?: string;
     visible: boolean;
     imageUrl?: string;
-    imageStorageId?: string;
+    imagePath?: string;
     expiresAt?: number;
   }) => {
     setDraft({
@@ -109,31 +100,15 @@ export function PromotionsManager() {
   };
 
   const handleImageSelect = async (file: File) => {
-    if (!ALLOWED_TYPES.has(file.type)) {
-      toast.error("Only JPEG, PNG, WebP, GIF or AVIF images are allowed.");
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      toast.error("Images must be 5 MB or smaller.");
-      return;
-    }
     setIsUploading(true);
     try {
-      const url = await generateUploadUrl();
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!response.ok) throw new Error(`Upload failed (${response.status})`);
-      const { storageId } = (await response.json()) as { storageId: string };
-      const previewUrl = URL.createObjectURL(file);
+      const result = await uploadImage(file, "promotions");
       setDraft((prev) =>
         prev
           ? {
               ...prev,
-              pendingStorageId: storageId,
-              pendingPreviewUrl: previewUrl,
+              pendingStorageId: result.storageId,
+              pendingPreviewUrl: result.url,
               imageRemoved: false,
             }
           : prev,
@@ -150,7 +125,7 @@ export function PromotionsManager() {
   const handleRemoveImage = async () => {
     if (editingId) {
       try {
-        await removePromoImage({ id: editingId as never });
+        await removePromotionImage(editingId);
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Could not remove image.",
@@ -179,32 +154,22 @@ export function PromotionsManager() {
     setIsSaving(true);
     try {
       const expiresAt = parseExpiry(draft.expiresAtInput);
-      if (editingId) {
-        await updatePromo({
-          id: editingId as never,
-          title: draft.title,
-          headline: draft.headline,
-          body: draft.body || undefined,
-          visible: draft.visible,
-          imageStorageId: (draft.pendingStorageId as never) || undefined,
-          expiresAt,
-        });
-        toast.success("Promotion updated — live on the site");
-      } else {
-        await createPromo({
-          title: draft.title,
-          headline: draft.headline,
-          body: draft.body || undefined,
-          visible: draft.visible,
-          imageStorageId: (draft.pendingStorageId as never) || undefined,
-          expiresAt,
-        });
-        toast.success(
-          draft.visible
+      await savePromotion({
+        id: editingId ?? undefined,
+        title: draft.title,
+        headline: draft.headline,
+        body: draft.body || undefined,
+        visible: draft.visible,
+        imagePath: draft.pendingStorageId ?? undefined,
+        expiresAt,
+      });
+      toast.success(
+        editingId
+          ? "Promotion updated — live on the site"
+          : draft.visible
             ? "Promotion published — live on the site"
             : "Promotion saved (hidden)",
-        );
-      }
+      );
       setDraft(null);
       setEditingId(null);
     } catch (error) {
@@ -217,8 +182,8 @@ export function PromotionsManager() {
   const toggle = async (id: string) => {
     setBusyId(id);
     try {
-      const result = await toggleVis({ id: id as never });
-      toast.success(result.visible ? "Promotion is now live" : "Promotion hidden");
+      const visible = await togglePromotion(id);
+      toast.success(visible ? "Promotion is now live" : "Promotion hidden");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not toggle.");
     } finally {
@@ -230,7 +195,7 @@ export function PromotionsManager() {
     if (!window.confirm("Delete this promotion permanently?")) return;
     setBusyId(id);
     try {
-      await removePromo({ id: id as never });
+      await deletePromotion(id);
       toast.success("Promotion deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete.");

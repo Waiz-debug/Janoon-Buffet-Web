@@ -6,27 +6,27 @@ import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager"
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api } from "@/convex/_generated/api";
-import { useLiveSite } from "@/hooks/use-live-site";
-import { useMutation, useQuery } from "convex/react";
+import { useAdminMenu } from "@/hooks/use-live-db";
+import { seedMenuCatalog } from "@/lib/db";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 export default function AdminPortal() {
-  const { categories, dishes } = useLiveSite();
-  const ensureSeedData = useMutation(api.menu.ensureSeedData);
-  const seedState = useQuery(api.menu.seedState);
+  const { categories, dishes, loaded, isEmpty } = useAdminMenu();
+  const seeding = useRef(false);
 
+  // First run against an empty Supabase project: copy the built-in catalogue
+  // across so the menu becomes editable here (and live on the public site).
   useEffect(() => {
-    if (seedState?.seeded === false) {
-      void ensureSeedData()
-        .then(() => toast.success("Menu catalogue loaded"))
-        .catch(() => undefined);
-    }
-  }, [seedState?.seeded, ensureSeedData]);
+    if (!isEmpty || seeding.current) return;
+    seeding.current = true;
+    void seedMenuCatalog()
+      .then(() => toast.success("Menu catalogue loaded"))
+      .catch(() => undefined);
+  }, [isEmpty]);
 
-  if (seedState === undefined) {
+  if (!loaded) {
     return (
       <PortalFrame
         badge="Admin portal"

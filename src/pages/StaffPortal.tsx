@@ -1,10 +1,14 @@
 import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
-import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
-import type { DeliveryStatus } from "@/convex/schema";
-import { RESTAURANT } from "@/lib/restaurant";
-import { useMutation, useQuery } from "convex/react";
+import { useDeliveryOrders, useReservations } from "@/hooks/use-live-db";
+import {
+  advanceDeliveryStatus,
+  setReservationStatus,
+  type DeliveryOrder,
+  type DeliveryStatus,
+  type ReservationStatus,
+} from "@/lib/db";
+import { RESTAURANT, formatDate, formatTime } from "@/lib/restaurant";
 import {
   Bike,
   CalendarCheck,
@@ -14,9 +18,11 @@ import {
   PackageCheck,
   PackageOpen,
   Timer,
+  Trees,
+  Users,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
@@ -52,8 +58,6 @@ function playOrderChime() {
     /* AudioContext blocked — fail silently */
   }
 }
-
-type DeliveryOrder = Doc<"deliveryOrders">;
 
 type FreshOrder = {
   id: string;
@@ -95,13 +99,29 @@ function StatCard({
 }
 
 export default function StaffPortal() {
-  const orders = useQuery(api.delivery.list);
-  const stats = useQuery(api.delivery.stats);
-  const advanceStatus = useMutation(api.delivery.advanceStatus);
+  const orders = useDeliveryOrders();
   const [busyId, setBusyId] = useState<string | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
   const [freshOrder, setFreshOrder] = useState<FreshOrder | null>(null);
   const freshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Headline numbers derived from the live feed — always in sync. */
+  const stats = useMemo(() => {
+    if (!orders) return null;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const placedToday = orders.filter(
+      (order) => order.createdAt >= todayStart.getTime(),
+    );
+    return {
+      active: orders.filter((order) => order.status !== "delivered").length,
+      placedToday: placedToday.length,
+      earnedToday: placedToday
+        .filter((order) => order.status === "delivered")
+        .reduce((sum, order) => sum + order.total, 0),
+      pending: orders.filter((order) => order.status === "placed").length,
+    };
+  }, [orders]);
 
   useEffect(() => {
     document.title = `Staff portal · ${RESTAURANT.name}`;
@@ -111,21 +131,19 @@ export default function StaffPortal() {
   // id afterwards is a fresh checkout from the public site.
   useEffect(() => {
     if (!orders) return;
-    const ids = orders.map((o) => o._id as unknown as string);
+    const ids = orders.map((o) => o._id);
     if (knownIds.current === null) {
       knownIds.current = new Set(ids);
       return;
     }
-    const fresh = orders.filter(
-      (o) => !knownIds.current!.has(o._id as unknown as string),
-    );
+    const fresh = orders.filter((o) => !knownIds.current!.has(o._id));
     if (fresh.length > 0) {
       const order = fresh[0];
       // Play audible chime
       playOrderChime();
       // Show prominent alert overlay (auto-dismiss after 8s)
       setFreshOrder({
-        id: order._id as unknown as string,
+        id: order._id,
         name: order.customerName,
         itemCount: order.items.length,
         total: order.total,
@@ -146,7 +164,7 @@ export default function StaffPortal() {
   const setStatus = async (order: DeliveryOrder, status: DeliveryStatus) => {
     setBusyId(order._id);
     try {
-      await advanceStatus({ id: order._id, status });
+      await advanceDeliveryStatus(order._id, status);
       const label = status === "confirmed" ? "confirmed" : "delivered";
       toast.success(`${order.reference} → ${label}`);
     } catch (error) {
@@ -315,28 +333,146 @@ export default function StaffPortal() {
         </section>
       ) : null}
 
-      {/* Reservations desk link */}
-      <section className="mt-10">
-        <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-          <CalendarCheck className="size-5 text-gold" aria-hidden />
-          Reservations desk
-        </h2>
-        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/60 p-6 sm:max-w-md">
-          <h3 className="font-display text-base font-semibold">
-            Tonight's bookings
-          </h3>
-          <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
-            Confirm arrivals, seat parties and flag no-shows from the
-            reservations desk — it signs in with your staff email.
-          </p>
-          <Link
-            to="/dashboard"
-            className="w-fit gap-2 rounded-xl border border-border/70 px-4 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
-          >
-            Open reservations desk →
-          </Link>
-        </div>
-      </section>
+      {/* Reservations desk — live table bookings, no email sign-in needed */}
+      <ReservationsDesk />
     </PortalFrame>
+  );
+}
+
+const RESERVATION_ACTIONS: {
+  status: ReservationStatus;
+  label: string;
+  className: string;
+}[] = [
+  {
+    status: "confirmed",
+    label: "Confirm",
+    className:
+      "border-gold/30 bg-gold/10 text-gold hover:bg-gold/20",
+  },
+  {
+    status: "seated",
+    label: "Seated",
+    className:
+      "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
+  },
+  {
+    status: "cancelled",
+    label: "Cancel",
+    className:
+      "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
+  },
+];
+
+/** Live table bookings with one-tap status changes. */
+function ReservationsDesk() {
+  const reservations = useReservations();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const upcoming = (reservations ?? []).filter(
+    (booking) => booking.status !== "cancelled",
+  );
+
+  const change = async (id: string, status: ReservationStatus) => {
+    setBusyId(id);
+    try {
+      await setReservationStatus(id, status);
+      toast.success(`Booking marked ${status}`);
+    } catch (error) {
+      toast.error("Update failed", {
+        description:
+          error instanceof Error ? error.message : "Could not update that booking.",
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <section className="mt-10">
+      <h2 className="flex flex-wrap items-center gap-2 font-display text-xl font-semibold">
+        <CalendarCheck className="size-5 text-gold" aria-hidden />
+        Reservations desk
+        <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs font-medium text-gold">
+          {upcoming.length} open
+        </span>
+      </h2>
+
+      {reservations === undefined ? (
+        <p className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border/70 p-10 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Loading the bookings desk…
+        </p>
+      ) : upcoming.length === 0 ? (
+        <p className="mt-4 rounded-2xl border border-dashed border-border/70 p-10 text-center text-sm text-muted-foreground">
+          No open bookings. New table requests from the public site land here
+          instantly.
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-col gap-3">
+          {upcoming.map((booking) => (
+            <article
+              key={booking._id}
+              className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs tracking-[0.14em] text-gold">
+                    {booking.reference}
+                  </span>
+                  <span className="font-display text-base font-semibold">
+                    {booking.name}
+                  </span>
+                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[0.65rem] capitalize text-muted-foreground">
+                    {booking.status}
+                  </span>
+                </p>
+                <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="size-3 text-gold" aria-hidden />
+                    {booking.partySize}{" "}
+                    {booking.partySize === 1 ? "guest" : "guests"}
+                  </span>
+                  <span>
+                    {formatDate(booking.date)} · {formatTime(booking.time)}
+                  </span>
+                  <span className="flex items-center gap-1.5 capitalize">
+                    <Trees className="size-3 text-gold" aria-hidden />
+                    {booking.seating}
+                  </span>
+                  <a
+                    href={`tel:${booking.phone.replace(/[^\d+]/g, "")}`}
+                    className="transition-colors hover:text-foreground"
+                  >
+                    {booking.phone}
+                  </a>
+                </p>
+                {booking.notes ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    “{booking.notes}”
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {RESERVATION_ACTIONS.map((action) =>
+                  booking.status === action.status ? null : (
+                    <button
+                      key={action.status}
+                      type="button"
+                      disabled={busyId === booking._id}
+                      onClick={() => void change(booking._id, action.status)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${action.className}`}
+                    >
+                      {action.label}
+                    </button>
+                  ),
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

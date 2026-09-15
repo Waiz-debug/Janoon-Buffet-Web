@@ -1,7 +1,6 @@
-import { api } from "@/convex/_generated/api";
+import { usePromotions } from "@/hooks/use-live-db";
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock, Flame, Megaphone, X } from "lucide-react";
-import { useQuery } from "convex/react";
+import { Clock, Flame, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const DISMISSED_PREFIX = "tribe-of-taste:promo-dismissed:";
@@ -78,11 +77,11 @@ function PromoCountdown({ expiresAt }: { expiresAt?: number }) {
  * Live promotional banners at the top of the public site. Each active
  * promotion from the admin portal appears as its own dismissible strip.
  * Supports banner images, expiry dates, and live countdown timers.
- * Auto-removal of expired promotions is handled server-side in the
- * `promotions.active` query.
+ * Auto-removal of expired promotions is handled in the data layer: the
+ * `usePromotions(true)` feed never returns an expired banner.
  */
 export function PromoBanner() {
-  const activePromos = useQuery(api.promotions.active);
+  const activePromos = usePromotions(true);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {

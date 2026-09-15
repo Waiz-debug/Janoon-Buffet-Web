@@ -1,6 +1,5 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
-import { RequireAuth } from "@/components/RequireAuth";
 import { RequirePin } from "@/components/RequirePin";
 import { CartDrawer } from "@/components/tribe/CartDrawer";
 import { CartProvider } from "@/hooks/use-cart";
@@ -168,14 +167,14 @@ createRoot(document.getElementById("root")!).render(
               />
               <Route
                 path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
+                element={<AuthPage redirectAfterAuth="/restaurant" />}
               />
               <Route
                 path="/dashboard"
                 element={
-                  <RequireAuth>
+                  <RequirePin role="staff">
                     <Dashboard />
-                  </RequireAuth>
+                  </RequirePin>
                 }
               />
               <Route

@@ -1,20 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/convex/_generated/api";
+import { useSiteMedia } from "@/hooks/use-live-db";
 import { useImageUpload } from "@/hooks/use-image-upload";
-import { useMutation, useQuery } from "convex/react";
+import { clearSiteMedia, setSiteMedia } from "@/lib/db";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-
-type MediaRow = {
-  _id: string;
-  slot: string;
-  caption?: string;
-  url?: string;
-  imageStorageId?: string;
-};
 
 const GALLERY_SLOTS = [
   "gallery-1",
@@ -26,37 +18,23 @@ const GALLERY_SLOTS = [
 ] as const;
 
 export function PhotoManager() {
-  const mediaRows = (useQuery(api.menu.listSiteMedia) ?? []) as MediaRow[];
-  const setSiteMedia = useMutation(api.menu.setSiteMedia);
-  const clearSiteMedia = useMutation(api.menu.clearSiteMedia);
-  const { isUploading, upload } = useImageUpload();
+  const mediaRows = useSiteMedia() ?? [];
+  const { isUploading, upload } = useImageUpload("gallery");
 
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [busySlot, setBusySlot] = useState<string | null>(null);
 
-  const bySlot = new Map<string, MediaRow>();
+  const bySlot = new Map<string, (typeof mediaRows)[number]>();
   for (const row of mediaRows) bySlot.set(row.slot, row);
 
   const publish = async (
     slot: string,
-    result: {
-      storageId: string;
-      name: string;
-      mimeType: string;
-      bytes: number;
-    },
+    result: { storageId: string },
     caption?: string,
   ) => {
     setBusySlot(slot);
     try {
-      await setSiteMedia({
-        slot,
-        storageId: result.storageId as never,
-        originalName: result.name,
-        mimeType: result.mimeType,
-        bytes: result.bytes,
-        caption,
-      });
+      await setSiteMedia(slot, result.storageId, caption);
       toast.success("Photo published — live on the site");
     } catch (error) {
       toast.error(
@@ -70,7 +48,7 @@ export function PhotoManager() {
   const clearSlot = async (slot: string) => {
     setBusySlot(slot);
     try {
-      await clearSiteMedia({ slot });
+      await clearSiteMedia(slot);
       toast.success("Slot cleared — the themed default is back");
     } catch (error) {
       toast.error(

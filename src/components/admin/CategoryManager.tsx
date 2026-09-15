@@ -4,8 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
-import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
+import { deleteCategory, upsertCategory } from "@/lib/db";
 import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -36,9 +35,6 @@ export function CategoryManager({
 }: {
   categories: CategoryOption[];
 }) {
-  const upsertCategory = useMutation(api.menu.upsertCategory);
-  const deleteCategory = useMutation(api.menu.deleteCategory);
-
   const [editing, setEditing] = useState<Draft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -113,7 +109,7 @@ export function CategoryManager({
     }
     setDeletingId(category.id);
     try {
-      await deleteCategory({ id: category.id });
+      await deleteCategory(category.id);
       toast.success(`${category.name} deleted`);
     } catch (error) {
       toast.error(

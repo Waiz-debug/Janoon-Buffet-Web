@@ -2,10 +2,8 @@ import {
   ReservationStatusBadge,
   RESERVATION_STATUS_LABELS,
 } from "@/components/tribe/ReservationStatusBadge";
-import type { Doc } from "@/convex/_generated/dataModel";
-import { api } from "@/convex/_generated/api";
-import type { ReservationStatus } from "@/convex/schema";
-import { useAuth } from "@/hooks/use-auth";
+import { useReservations } from "@/hooks/use-live-db";
+import { setReservationStatus, type Reservation, type ReservationStatus } from "@/lib/db";
 import {
   RESTAURANT,
   formatDate,
@@ -14,13 +12,11 @@ import {
   todayKey,
 } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
 import {
   CalendarDays,
   CheckCircle2,
   Flame,
   Loader2,
-  LogOut,
   Phone,
   Search,
   Users,
@@ -29,9 +25,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 
-type Reservation = Doc<"reservations">;
 type Scope = "upcoming" | "today" | "all";
 
 type StatusFilter = ReservationStatus | "active" | "all";
@@ -86,11 +81,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-  const reservations = useQuery(api.reservations.list);
-  const stats = useQuery(api.reservations.stats);
-  const updateStatus = useMutation(api.reservations.updateStatus);
+  const reservations = useReservations();
 
   const [scope, setScope] = useState<Scope>("upcoming");
   const [filter, setFilter] = useState<StatusFilter>("active");
@@ -98,6 +89,22 @@ export default function Dashboard() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const today = todayKey();
+
+  /** Live counters derived from the same feed the list renders. */
+  const stats = useMemo(() => {
+    const all = reservations ?? [];
+    const todays = all.filter((booking) => booking.date === today);
+    return {
+      todayBookings: todays.length,
+      todayGuests: todays.reduce((sum, booking) => sum + booking.partySize, 0),
+      pending: all.filter((booking) => booking.status === "pending").length,
+      upcoming: all.filter(
+        (booking) =>
+          booking.date >= today &&
+          (booking.status === "pending" || booking.status === "confirmed"),
+      ).length,
+    };
+  }, [reservations, today]);
 
   const filtered = useMemo(() => {
     if (!reservations) return [];
@@ -136,7 +143,7 @@ export default function Dashboard() {
   const handleStatus = async (reservation: Reservation, status: ReservationStatus) => {
     setBusyId(reservation._id);
     try {
-      await updateStatus({ id: reservation._id, status });
+      await setReservationStatus(reservation._id, status);
       toast.success(
         `${reservation.name} marked ${RESERVATION_STATUS_LABELS[status].toLowerCase()}`,
         {
@@ -149,11 +156,6 @@ export default function Dashboard() {
     } finally {
       setBusyId(null);
     }
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
   };
 
   return (
@@ -180,14 +182,12 @@ export default function Dashboard() {
             >
               View website
             </Link>
-            <button
-              type="button"
-              onClick={handleSignOut}
+            <Link
+              to="/staff"
               className="flex items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
             >
-              <LogOut className="size-3.5" aria-hidden />
-              Sign out
-            </button>
+              Staff portal
+            </Link>
           </div>
         </div>
       </header>
@@ -198,8 +198,8 @@ export default function Dashboard() {
             Table reservations
           </h1>
           <p className="text-sm text-muted-foreground">
-            {user?.name ? `${user.name}, ` : ""}every booking from the website
-            arrives here the moment a guest submits it, with no refresh required.
+            Every booking from the website arrives here the moment a guest
+            submits it, with no refresh required.
           </p>
         </section>
 
