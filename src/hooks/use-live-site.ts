@@ -1,14 +1,18 @@
 import {
+  usePublicAddOns,
   usePublicMenu,
   useSiteContent,
   useSiteMedia,
 } from "@/hooks/use-live-db";
 import {
+  ADDONS as STATIC_ADDONS,
+  ADDON_GROUPS,
   DISHES as STATIC_DISHES,
   MENU_CATEGORIES as STATIC_CATEGORIES,
   SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
   deliveryUnitPrice,
+  type AddOn,
   type CategoryId,
   type Dish,
   type MenuCategory,
@@ -34,6 +38,15 @@ export type LiveDish = Dish & {
 };
 
 export type LiveMedia = Record<string, { url: string; caption?: string }>;
+
+/** A traditional add-on as served to the UI — the live row may carry an
+ *  admin-uploaded photo that the built-in list does not have. */
+export type LiveAddOn = AddOn & {
+  image?: string;
+  imageStorageId?: string;
+  demo?: boolean;
+  active?: boolean;
+};
 
 /** One tile of the gallery strip, in render order. */
 export type LiveGalleryItem = {
@@ -91,6 +104,7 @@ export function useLiveSite() {
   const { categories: liveCategories, dishes: liveDishes } = usePublicMenu();
   const mediaRows = useSiteMedia();
   const contentRows = useSiteContent();
+  const addonRows = usePublicAddOns();
 
   const media = useMemo<LiveMedia>(() => {
     const map: LiveMedia = {};
@@ -187,11 +201,43 @@ export function useLiveSite() {
     );
   }, [data, bySlug]);
 
+  /**
+   * The Traditional Add-ons board, ordered by category then by the admin's sort
+   * order. Before the add-on table has been seeded the built-in list — which
+   * already includes the cold drinks — stands in.
+   */
+  const addons = useMemo<LiveAddOn[]>(() => {
+    if (!addonRows || addonRows.length === 0) return STATIC_ADDONS;
+    const rank = new Map<string, number>(
+      ADDON_GROUPS.map((group, index) => [group.id, index]),
+    );
+
+    return [...addonRows]
+      .sort((a, b) => {
+        const byGroup =
+          (rank.get(a.category) ?? 0) - (rank.get(b.category) ?? 0);
+        return byGroup !== 0 ? byGroup : a.sortOrder - b.sortOrder;
+      })
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        urdu: row.urdu ?? "",
+        price: row.price,
+        group: row.category,
+        chilled: row.chilled,
+        image: row.image,
+        imageStorageId: row.imageStorageId,
+        active: row.active,
+        demo: row.demo,
+      }));
+  }, [addonRows]);
+
   return {
     ...data,
     media,
     heroImage: media["hero"]?.url,
     mediaOr,
+    addons,
     content,
     gallery,
     signatures,

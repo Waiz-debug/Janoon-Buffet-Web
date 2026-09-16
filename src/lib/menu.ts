@@ -435,14 +435,35 @@ export function deliveryUnitPrice(slug: string): number {
   return DELIVERY_PRICES[slug] ?? 600;
 }
 
-/** Add-ons that accompany any main dish order (sides, bread, salads). */
+/* ------------------------------------------------------------------ */
+/* Traditional add-ons                                                 */
+/*                                                                     */
+/* These are the extras a guest adds alongside a main dish — naan from  */
+/* the tandoor, raita and salad, lassi, and cold drinks. The catalogue  */
+/* lives in the `menu_addons` Supabase table and is fully editable from  */
+/* the admin panel; the list below is the fallback shown before the      */
+/* table has been seeded, plus the four category headings.               */
+/* ------------------------------------------------------------------ */
+
+/** The four categories the add-on board renders, in display order. */
+export const ADDON_GROUPS = [
+  { id: "bread", label: "Breads & Naan", urdu: "روٹی و نان", icon: "🫓" },
+  { id: "side", label: "Sides & Salads", urdu: "سالن و سلاد", icon: "🥗" },
+  { id: "drink", label: "Drinks & Lassi", urdu: "مشروبات و لسی", icon: "🥤" },
+  { id: "cold", label: "Cold Drinks", urdu: "کولڈ ڈرنک", icon: "🧊" },
+] as const;
+
+export type AddOnGroupId = (typeof ADDON_GROUPS)[number]["id"];
+
+/** Add-ons that accompany any main dish order. */
 export type AddOn = {
   id: string;
   name: string;
   urdu: string;
   price: number;
-  /** Category hint for grouping in the add-on picker. */
-  group: "bread" | "side" | "drink";
+  group: AddOnGroupId;
+  /** Chilled, so the board can nudge guests to add one. */
+  chilled?: boolean;
 };
 
 export const ADDONS: AddOn[] = [
@@ -452,8 +473,12 @@ export const ADDONS: AddOn[] = [
   { id: "raita", name: "Raita", urdu: "رائتہ", price: 50, group: "side" },
   { id: "green-salad", name: "Green Salad", urdu: "سلاد", price: 60, group: "side" },
   { id: "pickles", name: "Mixed Pickles", urdu: "اچار", price: 40, group: "side" },
-  { id: "mint-lassi", name: "Mint Lassi", urdu: "لسی", price: 120, group: "drink" },
+  { id: "mint-lassi", name: "Mint Lassi", urdu: "پودینہ لسی", price: 120, group: "drink" },
   { id: "kashmiri-chai", name: "Kashmiri Chai", urdu: "کشمیری چائے", price: 150, group: "drink" },
+  { id: "cola", name: "Cola", urdu: "کولا", price: 100, group: "cold", chilled: true },
+  { id: "sprite", name: "Sprite", urdu: "اسپرائٹ", price: 100, group: "cold", chilled: true },
+  { id: "fanta", name: "Fanta", urdu: "فانٹا", price: 100, group: "cold", chilled: true },
+  { id: "water-bottle", name: "Mineral Water", urdu: "منرل واٹر", price: 60, group: "cold", chilled: true },
 ];
 
 /** Slugs for dishes that support weight/portion-based pricing. */

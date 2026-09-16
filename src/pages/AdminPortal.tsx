@@ -1,3 +1,4 @@
+import { AddOnManager } from "@/components/admin/AddOnManager";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
 import { ExperienceManager } from "@/components/admin/ExperienceManager";
@@ -8,9 +9,10 @@ import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAdminMenu } from "@/hooks/use-live-db";
+import { useAdminAddOns, useAdminMenu } from "@/hooks/use-live-db";
 import {
   ensureSignatureDishes,
+  seedAddOns,
   seedDemoGallery,
   seedDemoPromotion,
   seedMenuCatalog,
@@ -21,6 +23,7 @@ import { toast } from "sonner";
 
 export default function AdminPortal() {
   const { categories, dishes, loaded, isEmpty } = useAdminMenu();
+  const addons = useAdminAddOns() ?? [];
   const seeding = useRef(false);
 
   // First run against a fresh Supabase project: copy the built-in catalogue
@@ -35,6 +38,10 @@ export default function AdminPortal() {
         if (isEmpty) {
           await seedMenuCatalog();
           toast.success("Menu catalogue loaded");
+        }
+        const newAddOns = await seedAddOns();
+        if (newAddOns > 0) {
+          toast.success(`Add-ons board loaded — ${newAddOns} items`);
         }
         const restored = await ensureSignatureDishes();
         if (restored > 0) {
@@ -95,6 +102,7 @@ export default function AdminPortal() {
         <TabsList className="mb-6 flex-wrap">
           <TabsTrigger value="dishes">Dishes &amp; prices</TabsTrigger>
           <TabsTrigger value="counters">Counters</TabsTrigger>
+          <TabsTrigger value="addons">Add-ons</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="promos">Promotions</TabsTrigger>
           <TabsTrigger value="records">Records</TabsTrigger>
@@ -105,6 +113,10 @@ export default function AdminPortal() {
             dishes={dishes}
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           />
+        </TabsContent>
+
+        <TabsContent value="addons">
+          <AddOnManager addons={addons} />
         </TabsContent>
 
         <TabsContent value="counters">

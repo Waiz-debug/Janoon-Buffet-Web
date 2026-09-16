@@ -1,9 +1,11 @@
 import {
+  fetchAddOns,
   fetchCategories,
   fetchDeliveryOrders,
   fetchDishes,
   fetchPreorders,
   fetchPromotions,
+  fetchPublicAddOns,
   fetchPublicCategories,
   fetchPublicDishes,
   fetchReservation,
@@ -19,6 +21,7 @@ import {
   type Reservation,
   type SiteMediaRow,
   type SiteContentRow,
+  type AddOnRow,
 } from "@/lib/db";
 import { TABLES, supabase } from "@/lib/supabase";
 import { useEffect, useRef, useState } from "react";
@@ -118,6 +121,16 @@ export function usePublicMenu() {
 
 export function useSiteMedia(): SiteMediaRow[] | undefined {
   return useLiveTable<SiteMediaRow>(TABLES.siteMedia, fetchSiteMedia);
+}
+
+/** The published add-on board for the public site. */
+export function usePublicAddOns(): AddOnRow[] | undefined {
+  return useLiveTable<AddOnRow>(TABLES.addons, fetchPublicAddOns);
+}
+
+/** Every add-on for the admin panel — hidden rows included. */
+export function useAdminAddOns(): AddOnRow[] | undefined {
+  return useLiveTable<AddOnRow>(TABLES.addons, fetchAddOns);
 }
 
 /** Editable copy set from the admin panel (seating counter, notes). */

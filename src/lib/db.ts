@@ -1,8 +1,11 @@
 import {
+  ADDON_GROUPS,
+  ADDONS,
   DISHES,
   MENU_CATEGORIES,
   SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
+  type AddOnGroupId,
   DELIVERY_FEE,
   FREE_DELIVERY_THRESHOLD,
   deliveryUnitPrice,
@@ -102,6 +105,22 @@ export type SiteMediaRow = {
   imageStorageId?: string;
   /** Still the seeded placeholder rather than a real upload. */
   demo: boolean;
+};
+
+/** One traditional add-on, as the admin panel and the public board see it. */
+export type AddOnRow = {
+  id: string;
+  name: string;
+  urdu?: string;
+  price: number;
+  category: AddOnGroupId;
+  image?: string;
+  imageStorageId?: string;
+  active: boolean;
+  /** Still the seeded placeholder rather than a real upload. */
+  demo: boolean;
+  sortOrder: number;
+  chilled: boolean;
 };
 
 /** One editable line of copy in `site_content`. */
@@ -217,6 +236,19 @@ type SiteMediaDb = {
   url: string | null;
   image_path: string | null;
   demo: boolean | null;
+};
+
+type AddOnDb = {
+  id: string;
+  name: string;
+  urdu: string | null;
+  price: number;
+  category: string;
+  image: string | null;
+  image_path: string | null;
+  active: boolean;
+  demo: boolean | null;
+  sort_order: number;
 };
 
 type SiteContentDb = {
@@ -692,6 +724,164 @@ export async function setSiteContent(
 }
 
 /* ------------------------------------------------------------------ */
+/* Traditional add-ons                                                 */
+/* ------------------------------------------------------------------ */
+
+const ADDON_CATEGORY_IDS = new Set<string>(
+  ADDON_GROUPS.map((group) => group.id),
+);
+
+function toAddOn(row: AddOnDb): AddOnRow {
+  const category = (
+    ADDON_CATEGORY_IDS.has(row.category) ? row.category : "bread"
+  ) as AddOnGroupId;
+  return {
+    id: row.id,
+    name: row.name,
+    urdu: row.urdu ?? undefined,
+    price: row.price,
+    category,
+    image: row.image || mediaUrl(row.image_path) || "",
+    imageStorageId: row.image_path ?? undefined,
+    active: row.active,
+    demo: row.demo ?? false,
+    sortOrder: row.sort_order,
+    chilled: category === "cold",
+  };
+}
+
+/** Every add-on, hidden ones included — the admin board. */
+export async function fetchAddOns(): Promise<AddOnRow[]> {
+  const rows = await selectRows<AddOnDb>(TABLES.addons, (q) =>
+    q.order("sort_order", { ascending: true }),
+  );
+  return rows.map(toAddOn);
+}
+
+/** Only the add-ons published to guests. */
+export async function fetchPublicAddOns(): Promise<AddOnRow[]> {
+  const rows = await selectRows<AddOnDb>(TABLES.addons, (q) =>
+    q.eq("active", true).order("sort_order", { ascending: true }),
+  );
+  return rows.map(toAddOn);
+}
+
+/**
+ * Copy the built-in add-on list into Supabase, including the cold drinks.
+ * Existing rows are left untouched — `ignoreDuplicates` means a re-run never
+ * overwrites a price or photo the team has already changed. Returns how many
+ * new rows were created.
+ */
+export async function seedAddOns(): Promise<number> {
+  const existing = await selectRows<{ id: string }>(
+    TABLES.addons,
+    undefined,
+    "id",
+  );
+  const taken = new Set(existing.map((row) => row.id));
+  const now = Date.now();
+
+  const rows = ADDONS.filter((addon) => !taken.has(addon.id)).map(
+    (addon, index) => ({
+      id: addon.id,
+      name: addon.name,
+      urdu: addon.urdu,
+      price: addon.price,
+      category: addon.group,
+      active: true,
+      demo: true,
+      sort_order: index + 1,
+      updated_at: now,
+    }),
+  );
+  if (rows.length === 0) return 0;
+
+  const { error } = await supabase.from(TABLES.addons).insert(rows);
+  fail(error, "Could not seed the add-ons.");
+  return rows.length;
+}
+
+export type AddOnInput = {
+  id?: string;
+  name: string;
+  urdu?: string;
+  price: number;
+  category: AddOnGroupId;
+  active: boolean;
+  sortOrder: number;
+};
+
+function addOnSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export async function upsertAddOn(
+  input: AddOnInput,
+): Promise<{ id: string; updated: boolean }> {
+  const name = input.name.trim();
+  if (name.length < 2) throw new Error("Give the add-on a name first.");
+  if (!Number.isFinite(input.price) || input.price < 0) {
+    throw new Error("Enter a price in rupees.");
+  }
+
+  const id = input.id || `${addOnSlug(name)}-${Math.random().toString(36).slice(2, 6)}`;
+  const existing = input.id
+    ? await selectRows<{ id: string }>(
+        TABLES.addons,
+        (q) => q.eq("id", input.id as string).limit(1),
+        "id",
+      )
+    : [];
+
+  const { error } = await supabase.from(TABLES.addons).upsert(
+    {
+      id,
+      name,
+      urdu: input.urdu?.trim() || null,
+      price: Math.max(0, Math.round(input.price)),
+      category: input.category,
+      active: input.active,
+      sort_order: input.sortOrder,
+      updated_at: Date.now(),
+    },
+    { onConflict: "id" },
+  );
+  fail(error, "Could not save the add-on.");
+  return { id, updated: existing.length > 0 };
+}
+
+export async function deleteAddOn(id: string): Promise<void> {
+  const { error } = await supabase.from(TABLES.addons).delete().eq("id", id);
+  fail(error, "Could not delete the add-on.");
+}
+
+export async function setAddOnImage(
+  id: string,
+  imagePath: string,
+): Promise<string> {
+  const { error } = await supabase
+    .from(TABLES.addons)
+    // Clearing `image` matters: an external demo URL left in place would shadow
+    // the freshly uploaded object when the row is read back.
+    .update({ image_path: imagePath, image: null, demo: false, updated_at: Date.now() })
+    .eq("id", id);
+  fail(error, "Could not attach the photo.");
+  return mediaUrl(imagePath) ?? "";
+}
+
+export async function removeAddOnImage(id: string): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.addons)
+    .update({ image_path: null, image: null, demo: false, updated_at: Date.now() })
+    .eq("id", id);
+  fail(error, "Could not remove the photo.");
+}
+
+/* ------------------------------------------------------------------ */
 /* Delivery orders                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -772,15 +962,32 @@ export async function placeDeliveryOrder(input: PlaceOrderInput): Promise<{
   }
   if (!area) throw new Error("Please choose your area in Lahore.");
 
-  const pricedDishes = await selectRows<{
-    slug: string;
-    price_per_plate: number | null;
-  }>(TABLES.dishes, undefined, "slug, price_per_plate");
-  const managed = new Map(
-    pricedDishes
-      .filter((dish) => (dish.price_per_plate ?? 0) > 0)
-      .map((dish) => [dish.slug, dish.price_per_plate as number]),
-  );
+  // Prices are read back from the database rather than trusted from the
+  // browser, and the add-on table counts too — a naan, a raita or a cold drink
+  // has no row in `menu_dishes`, so without this lookup every extra would be
+  // billed at the default per-plate price instead of its own.
+  const [pricedDishes, pricedAddOns] = await Promise.all([
+    selectRows<{ slug: string; price_per_plate: number | null }>(
+      TABLES.dishes,
+      undefined,
+      "slug, price_per_plate",
+    ),
+    selectRows<{ id: string; price: number | null }>(
+      TABLES.addons,
+      undefined,
+      "id, price",
+    ),
+  ]);
+
+  const managed = new Map<string, number>();
+  for (const dish of pricedDishes) {
+    if ((dish.price_per_plate ?? 0) > 0) {
+      managed.set(dish.slug, dish.price_per_plate as number);
+    }
+  }
+  for (const addon of pricedAddOns) {
+    if ((addon.price ?? 0) > 0) managed.set(addon.id, addon.price as number);
+  }
 
   const lines: DeliveryOrderLine[] = [];
   for (const item of input.items) {
@@ -1153,24 +1360,34 @@ export async function deletePromotion(id: string): Promise<void> {
 }
 
 /**
- * Seed one demo promotional banner so a fresh project has something live on
- * the public site. Skips silently when a promotion already exists. Expires in
- * seven days, then the `active` filter hides it automatically.
+ * Keep one sample promotional banner live so the public site always has
+ * something to broadcast out of the box. Expires seven days out, after which
+ * the `active` filter removes it automatically.
+ *
+ * It re-seeds when nothing is currently showing and the only rows on record
+ * are demo banners of its own — so a lapsed sample is replaced, while a
+ * promotion the team wrote (even one they have switched off or let expire) is
+ * never overwritten or joined by a demo.
  */
 export async function seedDemoPromotion(): Promise<boolean> {
-  const existing = await selectRows<{ id: string }>(
-    TABLES.promotions,
-    (q) => q.limit(1),
-    "id",
-  );
-  if (existing.length > 0) return false;
+  const existing = await selectRows<{
+    visible: boolean;
+    demo: boolean | null;
+    expires_at: number | string | null;
+  }>(TABLES.promotions, undefined, "visible, demo, expires_at");
 
   const now = Date.now();
+  const live = existing.some(
+    (row) => row.visible && (ms(row.expires_at) ?? now + 1) > now,
+  );
+  const onlyOurDemos = existing.every((row) => row.demo ?? false);
+  if (live || !onlyOurDemos) return false;
   const { error } = await supabase.from(TABLES.promotions).insert({
     title: "Weekend Live BBQ Nights",
     headline: "Live BBQ Nights — family of four dines for Rs 7,500",
     body: "Valid Friday to Sunday, 7 PM onwards. Dine-in only.",
     visible: true,
+    demo: true,
     expires_at: now + 7 * 24 * 60 * 60 * 1000,
     created_at: now,
     updated_at: now,

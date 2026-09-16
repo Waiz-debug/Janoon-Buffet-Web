@@ -65,6 +65,37 @@ create table if not exists public.site_content (
   updated_at  bigint not null default 0
 );
 
+-- -------------------------------------------------------------- add-ons ----
+-- The "Traditional Add-ons" board on the public site: breads and naan, sides
+-- and salads, drinks and lassi, and cold drinks. Fully admin-managed.
+--
+-- `category` is one of the four groups the public board renders, in this order:
+--   bread  → Breads & Naan
+--   side   → Sides & Salads
+--   drink  → Drinks & Lassi
+--   cold   → Cold Drinks
+-- The labels themselves live in ADDON_GROUPS (src/lib/menu.ts) so the admin
+-- form and the public board can never disagree about them.
+create table if not exists public.menu_addons (
+  id          text primary key,
+  name        text not null,
+  urdu        text,
+  price       integer not null default 0,
+  category    text not null default 'bread'
+              check (category in ('bread', 'side', 'drink', 'cold')),
+  -- `image` holds an external URL; `image_path` holds an uploaded object inside
+  -- the tribe-media bucket. An upload always clears the other one.
+  image       text,
+  image_path  text,
+  demo        boolean not null default false,
+  active      boolean not null default true,
+  sort_order  integer not null default 0,
+  updated_at  bigint not null default 0
+);
+
+create index if not exists menu_addons_category_idx on public.menu_addons (category);
+create index if not exists menu_addons_sort_idx     on public.menu_addons (sort_order);
+
 -- -------------------------------------------------------------- orders ------
 create table if not exists public.delivery_orders (
   id            uuid primary key default gen_random_uuid(),
@@ -117,6 +148,9 @@ create table if not exists public.promotions (
   image_url   text,
   image_path  text,
   expires_at  bigint,
+  -- True for the sample banner the app seeds, so a lapsed demo can be
+  -- refreshed without ever touching a promotion the team wrote themselves.
+  demo        boolean not null default false,
   created_at  bigint not null,
   updated_at  bigint not null
 );
@@ -156,7 +190,7 @@ declare
   tbl text;
 begin
   foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'site_media', 'site_content',
+    'menu_categories', 'menu_dishes', 'menu_addons', 'site_media', 'site_content',
     'delivery_orders', 'reservations', 'promotions', 'preorders'
   ]
   loop
@@ -177,6 +211,7 @@ end $$;
 alter table public.site_content      enable row level security;
 alter table public.menu_categories  enable row level security;
 alter table public.menu_dishes      enable row level security;
+alter table public.menu_addons      enable row level security;
 alter table public.site_media       enable row level security;
 alter table public.delivery_orders  enable row level security;
 alter table public.reservations     enable row level security;
@@ -188,7 +223,7 @@ declare
   tbl text;
 begin
   foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'site_media', 'site_content',
+    'menu_categories', 'menu_dishes', 'menu_addons', 'site_media', 'site_content',
     'delivery_orders', 'reservations', 'promotions', 'preorders'
   ]
   loop
@@ -232,6 +267,7 @@ create policy "tribe media delete" on storage.objects
 -- ============================================================================
 alter table public.site_media  add column if not exists demo boolean not null default false;
 alter table public.menu_dishes add column if not exists demo boolean not null default false;
+alter table public.promotions  add column if not exists demo boolean not null default false;
 
 -- ============================================================================
 --  Demo promotional banner
@@ -240,16 +276,17 @@ alter table public.menu_dishes add column if not exists demo boolean not null de
 --  Expires 7 days from the moment this script runs, after which the `active`
 --  query filter hides it from the public site automatically.
 -- ============================================================================
-insert into public.promotions (title, headline, body, visible, expires_at, created_at, updated_at)
+insert into public.promotions (title, headline, body, visible, demo, expires_at, created_at, updated_at)
 select
   'Weekend Live BBQ Nights',
   'Live BBQ Nights — family of four dines for Rs 7,500',
   'Valid Friday to Sunday, 7 PM onwards. Dine-in only.',
   true,
+  true,
   (extract(epoch from now()) * 1000)::bigint + (7 * 24 * 60 * 60 * 1000),
   (extract(epoch from now()) * 1000)::bigint,
   (extract(epoch from now()) * 1000)::bigint
-where not exists (select 1 from public.promotions);
+where not exists (select 1 from public.promotions where not demo);
 
 -- ============================================================================
 --  Demo gallery imagery
@@ -444,8 +481,49 @@ select v.key, v.value, (extract(epoch from now()) * 1000)::bigint
 from (values
   ('experience-seats',       '4–20'),
   ('experience-seats-label', 'seats per family table')
-) as v(key, value)
-where not exists (select 1 from public.site_content c where c.key = v.key);
+) as v(key, value)  where not exists (select 1 from public.site_content c where c.key = v.key);
+
+-- ============================================================================
+--  Traditional add-ons — seed
+--  The twelve items that ship with the site, including the four cold drinks.
+--  Idempotent: `on conflict do nothing`, so re-running never overwrites a price
+--  or photo the team has already changed. The admin panel runs the same seed
+--  from `seedAddOns()` in src/lib/db.ts; either path is enough.
+-- ============================================================================
+insert into public.menu_addons
+  (id, name, urdu, price, category, active, demo, sort_order, updated_at)
+values
+  ('afghani-naan',   'Afghani Naan',   'افغانی نان',    80, 'bread', true, true, 1, 0),
+  ('tandoori-naan',  'Tandoori Naan',  'تندوری نان',    60, 'bread', true, true, 2, 0),
+  ('sheermal',       'Sheermal',       'شیرمال',        70, 'bread', true, true, 3, 0),
+  ('raita',          'Raita',          'رائتہ',         50, 'side',  true, true, 1, 0),
+  ('green-salad',    'Green Salad',    'سلاد',          60, 'side',  true, true, 2, 0),
+  ('pickles',        'Mixed Pickles',  'اچار',          40, 'side',  true, true, 3, 0),
+  ('mint-lassi',     'Mint Lassi',     'پودینہ لسی',   120, 'drink', true, true, 1, 0),
+  ('kashmiri-chai',  'Kashmiri Chai',  'کشمیری چائے',  150, 'drink', true, true, 2, 0),
+  ('cola',           'Cola',           'کولا',         100, 'cold',  true, true, 1, 0),
+  ('sprite',         'Sprite',         'اسپرائٹ',      100, 'cold',  true, true, 2, 0),
+  ('fanta',          'Fanta',          'فانٹا',        100, 'cold',  true, true, 3, 0),
+  ('water-bottle',   'Mineral Water',  'منرل واٹر',     60, 'cold',  true, true, 4, 0)
+on conflict (id) do nothing;
+
+--  The public board: only the live items, grouped and ordered.
+--    select category, name, urdu, price, image, image_path
+--      from public.menu_addons
+--     where active
+--     order by category, sort_order;
+--
+--  The admin board: everything, hidden items included.
+--    select * from public.menu_addons order by category, sort_order;
+--
+--  Reprice one cold drink:
+--    update public.menu_addons set price = 120, updated_at = 0
+--     where id = 'cola';
+--
+--  Which add-ons are still on a demo photo?
+--    select id, name, category, demo,
+--           case when image_path is null then 'demo url' else 'uploaded' end as source
+--      from public.menu_addons order by category, sort_order;
 
 --  Read back everything the owner has customised:
 --    select key, value from public.site_content order by key;

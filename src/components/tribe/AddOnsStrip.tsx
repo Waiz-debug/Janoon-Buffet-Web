@@ -1,42 +1,30 @@
 import { useCart } from "@/hooks/use-cart";
-import { ADDONS, formatRupees } from "@/lib/menu";
+import { useLiveSite, type LiveAddOn } from "@/hooks/use-live-site";
+import { ADDON_GROUPS, formatRupees } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Snowflake } from "lucide-react";
 import { useState } from "react";
 
-const GROUP_LABELS: Record<string, string> = {
-  bread: "Breads & Naan",
-  side: "Sides & Salads",
-  drink: "Drinks & Lassi",
-};
-
-const GROUP_ICONS: Record<string, string> = {
-  bread: "🫓",
-  side: "🥗",
-  drink: "🥤",
-};
-
 /**
- * Horizontal strip of traditional add-ons (Afghani Naan, Raita, Salad, etc.)
- * displayed between the menu and the pre-order section. Each item is a quick
- * "add to order" pill — the guest keeps browsing after tapping.
+ * The Traditional Add-ons board: naan and breads, sides and salads, drinks and
+ * lassi, and cold drinks. Every item, price, Urdu name and photo comes from the
+ * `menu_addons` table, so whatever the admin saves here goes live immediately.
+ * Each item is a quick "add to order" pill — the guest keeps browsing after
+ * tapping.
  */
 export function AddOnsStrip() {
   const { add } = useCart();
+  const { addons } = useLiveSite();
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
-  const handleAdd = (addon: (typeof ADDONS)[number]) => {
+  const handleAdd = (addon: LiveAddOn) => {
     add({
       slug: addon.id,
       name: addon.name,
       unitPrice: addon.price,
     });
-    setAddedIds((prev) => {
-      const next = new Set(prev);
-      next.add(addon.id);
-      return next;
-    });
+    setAddedIds((prev) => new Set(prev).add(addon.id));
     // Reset the checkmark after 2s so they can re-add
     setTimeout(() => {
       setAddedIds((prev) => {
@@ -47,10 +35,10 @@ export function AddOnsStrip() {
     }, 2000);
   };
 
-  const groups = ["bread", "side", "drink"] as const;
+  if (addons.length === 0) return null;
 
   return (
-    <section className="py-12 sm:py-16">
+    <section id="addons" className="scroll-mt-24 py-12 sm:py-16">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <div className="text-center">
           <p className="text-[0.7rem] tracking-[0.2em] text-gold/70 uppercase">
@@ -59,21 +47,25 @@ export function AddOnsStrip() {
           <h3 className="mt-2 font-display text-2xl font-semibold">
             Traditional Add-ons
           </h3>
-          <p className="mt-2 max-w-lg mx-auto text-sm text-muted-foreground">
+          <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
             Round out any delivery with fresh naan from the tandoor, house raita,
-            green salad, or a cold lassi — add them before checkout.
+            green salad, a mint lassi, or something cold to drink — add them
+            before checkout.
           </p>
         </div>
 
         <div className="mt-8 flex flex-col gap-8">
-          {groups.map((group) => {
-            const items = ADDONS.filter((a) => a.group === group);
+          {ADDON_GROUPS.map((group) => {
+            const items = addons.filter((addon) => addon.group === group.id);
             if (items.length === 0) return null;
             return (
-              <div key={group}>
-                <p className="mb-3 flex items-center gap-2 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
-                  <span aria-hidden>{GROUP_ICONS[group]}</span>
-                  {GROUP_LABELS[group]}
+              <div key={group.id}>
+                <p className="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                  <span aria-hidden>{group.icon}</span>
+                  {group.label}
+                  <span className="text-[0.7rem] tracking-normal text-gold/60 normal-case">
+                    {group.urdu}
+                  </span>
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {items.map((addon, index) => {
@@ -88,14 +80,29 @@ export function AddOnsStrip() {
                         transition={{ duration: 0.3, delay: index * 0.04 }}
                         onClick={() => handleAdd(addon)}
                         className={cn(
-                          "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-all",
+                          "inline-flex items-center gap-2 rounded-xl border py-2.5 pr-4 text-sm transition-all",
+                          addon.image ? "pl-2" : "pl-4",
                           justAdded
                             ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                             : "border-border/70 bg-card/40 text-foreground hover:border-gold/30 hover:bg-gold/[0.06]",
                         )}
                       >
-                        {justAdded ? (
+                        {addon.image ? (
+                          <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-background/60">
+                            <img
+                              src={addon.image}
+                              alt=""
+                              className="size-full object-cover"
+                              loading="lazy"
+                            />
+                          </span>
+                        ) : justAdded ? (
                           <Check className="size-3.5" aria-hidden />
+                        ) : addon.chilled ? (
+                          <Snowflake
+                            className="size-3.5 text-gold/60"
+                            aria-hidden
+                          />
                         ) : (
                           <Plus className="size-3.5" aria-hidden />
                         )}
@@ -103,9 +110,16 @@ export function AddOnsStrip() {
                         <span className="text-xs text-muted-foreground">
                           {formatRupees(addon.price)}
                         </span>
-                        <span className="hidden text-[0.65rem] text-gold/50 sm:inline">
+                        <span
+                          className="hidden text-[0.65rem] text-gold/50 sm:inline"
+                          dir="rtl"
+                          lang="ur"
+                        >
                           {addon.urdu}
                         </span>
+                        {justAdded ? (
+                          <Check className="size-3.5" aria-hidden />
+                        ) : null}
                       </motion.button>
                     );
                   })}

@@ -32,6 +32,7 @@ export const MEDIA_BUCKET = "tribe-media";
 export const TABLES = {
   categories: "menu_categories",
   dishes: "menu_dishes",
+  addons: "menu_addons",
   siteMedia: "site_media",
   siteContent: "site_content",
   deliveryOrders: "delivery_orders",
