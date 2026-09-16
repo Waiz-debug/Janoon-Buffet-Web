@@ -1,51 +1,13 @@
-import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
-import { useDeliveryOrders } from "@/hooks/use-live-db";
-import {
-  advanceDeliveryStatus,
-  type DeliveryOrder,
-  type DeliveryStatus,
-} from "@/lib/db";
+import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { RESTAURANT } from "@/lib/restaurant";
-import {
-  Bike,
-  CheckCircle2,
-  ClipboardList,
-  Loader2,
-  Phone,
-  Receipt,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { Bike, Phone } from "lucide-react";
+import { useEffect } from "react";
 import { Link } from "react-router";
-import { toast } from "sonner";
 
 export default function Deliveries() {
-  const orders = useDeliveryOrders();
-  const [busyId, setBusyId] = useState<string | null>(null);
-
   useEffect(() => {
     document.title = `Delivery desk · ${RESTAURANT.name}`;
   }, []);
-
-  const setStatus = async (order: DeliveryOrder, status: DeliveryStatus) => {
-    setBusyId(order._id);
-    try {
-      await advanceDeliveryStatus(order._id, status);
-      const label = status === "confirmed" ? "confirmed" : "delivered";
-      toast.success(`${order.reference} → ${label}`);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message.split("\n")[0]
-          : "Could not update that order.";
-      toast.error("Update failed", { description: message });
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const all = orders ?? [];
-  const active = all.filter((order) => order.status !== "delivered");
-  const done = all.filter((order) => order.status === "delivered");
 
   return (
     <div className="min-h-screen bg-background">
@@ -72,75 +34,22 @@ export default function Deliveries() {
       </div>
 
       <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-        {orders === undefined ? (
-          <p className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-            Loading the delivery feed…
+        <div className="mb-6 flex flex-col gap-1.5">
+          <h1 className="font-display text-2xl font-semibold">
+            Online deliveries
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Today&apos;s live orders and the complete searchable delivery
+            history — filter by year, month or an exact date.
           </p>
-        ) : (
-          <>
-            <section>
-              <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-                <ClipboardList className="size-5 text-gold" aria-hidden />
-                Active orders
-                <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs font-medium text-gold">
-                  {active.length}
-                </span>
-              </h2>
-              {active.length === 0 ? (
-                <p className="mt-4 rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-                  No orders in the kitchen right now.
-                </p>
-              ) : (
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {active.map((order) => (
-                    <DeliveryOrderCard
-                      key={order._id}
-                      order={order}
-                      onConfirm={(o) => setStatus(o, "confirmed")}
-                      onDeliver={(o) => setStatus(o, "delivered")}
-                      busy={busyId === order._id}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
+        </div>
 
-            {done.length > 0 ? (
-              <section className="mt-10">
-                <h2 className="flex items-center gap-2 font-display text-xl font-semibold text-muted-foreground">
-                  <Receipt className="size-5" aria-hidden />
-                  Delivered
-                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-xs font-medium">
-                    {done.length}
-                  </span>
-                </h2>
-                <div className="mt-4 grid gap-4 opacity-70 md:grid-cols-2 xl:grid-cols-3">
-                  {done.slice(0, 6).map((order) => (
-                    <DeliveryOrderCard
-                      key={order._id}
-                      order={order}
-                      onConfirm={() => {}}
-                      onDeliver={() => {}}
-                      busy={false}
-                    />
-                  ))}
-                </div>
-                {done.length > 6 ? (
-                  <p className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                    <CheckCircle2 className="size-3.5 text-emerald-400" aria-hidden />
-                    Showing the 6 most recent of {done.length} completed orders.
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
+        <RecordsDesk kinds={["deliveries"]} />
 
-            <p className="mt-10 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
-              <Phone className="size-3.5 text-gold" aria-hidden />
-              Customer questions? Call the floor on {RESTAURANT.phoneDisplay}.
-            </p>
-          </>
-        )}
+        <p className="mt-10 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+          <Phone className="size-3.5 text-gold" aria-hidden />
+          Customer questions? Call the floor on {RESTAURANT.phoneDisplay}.
+        </p>
       </main>
     </div>
   );

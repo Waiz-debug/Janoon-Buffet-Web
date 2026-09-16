@@ -135,6 +135,51 @@ export function formatDate(date: string) {
   return DATE_FORMATTER.format(parsed);
 }
 
+const LONG_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** `"2026-09-12"` → `"12 September 2026"` — date, month and year spelled out
+ *  in full for the history records. */
+export function formatDayLong(date: string) {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return LONG_DATE_FORMATTER.format(parsed);
+}
+
+/** Epoch milliseconds → the local calendar day as `YYYY-MM-DD`. */
+export function dayKeyFromMs(value: number) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  month: "long",
+  year: "numeric",
+});
+
+/** `"2026-09"` → `"September 2026"` for the history month filter. */
+export function formatMonthLabel(month: string) {
+  const parsed = new Date(`${month}-01T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return month;
+  return MONTH_FORMATTER.format(parsed);
+}
+
+/** `"2026-09-12"` → `"September 2026"`; `"2026"` → `"2026"`. */
+export function monthOf(day: string) {
+  return day.slice(0, 7);
+}
+
+/** `"2026-09-12"` → `"2026"`. */
+export function yearOf(day: string) {
+  return day.slice(0, 4);
+}
+
 /** Today in the guest's local timezone as `YYYY-MM-DD` (for date inputs). */
 export function todayKey() {
   const now = new Date();

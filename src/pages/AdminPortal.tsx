@@ -4,10 +4,11 @@ import { PhotoManager } from "@/components/admin/PhotoManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
+import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminMenu } from "@/hooks/use-live-db";
-import { seedMenuCatalog } from "@/lib/db";
+import { seedDemoPromotion, seedMenuCatalog } from "@/lib/db";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -17,14 +18,26 @@ export default function AdminPortal() {
   const seeding = useRef(false);
 
   // First run against an empty Supabase project: copy the built-in catalogue
-  // across so the menu becomes editable here (and live on the public site).
+  // across so the menu becomes editable here (and live on the public site),
+  // then publish a sample promotional banner so the public site has something
+  // to broadcast. Both seeds are idempotent.
   useEffect(() => {
-    if (!isEmpty || seeding.current) return;
+    if (!loaded || seeding.current) return;
     seeding.current = true;
-    void seedMenuCatalog()
-      .then(() => toast.success("Menu catalogue loaded"))
-      .catch(() => undefined);
-  }, [isEmpty]);
+    void (async () => {
+      try {
+        if (isEmpty) {
+          await seedMenuCatalog();
+          toast.success("Menu catalogue loaded");
+        }
+        if (await seedDemoPromotion()) {
+          toast.success("Demo promotion published");
+        }
+      } catch {
+        // The SQL may not be applied yet — the site still renders.
+      }
+    })();
+  }, [loaded, isEmpty]);
 
   if (!loaded) {
     return (
@@ -66,6 +79,7 @@ export default function AdminPortal() {
           <TabsTrigger value="counters">Counters</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="promos">Promotions</TabsTrigger>
+          <TabsTrigger value="records">Records</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dishes">
@@ -99,6 +113,19 @@ export default function AdminPortal() {
 
         <TabsContent value="promos">
           <PromotionsManager />
+        </TabsContent>
+
+        <TabsContent value="records" className="flex flex-col gap-4">
+          <div>
+            <h3 className="font-display text-base font-semibold">
+              Reservations, pre-orders &amp; deliveries
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Today&apos;s incoming records up top, and the complete searchable
+              history below — filter by year, month or an exact date.
+            </p>
+          </div>
+          <RecordsDesk />
         </TabsContent>
       </Tabs>
 

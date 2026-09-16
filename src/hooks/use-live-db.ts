@@ -2,6 +2,7 @@ import {
   fetchCategories,
   fetchDeliveryOrders,
   fetchDishes,
+  fetchPreorders,
   fetchPromotions,
   fetchPublicCategories,
   fetchPublicDishes,
@@ -12,6 +13,7 @@ import {
   type DeliveryOrder,
   type MenuCategoryRow,
   type MenuDishRow,
+  type Preorder,
   type Promotion,
   type Reservation,
   type SiteMediaRow,
@@ -187,6 +189,13 @@ export function useReservationLookup(
   if (!wanted) return null;
   if (!result || result.key !== wanted) return undefined;
   return result.value;
+}
+
+/* --------------------------------------------------------- preorders ----- */
+
+/** Staff & admin desk: every pre-order, newest first, live. */
+export function usePreorders(): Preorder[] | undefined {
+  return useLiveTable<Preorder>(TABLES.preorders, fetchPreorders);
 }
 
 /* -------------------------------------------------------- promotions ----- */

@@ -107,6 +107,30 @@ create table if not exists public.promotions (
 
 create index if not exists promotions_visible_idx on public.promotions (visible);
 
+-- ------------------------------------------------------------ preorders ----
+-- Takeaway / slow-cooked pre-orders (Dumpukht, Sajji, party platters) placed
+-- from the public site. These are the "takeaway orders" that must land on the
+-- staff desk alongside table reservations and online delivery orders.
+create table if not exists public.preorders (
+  id            uuid primary key default gen_random_uuid(),
+  reference     text not null unique,
+  customer_name text not null,
+  phone         text not null,
+  dish          text not null,
+  quantity      integer not null default 1,
+  pickup_date   text not null,          -- YYYY-MM-DD
+  pickup_time   text not null,          -- HH:MM
+  notes         text,
+  status        text not null default 'pending'
+                check (status in ('pending', 'confirmed', 'ready', 'collected', 'cancelled')),
+  created_at    bigint not null,
+  updated_at    bigint
+);
+
+create index if not exists preorders_pickup_idx on public.preorders (pickup_date);
+create index if not exists preorders_status_idx on public.preorders (status);
+create index if not exists preorders_created_idx on public.preorders (created_at desc);
+
 -- ============================================================================
 --  Realtime — the staff portal, the guest tracker and the public banner all
 --  subscribe to these tables, so they must be part of the publication.
@@ -117,7 +141,7 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'site_media',
-    'delivery_orders', 'reservations', 'promotions'
+    'delivery_orders', 'reservations', 'promotions', 'preorders'
   ]
   loop
     begin
@@ -140,6 +164,7 @@ alter table public.site_media       enable row level security;
 alter table public.delivery_orders  enable row level security;
 alter table public.reservations     enable row level security;
 alter table public.promotions       enable row level security;
+alter table public.preorders        enable row level security;
 
 do $$
 declare
@@ -147,7 +172,7 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'site_media',
-    'delivery_orders', 'reservations', 'promotions'
+    'delivery_orders', 'reservations', 'promotions', 'preorders'
   ]
   loop
     execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
@@ -181,3 +206,62 @@ create policy "tribe media update" on storage.objects
 
 create policy "tribe media delete" on storage.objects
   for delete to anon, authenticated using (bucket_id = 'tribe-media');
+
+-- ============================================================================
+--  Demo promotional banner
+--  Seeds one live sample banner so the public site has something to broadcast
+--  out of the box. Idempotent: only inserts when no promotion exists yet.
+--  Expires 7 days from the moment this script runs, after which the `active`
+--  query filter hides it from the public site automatically.
+-- ============================================================================
+insert into public.promotions (title, headline, body, visible, expires_at, created_at, updated_at)
+select
+  'Weekend Live BBQ Nights',
+  'Live BBQ Nights — family of four dines for Rs 7,500',
+  'Valid Friday to Sunday, 7 PM onwards. Dine-in only.',
+  true,
+  (extract(epoch from now()) * 1000)::bigint + (7 * 24 * 60 * 60 * 1000),
+  (extract(epoch from now()) * 1000)::bigint,
+  (extract(epoch from now()) * 1000)::bigint
+where not exists (select 1 from public.promotions);
+
+-- ============================================================================
+--  History views — Today vs History, searchable by year / month / date
+--  These examples show the exact filter shape the portal runs through
+--  PostgREST. `pickup_date`, `date` and the epoch timestamps are all indexed
+--  above, so the range scans stay cheap as history grows.
+-- ============================================================================
+--
+--  Today's reservations:
+--    select * from public.reservations
+--     where date = to_char(now(), 'YYYY-MM-DD')
+--     order by time;
+--
+--  Reservation history for a chosen month (e.g. September 2026):
+--    select * from public.reservations
+--     where date >= '2026-09-01' and date < '2026-10-01'
+--     order by date desc, time desc;
+--
+--  Reservation history for a single day:
+--    select * from public.reservations where date = '2026-09-12';
+--
+--  Pre-orders for today's pickup:
+--    select * from public.preorders
+--     where pickup_date = to_char(now(), 'YYYY-MM-DD')
+--     order by pickup_time;
+--
+--  Delivery orders created in a chosen month (created_at is epoch ms):
+--    select * from public.delivery_orders
+--     where to_timestamp(created_at / 1000.0) >= '2026-09-01'
+--       and to_timestamp(created_at / 1000.0) <  '2026-10-01'
+--     order by created_at desc;
+--
+--  Free-text history search across a phone, name or reference:
+--    select * from public.delivery_orders
+--     where customer_name ilike '%khan%'
+--        or phone ilike '%322%'
+--        or reference ilike '%DLV%';
+--
+--  Distinct years present in the history (for the filter sidebar):
+--    select distinct extract(year from to_timestamp(created_at / 1000.0))
+--      from public.delivery_orders order by 1 desc;

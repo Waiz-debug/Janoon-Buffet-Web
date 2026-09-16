@@ -35,6 +35,7 @@ export const TABLES = {
   siteMedia: "site_media",
   deliveryOrders: "delivery_orders",
   reservations: "reservations",
+  preorders: "preorders",
   promotions: "promotions",
 } as const;
 

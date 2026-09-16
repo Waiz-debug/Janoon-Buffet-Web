@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
-import { RESTAURANT } from "@/lib/restaurant";
+import { createPreorder } from "@/lib/db";
+import { RESTAURANT, dayKeyFromMs } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { CalendarClock, Clock, Flame, Loader2, Phone } from "lucide-react";
@@ -42,7 +43,8 @@ function getSlots() {
   for (let dayOffset = 0; dayOffset < 2; dayOffset++) {
     const date = new Date();
     date.setDate(date.getDate() + dayOffset);
-    const dateStr = date.toISOString().split("T")[0];
+    // Local calendar day — `toISOString()` would roll back a day in PKT.
+    const dateStr = dayKeyFromMs(date.getTime());
     const dayLabel = dayOffset === 0 ? "Today" : "Tomorrow";
     // Evening slots from 5 PM to 10 PM
     for (let h = 17; h <= 22; h++) {
@@ -63,27 +65,44 @@ export function PreOrderSection() {
   const [phone, setPhone] = useState("");
   const [selectedDish, setSelectedDish] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmedRef, setConfirmedRef] = useState<string | null>(null);
 
   const slots = getSlots();
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedDish || !selectedSlot || !name.trim() || !phone.trim()) {
       toast.error("Please fill in all fields and select a dish and time slot.");
       return;
     }
+    // The slot key is `<YYYY-MM-DD>:<HH:MM>` — split on the first colon only.
+    const separator = selectedSlot.indexOf(":");
     setIsSubmitting(true);
-    // Simulate booking — in production this would hit a Convex mutation
-    setTimeout(() => {
-      const dish = PREORDER_DISHES.find((d) => d.name === selectedDish);
-      toast.success("Pre-order request received", {
-        description: `${dish?.name} — our team will call ${phone} to confirm.`,
+    try {
+      const { reference } = await createPreorder({
+        customerName: name,
+        phone,
+        dish: selectedDish,
+        pickupDate: selectedSlot.slice(0, separator),
+        pickupTime: selectedSlot.slice(separator + 1),
+      });
+      setConfirmedRef(reference);
+      toast.success("Pre-order sent to the kitchen", {
+        description: `${selectedDish} · reference ${reference}. Our team will call ${phone} to confirm.`,
       });
       setSelectedDish(null);
       setSelectedSlot(null);
       setName("");
       setPhone("");
+    } catch (error) {
+      toast.error("Could not place the pre-order", {
+        description:
+          error instanceof Error
+            ? error.message.split("\n")[0]
+            : "Please try again.",
+      });
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -199,10 +218,21 @@ export function PreOrderSection() {
               </div>
             </div>
 
+            {confirmedRef ? (
+              <p
+                role="status"
+                className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-center text-xs leading-relaxed text-emerald-300"
+              >
+                Sent to the kitchen — reference{" "}
+                <span className="font-mono tracking-[0.14em]">{confirmedRef}</span>
+                . Keep it for when we call to confirm.
+              </p>
+            ) : null}
+
             <Button
               size="lg"
               disabled={!selectedDish || !selectedSlot || !name.trim() || !phone.trim() || isSubmitting}
-              onClick={handleSubmit}
+              onClick={() => void handleSubmit()}
               className="h-12 gap-2"
             >
               {isSubmitting ? (

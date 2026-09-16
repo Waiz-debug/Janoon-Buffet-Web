@@ -57,6 +57,28 @@ export type Reservation = {
   createdAt: number;
 };
 
+export type PreorderStatus =
+  | "pending"
+  | "confirmed"
+  | "ready"
+  | "collected"
+  | "cancelled";
+
+export type Preorder = {
+  _id: string;
+  reference: string;
+  customerName: string;
+  phone: string;
+  dish: string;
+  quantity: number;
+  /** Pickup day as `YYYY-MM-DD` — the field the Today/History split reads. */
+  pickupDate: string;
+  pickupTime: string;
+  notes?: string;
+  status: PreorderStatus;
+  createdAt: number;
+};
+
 export type Promotion = {
   _id: string;
   title: string;
@@ -147,6 +169,20 @@ type ReservationDb = {
   seating: Seating;
   notes: string | null;
   status: ReservationStatus;
+  created_at: number | string;
+};
+
+type PreorderDb = {
+  id: string;
+  reference: string;
+  customer_name: string;
+  phone: string;
+  dish: string;
+  quantity: number;
+  pickup_date: string;
+  pickup_time: string;
+  notes: string | null;
+  status: PreorderStatus;
   created_at: number | string;
 };
 
@@ -801,6 +837,94 @@ export async function setReservationStatus(
 }
 
 /* ------------------------------------------------------------------ */
+/* Pre-orders (takeaway / slow-cooked specialties)                     */
+/* ------------------------------------------------------------------ */
+
+function toPreorder(row: PreorderDb): Preorder {
+  return {
+    _id: row.id,
+    reference: row.reference,
+    customerName: row.customer_name,
+    phone: row.phone,
+    dish: row.dish,
+    quantity: row.quantity,
+    pickupDate: row.pickup_date,
+    pickupTime: row.pickup_time,
+    notes: row.notes ?? undefined,
+    status: row.status,
+    createdAt: ms(row.created_at) ?? 0,
+  };
+}
+
+/** Every pre-order, newest first — the staff and admin desks. */
+export async function fetchPreorders(): Promise<Preorder[]> {
+  const rows = await selectRows<PreorderDb>(TABLES.preorders, (q) =>
+    q.order("created_at", { ascending: false }),
+  );
+  return rows.map(toPreorder);
+}
+
+export type CreatePreorderInput = {
+  customerName: string;
+  phone: string;
+  dish: string;
+  quantity?: number;
+  pickupDate: string;
+  pickupTime: string;
+  notes?: string;
+};
+
+/**
+ * Save a pre-order request. It lands on the staff desk the moment the row is
+ * inserted — realtime pushes it there without a refresh.
+ */
+export async function createPreorder(
+  input: CreatePreorderInput,
+): Promise<{ reference: string }> {
+  const customerName = input.customerName.trim();
+  const phoneDigits = digitsOnly(input.phone);
+  if (customerName.length < 2) {
+    throw new Error("Please enter the name for the pre-order.");
+  }
+  if (phoneDigits.length < 10 || phoneDigits.length > 12) {
+    throw new Error("Please enter a valid phone number.");
+  }
+  if (!input.dish.trim()) throw new Error("Please choose a dish to pre-order.");
+  if (!input.pickupDate || !input.pickupTime) {
+    throw new Error("Please choose a pickup date and time.");
+  }
+
+  const reference = makeReference("PRE", 5);
+  const { error } = await supabase.from(TABLES.preorders).insert({
+    reference,
+    customer_name: customerName,
+    phone: phoneDigits,
+    dish: input.dish.trim(),
+    quantity: Math.min(Math.max(1, Math.round(input.quantity ?? 1)), 20),
+    pickup_date: input.pickupDate,
+    pickup_time: input.pickupTime,
+    notes: input.notes?.trim() ? input.notes.trim().slice(0, 300) : null,
+    status: "pending",
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  });
+  fail(error, "We could not save your pre-order. Please try again.");
+  return { reference };
+}
+
+/** Staff workflow: pending → confirmed → ready → collected (or cancelled). */
+export async function setPreorderStatus(
+  id: string,
+  status: PreorderStatus,
+): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.preorders)
+    .update({ status, updated_at: Date.now() })
+    .eq("id", id);
+  fail(error, "Could not update that pre-order.");
+}
+
+/* ------------------------------------------------------------------ */
 /* Promotions                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -900,6 +1024,33 @@ export async function removePromotionImage(id: string): Promise<void> {
 export async function deletePromotion(id: string): Promise<void> {
   const { error } = await supabase.from(TABLES.promotions).delete().eq("id", id);
   fail(error, "Could not delete the promotion.");
+}
+
+/**
+ * Seed one demo promotional banner so a fresh project has something live on
+ * the public site. Skips silently when a promotion already exists. Expires in
+ * seven days, then the `active` filter hides it automatically.
+ */
+export async function seedDemoPromotion(): Promise<boolean> {
+  const existing = await selectRows<{ id: string }>(
+    TABLES.promotions,
+    (q) => q.limit(1),
+    "id",
+  );
+  if (existing.length > 0) return false;
+
+  const now = Date.now();
+  const { error } = await supabase.from(TABLES.promotions).insert({
+    title: "Weekend Live BBQ Nights",
+    headline: "Live BBQ Nights — family of four dines for Rs 7,500",
+    body: "Valid Friday to Sunday, 7 PM onwards. Dine-in only.",
+    visible: true,
+    expires_at: now + 7 * 24 * 60 * 60 * 1000,
+    created_at: now,
+    updated_at: now,
+  });
+  fail(error, "Could not seed the demo promotion.");
+  return true;
 }
 
 /* ------------------------------------------------------------------ */

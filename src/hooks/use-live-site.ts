@@ -53,9 +53,11 @@ function toDish(row: MenuDishRow): LiveDish {
     description: row.description || staticDish?.description || "",
     notes: row.notes?.length ? row.notes : (staticDish?.notes ?? []),
     pairings: row.pairings?.length ? row.pairings : (staticDish?.pairings ?? []),
-    // Uploaded photo first; then the legacy image URL; then the static photo
-    // for known dishes; finally empty (SmartImage shows the themed tile).
-    image: row.image || staticDish?.image || "",
+    // The row owns the photo outright — seeded placeholders are copied into
+    // the row at seed time, so clearing it in the admin panel actually clears
+    // it on the site instead of resurrecting the demo image. Empty falls
+    // through to SmartImage's themed tile.
+    image: row.image || "",
     imageStorageId: row.imageStorageId,
     pricePerPlate: row.pricePerPlate,
     active: row.active,
