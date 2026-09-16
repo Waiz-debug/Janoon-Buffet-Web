@@ -10,6 +10,7 @@ import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
+import { testSupabaseConnection } from "./lib/test-supabase";
 
 // Lazy load route components for better code splitting
 const Gateway = lazy(() => import("./pages/AuthLanding.tsx"));
@@ -130,6 +131,9 @@ function RouteSyncer() {
   return null;
 }
 
+
+// Run connection test once on startup (fire-and-forget, never blocks the UI)
+testSupabaseConnection();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
