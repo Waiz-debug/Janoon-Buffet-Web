@@ -8,7 +8,11 @@ import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminMenu } from "@/hooks/use-live-db";
-import { seedDemoPromotion, seedMenuCatalog } from "@/lib/db";
+import {
+  seedDemoGallery,
+  seedDemoPromotion,
+  seedMenuCatalog,
+} from "@/lib/db";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -17,10 +21,10 @@ export default function AdminPortal() {
   const { categories, dishes, loaded, isEmpty } = useAdminMenu();
   const seeding = useRef(false);
 
-  // First run against an empty Supabase project: copy the built-in catalogue
-  // across so the menu becomes editable here (and live on the public site),
-  // then publish a sample promotional banner so the public site has something
-  // to broadcast. Both seeds are idempotent.
+  // First run against a fresh Supabase project: copy the built-in catalogue
+  // and gallery photos across so the admin panel lists exactly the assets the
+  // public site renders, then publish a sample promotional banner. Every seed
+  // is idempotent and skips anything the team has already replaced.
   useEffect(() => {
     if (!loaded || seeding.current) return;
     seeding.current = true;
@@ -29,6 +33,12 @@ export default function AdminPortal() {
         if (isEmpty) {
           await seedMenuCatalog();
           toast.success("Menu catalogue loaded");
+        }
+        const tiles = await seedDemoGallery();
+        if (tiles > 0) {
+          toast.success(
+            `Demo gallery loaded — ${tiles} ${tiles === 1 ? "tile" : "tiles"}`,
+          );
         }
         if (await seedDemoPromotion()) {
           toast.success("Demo promotion published");

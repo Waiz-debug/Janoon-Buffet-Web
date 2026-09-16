@@ -33,6 +33,9 @@ create table if not exists public.menu_dishes (
   price_per_plate integer,
   active          boolean not null default true,
   featured        boolean not null default false,
+  -- True while the photo is still the seeded placeholder, so the admin panel
+  -- can flag it as a demo asset worth replacing. Cleared on first upload.
+  demo            boolean not null default false,
   sort_order      integer not null default 0,
   updated_at      bigint
 );
@@ -44,8 +47,11 @@ create index if not exists menu_dishes_sort_idx     on public.menu_dishes (sort_
 create table if not exists public.site_media (
   slot        text primary key,
   caption     text,
+  -- `url` holds an external demo photo; `image_path` holds an uploaded object
+  -- inside the tribe-media bucket. An upload always clears the other one.
   url         text,
   image_path  text,
+  demo        boolean not null default false,
   updated_at  bigint not null default 0
 );
 
@@ -208,6 +214,15 @@ create policy "tribe media delete" on storage.objects
   for delete to anon, authenticated using (bucket_id = 'tribe-media');
 
 -- ============================================================================
+--  Migration — demo media flags
+--  `create table if not exists` never adds columns to an existing table, so
+--  these run separately for databases created before the demo flags existed.
+--  Both are safe to re-run.
+-- ============================================================================
+alter table public.site_media  add column if not exists demo boolean not null default false;
+alter table public.menu_dishes add column if not exists demo boolean not null default false;
+
+-- ============================================================================
 --  Demo promotional banner
 --  Seeds one live sample banner so the public site has something to broadcast
 --  out of the box. Idempotent: only inserts when no promotion exists yet.
@@ -225,6 +240,32 @@ select
   (extract(epoch from now()) * 1000)::bigint
 where not exists (select 1 from public.promotions);
 
+-- ============================================================================
+--  Demo gallery imagery
+--  The six gallery slots (gallery-1 … gallery-6) are seeded from the app itself
+--  by `seedDemoGallery()` in src/lib/db.ts, which reads the GALLERY array in
+--  src/lib/restaurant.ts. Seeding from code keeps the public site's fallback
+--  photos and the admin panel's demo rows pointing at the same URLs — no
+--  duplicated image list to drift out of sync.
+--
+--  The seed runs the first time the admin portal opens and only fills slots
+--  that do not already have a row, so it never overwrites a real upload.
+--
+--  Equivalent SQL, if you would rather seed by hand:
+--
+--    insert into public.site_media (slot, caption, url, demo, updated_at)
+--    values
+--      ('gallery-1', 'Live seekh kebab counter', 'https://…', true, 0),
+--      ('gallery-2', 'Malai boti off the coals', 'https://…', true, 0)
+--    on conflict (slot) do nothing;
+--
+--  Inspect what is currently published versus still on the demo photo:
+--
+--    select slot, caption, demo,
+--           case when image_path is null then 'demo url' else 'uploaded' end as source
+--      from public.site_media
+--     order by slot;
+--
 -- ============================================================================
 --  History views — Today vs History, searchable by year / month / date
 --  These examples show the exact filter shape the portal runs through

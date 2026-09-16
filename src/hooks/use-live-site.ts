@@ -8,6 +8,7 @@ import {
   type MenuCategory,
 } from "@/lib/menu";
 import type { MenuCategoryRow, MenuDishRow } from "@/lib/db";
+import { GALLERY } from "@/lib/restaurant";
 import { mediaUrl } from "@/lib/supabase";
 import { useMemo } from "react";
 
@@ -27,6 +28,15 @@ export type LiveDish = Dish & {
 };
 
 export type LiveMedia = Record<string, { url: string; caption?: string }>;
+
+/** One tile of the gallery strip, in render order. */
+export type LiveGalleryItem = {
+  slot: string;
+  url: string;
+  caption: string;
+};
+
+const galleryIndex = (slot: string) => Number(slot.split("-")[1]) || 0;
 
 function toCategory(row: MenuCategoryRow): LiveCategory {
   const staticCategory = STATIC_CATEGORIES.find((c) => c.id === row.id);
@@ -125,7 +135,37 @@ export function useLiveSite() {
       : deliveryUnitPrice(dish.slug);
 
   const heroImage = media["hero"]?.url;
-  const gallery = [1, 2, 3, 4, 5, 6].map((index) => media[`gallery-${index}`]);
+
+  /**
+   * The gallery strip. The six built-in photos are the baseline; any
+   * `gallery-*` row the admin has published overrides its slot, and slots
+   * beyond the sixth (added in the admin panel) append to the end. That keeps
+   * the public strip and the admin's tile list reading from one list.
+   */
+  const gallery = useMemo<LiveGalleryItem[]>(() => {
+    const base: LiveGalleryItem[] = GALLERY.map((post, index) => ({
+      slot: `gallery-${index + 1}`,
+      url: post.image,
+      caption: post.caption,
+    }));
+    const known = new Set(base.map((item) => item.slot));
+    const extras = Object.keys(media)
+      .filter((slot) => slot.startsWith("gallery-") && !known.has(slot))
+      .map((slot) => ({
+        slot,
+        url: media[slot].url,
+        caption: media[slot].caption ?? "",
+      }));
+
+    return [...base, ...extras]
+      .map((item) => {
+        const live = media[item.slot];
+        return live
+          ? { ...item, url: live.url, caption: live.caption ?? item.caption }
+          : item;
+      })
+      .sort((a, b) => galleryIndex(a.slot) - galleryIndex(b.slot));
+  }, [media]);
 
   return {
     ...data,

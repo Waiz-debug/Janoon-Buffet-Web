@@ -43,8 +43,10 @@ export function SignaturePhotoManager({
           Signature dishes
         </h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Quick photo updates for your signature items — these appear in the
-          highlights strip on the public site.
+          Quick photo updates for your signature items — these are the exact
+          images shown in the highlights strip and dish pages on the public
+          site. A card marked <span className="text-gold">Demo</span> is still a
+          stock placeholder waiting for a real photo.
         </p>
       </div>
 
@@ -105,7 +107,14 @@ function SignatureCard({
             {dish.pricePerPlate ? ` · ${formatRupees(dish.pricePerPlate)}` : ""}
           </p>
         </div>
-        <Star className="size-4 shrink-0 text-gold" aria-hidden />
+        <div className="flex shrink-0 items-center gap-2">
+          {dish.demo ? (
+            <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[0.6rem] text-gold">
+              Demo
+            </span>
+          ) : null}
+          <Star className="size-4 text-gold" aria-hidden />
+        </div>
       </div>
 
       <div className="flex aspect-video items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-background/60">

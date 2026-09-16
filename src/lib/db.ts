@@ -7,6 +7,7 @@ import {
   deliveryUnitPrice,
   type CategoryId,
 } from "@/lib/menu";
+import { GALLERY } from "@/lib/restaurant";
 import { MEDIA_BUCKET, TABLES, mediaUrl, supabase } from "@/lib/supabase";
 
 /* ------------------------------------------------------------------ */
@@ -98,6 +99,8 @@ export type SiteMediaRow = {
   caption?: string;
   url?: string;
   imageStorageId?: string;
+  /** Still the seeded placeholder rather than a real upload. */
+  demo: boolean;
 };
 
 export type MenuCategoryRow = {
@@ -124,6 +127,8 @@ export type MenuDishRow = {
   pricePerPlate?: number;
   active: boolean;
   featured: boolean;
+  /** Still the seeded placeholder photo rather than a real upload. */
+  demo: boolean;
   sortOrder: number;
 };
 
@@ -204,6 +209,7 @@ type SiteMediaDb = {
   caption: string | null;
   url: string | null;
   image_path: string | null;
+  demo: boolean | null;
 };
 
 type CategoryDb = {
@@ -230,6 +236,7 @@ type DishDb = {
   price_per_plate: number | null;
   active: boolean;
   featured: boolean;
+  demo: boolean | null;
   sort_order: number;
 };
 
@@ -323,6 +330,7 @@ function toDish(row: DishDb): MenuDishRow {
     pricePerPlate: row.price_per_plate ?? undefined,
     active: row.active,
     featured: row.featured,
+    demo: row.demo ?? false,
     sortOrder: row.sort_order,
   };
 }
@@ -379,6 +387,7 @@ export async function fetchSiteMedia(): Promise<SiteMediaRow[]> {
     caption: row.caption ?? undefined,
     url: row.url || mediaUrl(row.image_path) || undefined,
     imageStorageId: row.image_path ?? undefined,
+    demo: row.demo ?? false,
   }));
 }
 
@@ -414,6 +423,7 @@ export async function seedMenuCatalog(): Promise<void> {
     price_per_plate: deliveryUnitPrice(dish.slug),
     active: true,
     featured: (SIGNATURE_SLUGS as readonly string[]).includes(dish.slug),
+    demo: true,
     sort_order: index + 1,
     updated_at: Date.now(),
   }));
@@ -421,6 +431,38 @@ export async function seedMenuCatalog(): Promise<void> {
     .from(TABLES.dishes)
     .upsert(dishes, { onConflict: "slug" });
   fail(dishError, "Could not seed the menu dishes.");
+}
+
+/**
+ * Publish the built-in gallery photos as `site_media` rows so the admin panel
+ * lists the same six images the public site renders — as real, replaceable
+ * items rather than a "default in use" placeholder.
+ *
+ * Slots that already hold a row are skipped, so a real upload is never
+ * overwritten by re-running the seed. Returns how many slots were filled.
+ */
+export async function seedDemoGallery(): Promise<number> {
+  const existing = await selectRows<{ slot: string }>(
+    TABLES.siteMedia,
+    undefined,
+    "slot",
+  );
+  const taken = new Set(existing.map((row) => row.slot));
+  const now = Date.now();
+
+  const rows = GALLERY.map((post, index) => ({
+    slot: `gallery-${index + 1}`,
+    caption: post.caption,
+    url: post.image,
+    image_path: null,
+    demo: true,
+    updated_at: now,
+  })).filter((row) => !taken.has(row.slot));
+
+  if (rows.length === 0) return 0;
+  const { error } = await supabase.from(TABLES.siteMedia).insert(rows);
+  fail(error, "Could not seed the demo gallery.");
+  return rows.length;
 }
 
 export type CategoryInput = {
@@ -504,8 +546,15 @@ export async function upsertDish(
     sort_order: input.sortOrder,
     updated_at: Date.now(),
   };
-  if (input.imagePath) row.image_path = input.imagePath;
-  if (input.image !== undefined && !input.imagePath) row.image = input.image || null;
+  if (input.imagePath) {
+    // An upload owns the photo outright — drop the external demo URL so it
+    // cannot shadow the new object when the row is read back.
+    row.image_path = input.imagePath;
+    row.image = null;
+    row.demo = false;
+  } else if (input.image !== undefined) {
+    row.image = input.image || null;
+  }
 
   const { error } = await supabase
     .from(TABLES.dishes)
@@ -525,7 +574,9 @@ export async function setDishImage(
 ): Promise<string> {
   const { error } = await supabase
     .from(TABLES.dishes)
-    .update({ image_path: imagePath, updated_at: Date.now() })
+    // Clearing `image` matters: an external demo URL left in place would
+    // shadow the freshly uploaded object when the row is read back.
+    .update({ image_path: imagePath, image: null, demo: false, updated_at: Date.now() })
     .eq("slug", slug);
   fail(error, "Could not attach the photo.");
   return mediaUrl(imagePath) ?? "";
@@ -534,7 +585,7 @@ export async function setDishImage(
 export async function removeDishImage(slug: string): Promise<void> {
   const { error } = await supabase
     .from(TABLES.dishes)
-    .update({ image_path: null, image: null, updated_at: Date.now() })
+    .update({ image_path: null, image: null, demo: false, updated_at: Date.now() })
     .eq("slug", slug);
   fail(error, "Could not remove the photo.");
 }
@@ -550,6 +601,7 @@ export async function setSiteMedia(
       caption: caption ?? null,
       url: null,
       image_path: imagePath,
+      demo: false,
       updated_at: Date.now(),
     },
     { onConflict: "slot" },

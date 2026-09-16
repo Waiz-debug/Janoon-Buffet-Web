@@ -2,7 +2,7 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { Button } from "@/components/ui/button";
 import { useLiveSite } from "@/hooks/use-live-site";
-import { GALLERY, RESTAURANT, TESTIMONIALS } from "@/lib/restaurant";
+import { RESTAURANT, TESTIMONIALS } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import { Instagram, Star } from "lucide-react";
 
@@ -28,11 +28,8 @@ function StarRating({ value }: { value: number }) {
 }
 
 export function SocialProof() {
-  const { gallery } = useLiveSite();
-  const posts = GALLERY.map((post, index) => ({
-    ...post,
-    image: gallery[index]?.url ?? post.image,
-  }));
+  // One list, shared with the admin panel's gallery manager.
+  const posts = useLiveSite().gallery;
 
   return (
     <section id="reviews" className="hearth-glow scroll-mt-24 py-20 sm:py-28">
@@ -135,7 +132,7 @@ export function SocialProof() {
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {posts.map((post, index) => (
             <motion.a
-              key={post.caption}
+              key={post.slot}
               href={RESTAURANT.instagramUrl}
               target="_blank"
               rel="noreferrer"
@@ -146,7 +143,7 @@ export function SocialProof() {
               className="group relative aspect-square overflow-hidden rounded-2xl border border-border/70"
             >
               <SmartImage
-                src={post.image}
+                src={post.url}
                 alt={post.caption}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
