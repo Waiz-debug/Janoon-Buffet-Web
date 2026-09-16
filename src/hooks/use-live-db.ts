@@ -9,6 +9,7 @@ import {
   fetchReservation,
   fetchReservations,
   fetchSiteMedia,
+  fetchSiteContent,
   fetchVisibleDeliveryOrders,
   type DeliveryOrder,
   type MenuCategoryRow,
@@ -17,6 +18,7 @@ import {
   type Promotion,
   type Reservation,
   type SiteMediaRow,
+  type SiteContentRow,
 } from "@/lib/db";
 import { TABLES, supabase } from "@/lib/supabase";
 import { useEffect, useRef, useState } from "react";
@@ -116,6 +118,11 @@ export function usePublicMenu() {
 
 export function useSiteMedia(): SiteMediaRow[] | undefined {
   return useLiveTable<SiteMediaRow>(TABLES.siteMedia, fetchSiteMedia);
+}
+
+/** Editable copy set from the admin panel (seating counter, notes). */
+export function useSiteContent(): SiteContentRow[] | undefined {
+  return useLiveTable<SiteContentRow>(TABLES.siteContent, fetchSiteContent);
 }
 
 /* ------------------------------------------------------------ orders ----- */

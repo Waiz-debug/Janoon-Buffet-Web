@@ -383,7 +383,18 @@ export function getPairings(dish: Dish) {
     .filter((paired): paired is Dish => Boolean(paired));
 }
 
-/** Dishes featured in the "signature" strip on the landing page. */
+/**
+ * The Signature section on the landing page holds exactly this many dishes.
+ * Enforced in the admin panel and, as a backstop, by the
+ * `menu_dishes_signature_limit` trigger in supabase/schema.sql.
+ */
+export const SIGNATURE_LIMIT = 4;
+
+/**
+ * The four dishes that ship as signatures, and the fallback shown before the
+ * catalogue has been seeded. Which dishes are actually featured is decided by
+ * the `featured` column — this list is only the out-of-the-box default.
+ */
 export const SIGNATURE_SLUGS = [
   "beef-seekh-kebab",
   "mutton-nihari",

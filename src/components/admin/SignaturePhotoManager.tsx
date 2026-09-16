@@ -5,7 +5,7 @@ import {
   setDishImage,
   type MenuDishRow,
 } from "@/lib/db";
-import { formatRupees } from "@/lib/menu";
+import { SIGNATURE_LIMIT, formatRupees } from "@/lib/menu";
 import { ImagePlus, Loader2, Star, X } from "lucide-react";
 import { useId } from "react";
 import { toast } from "sonner";
@@ -22,15 +22,17 @@ export function SignaturePhotoManager({
   dishes: MenuDishRow[];
   categories: { id: string; name: string }[];
 }) {
-  const signatureDishes = dishes.filter((d) => d.featured);
+  const signatureDishes = dishes
+    .filter((d) => d.featured)
+    .slice(0, SIGNATURE_LIMIT);
 
   if (signatureDishes.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
         <Star className="mx-auto mb-3 size-6 text-muted-foreground" aria-hidden />
         <p className="text-sm text-muted-foreground">
-          No signature dishes yet. Mark a dish as "Signature" in the Dishes tab to
-          manage its photo here.
+          No signature dishes yet. Turn on "Signature" for up to 4 dishes in the
+          Dishes tab and manage their photos here.
         </p>
       </div>
     );
@@ -39,14 +41,18 @@ export function SignaturePhotoManager({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h3 className="font-display text-base font-semibold">
+        <h3 className="flex flex-wrap items-center gap-2 font-display text-base font-semibold">
           Signature dishes
+          <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs font-medium text-gold">
+            {signatureDishes.length} of {SIGNATURE_LIMIT}
+          </span>
         </h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Quick photo updates for your signature items — these are the exact
-          images shown in the highlights strip and dish pages on the public
-          site. A card marked <span className="text-gold">Demo</span> is still a
-          stock placeholder waiting for a real photo.
+          These are the exact images shown in the Signature section on the
+          public site, and nowhere else. Up to {SIGNATURE_LIMIT} dishes can be
+          featured at a time. A card marked{" "}
+          <span className="text-gold">Demo</span> is still a stock placeholder
+          waiting for a real photo.
         </p>
       </div>
 

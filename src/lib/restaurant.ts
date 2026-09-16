@@ -85,6 +85,37 @@ export const GALLERY = [
   { caption: "Kulfi falooda", image: unsplash("photo-1544025162-d76694265947", 700) },
 ] as const;
 
+/**
+ * The two showcase photos in "The Experience" section. The admin panel
+ * uploads over these slots; the URLs below are the out-of-the-box defaults so
+ * the section is never empty before the first upload.
+ */
+export const EXPERIENCE_MEDIA = {
+  ambiance: {
+    slot: "experience-ambiance",
+    label: "Main ambiance photo",
+    hint: "The large wide shot of the open-air seating at the top of the section.",
+    url: RESTAURANT.heroImage,
+  },
+  food: {
+    slot: "experience-food",
+    label: "Food & grill photo",
+    hint: "The smaller shot beneath it — the charcoal grill or a signature plate.",
+    url: unsplash("photo-1555939594-58d7cb561ad1", 700),
+  },
+} as const;
+
+/**
+ * Editable copy in "The Experience" section, stored in `site_content` so the
+ * owner can change the numbers from the admin panel without a redeploy.
+ */
+export const SITE_CONTENT_DEFAULTS = {
+  "experience-seats": "4–20",
+  "experience-seats-label": "seats per family table",
+} as const;
+
+export type SiteContentKey = keyof typeof SITE_CONTENT_DEFAULTS;
+
 /** House rules that make booking ahead worth it for families. */
 export const BOOKING_PROMISES = [
   {

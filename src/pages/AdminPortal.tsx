@@ -1,5 +1,6 @@
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
+import { ExperienceManager } from "@/components/admin/ExperienceManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminMenu } from "@/hooks/use-live-db";
 import {
+  ensureSignatureDishes,
   seedDemoGallery,
   seedDemoPromotion,
   seedMenuCatalog,
@@ -33,6 +35,12 @@ export default function AdminPortal() {
         if (isEmpty) {
           await seedMenuCatalog();
           toast.success("Menu catalogue loaded");
+        }
+        const restored = await ensureSignatureDishes();
+        if (restored > 0) {
+          toast.success(
+            `Signature section topped up to 4 dishes (+${restored})`,
+          );
         }
         const tiles = await seedDemoGallery();
         if (tiles > 0) {
@@ -118,6 +126,7 @@ export default function AdminPortal() {
             dishes={dishes}
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           />
+          <ExperienceManager />
           <PhotoManager />
         </TabsContent>
 

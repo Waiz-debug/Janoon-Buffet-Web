@@ -18,7 +18,7 @@ import {
   upsertDish,
   type MenuDishRow,
 } from "@/lib/db";
-import { formatRupees } from "@/lib/menu";
+import { SIGNATURE_LIMIT, formatRupees } from "@/lib/menu";
 import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -67,6 +67,14 @@ export function DishManager({
   const [isSaving, setIsSaving] = useState(false);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
 
+  /** The public Signature section holds exactly SIGNATURE_LIMIT dishes. */
+  const signatureCount = dishes.filter((dish) => dish.featured).length;
+  const alreadyFeatured = Boolean(
+    editing?.slug && dishes.find((dish) => dish.slug === editing.slug)?.featured,
+  );
+  const signatureFull =
+    signatureCount >= SIGNATURE_LIMIT && !editing?.featured;
+
   const startCreate = () => {
     const fallback = categories[0]?.id ?? "";
     const nextSort =
@@ -97,6 +105,16 @@ export function DishManager({
     if (!editing) return;
     if (editing.name.trim().length < 2) {
       toast.error("Give the dish a name first.");
+      return;
+    }
+    if (
+      editing.featured &&
+      !alreadyFeatured &&
+      signatureCount >= SIGNATURE_LIMIT
+    ) {
+      toast.error(`Only ${SIGNATURE_LIMIT} signature dishes are allowed.`, {
+        description: "Turn one off before featuring another.",
+      });
       return;
     }
     setIsSaving(true);
@@ -309,11 +327,12 @@ export function DishManager({
                 <span className="text-sm">
                   Signature
                   <span className="block text-xs text-muted-foreground">
-                    Featured in the highlights strip
+                    {signatureCount} of {SIGNATURE_LIMIT} used · Signature section only
                   </span>
                 </span>
                 <Switch
                   checked={editing.featured}
+                  disabled={signatureFull}
                   onCheckedChange={(checked) =>
                     setEditing({ ...editing, featured: checked })
                   }

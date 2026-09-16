@@ -33,6 +33,7 @@ export const TABLES = {
   categories: "menu_categories",
   dishes: "menu_dishes",
   siteMedia: "site_media",
+  siteContent: "site_content",
   deliveryOrders: "delivery_orders",
   reservations: "reservations",
   preorders: "preorders",

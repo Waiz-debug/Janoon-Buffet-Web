@@ -118,8 +118,12 @@ export function SocialProof() {
               {RESTAURANT.instagramHandle}
             </p>
             <h3 className="mt-2 font-display text-2xl font-semibold">
-              Recently plated at Natha Singh Wala
+              Gallery
             </h3>
+            <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
+              Six tiles from the terrace and the coals at Natha Singh Wala,
+              updated from our kitchen as the week goes on.
+            </p>
           </div>
           <Button asChild variant="outline" className="gap-2 self-start border-gold/30">
             <a href={RESTAURANT.instagramUrl} target="_blank" rel="noreferrer">

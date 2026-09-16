@@ -1,7 +1,11 @@
 import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
-import { useDeliveryOrders, usePreorders } from "@/hooks/use-live-db";
+import {
+  useDeliveryOrders,
+  usePreorders,
+  useReservations,
+} from "@/hooks/use-live-db";
 import {
   advanceDeliveryStatus,
   type DeliveryOrder,
@@ -10,6 +14,7 @@ import {
 import { RESTAURANT, formatDayLong, formatTime } from "@/lib/restaurant";
 import {
   Bike,
+  CalendarCheck,
   ChefHat,
   ClipboardList,
   IndianRupee,
@@ -56,9 +61,13 @@ function playOrderChime() {
   }
 }
 
-/** One incoming record — a delivery order or a pre-order — to announce. */
+/**
+ * One incoming record to announce — a delivery order, a takeaway pre-order or
+ * a table reservation. All three land on this desk the moment a guest submits
+ * the matching form on the public site.
+ */
 type FreshAlert = {
-  kind: "delivery" | "preorder";
+  kind: "delivery" | "preorder" | "reservation";
   id: string;
   name: string;
   detail: string;
@@ -99,9 +108,11 @@ function StatCard({
 export default function StaffPortal() {
   const orders = useDeliveryOrders();
   const preorders = usePreorders();
+  const reservations = useReservations();
   const [busyId, setBusyId] = useState<string | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
   const knownPreorderIds = useRef<Set<string> | null>(null);
+  const knownReservationIds = useRef<Set<string> | null>(null);
   const [freshAlert, setFreshAlert] = useState<FreshAlert | null>(null);
   const freshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -192,6 +203,39 @@ export default function StaffPortal() {
     }
   }, [preorders]);
 
+  // And for table reservations — the third way a guest reaches this desk.
+  useEffect(() => {
+    if (!reservations) return;
+    const ids = reservations.map((r) => r._id);
+    if (knownReservationIds.current === null) {
+      knownReservationIds.current = new Set(ids);
+      return;
+    }
+    const fresh = reservations.filter(
+      (r) => !knownReservationIds.current!.has(r._id),
+    );
+    if (fresh.length > 0) {
+      const booking = fresh[0];
+      announce({
+        kind: "reservation",
+        id: booking._id,
+        name: booking.name,
+        detail: `${booking.partySize} ${
+          booking.partySize === 1 ? "guest" : "guests"
+        } · ${formatDayLong(booking.date)} ${formatTime(booking.time)} · ${
+          booking.seating === "outdoor" ? "open air" : "indoor hall"
+        }`,
+        reference: booking.reference,
+      });
+      toast.success("New table reservation", {
+        description: `${booking.name} · ${booking.partySize} ${
+          booking.partySize === 1 ? "guest" : "guests"
+        }`,
+      });
+      knownReservationIds.current = new Set(ids);
+    }
+  }, [reservations]);
+
   const setStatus = async (order: DeliveryOrder, status: DeliveryStatus) => {
     setBusyId(order._id);
     try {
@@ -234,15 +278,19 @@ export default function StaffPortal() {
                 <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-gold/40 bg-gold/20 text-gold animate-pulse">
                   {freshAlert.kind === "delivery" ? (
                     <Bike className="size-6" aria-hidden />
-                  ) : (
+                  ) : freshAlert.kind === "preorder" ? (
                     <ChefHat className="size-6" aria-hidden />
+                  ) : (
+                    <CalendarCheck className="size-6" aria-hidden />
                   )}
                 </span>
                 <div>
                   <p className="font-display text-lg font-bold text-gold">
                     {freshAlert.kind === "delivery"
                       ? "New delivery order!"
-                      : "New pre-order!"}
+                      : freshAlert.kind === "preorder"
+                        ? "New pre-order!"
+                        : "New table reservation!"}
                   </p>
                   <p className="text-sm text-foreground">
                     <span className="font-semibold">{freshAlert.name}</span> ·{" "}

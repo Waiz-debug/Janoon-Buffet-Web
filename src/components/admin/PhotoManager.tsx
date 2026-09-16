@@ -4,12 +4,17 @@ import { Label } from "@/components/ui/label";
 import { useSiteMedia } from "@/hooks/use-live-db";
 import { useImageUpload } from "@/hooks/use-image-upload";
 import { clearSiteMedia, setSiteMedia } from "@/lib/db";
-import { ImagePlus, Loader2, Plus, X } from "lucide-react";
+import { GALLERY } from "@/lib/restaurant";
+import { ImagePlus, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-/** The six built-in gallery slots — the public strip always renders these. */
-const DEFAULT_SLOTS = [
+/**
+ * The six gallery slots, in order. These map one-to-one onto the tiles in the
+ * public "Gallery" section — there are exactly six, so the admin list and the
+ * guest-facing grid can never drift apart.
+ */
+const GALLERY_SLOTS = [
   "gallery-1",
   "gallery-2",
   "gallery-3",
@@ -20,23 +25,18 @@ const DEFAULT_SLOTS = [
 
 const slotIndex = (slot: string) => Number(slot.replace("gallery-", "")) || 0;
 
+/** The built-in photo each slot falls back to before an upload. */
+const defaultFor = (slot: string) => GALLERY[slotIndex(slot) - 1];
+
 export function PhotoManager() {
   const mediaRows = useSiteMedia() ?? [];
   const { isUploading, upload } = useImageUpload("gallery");
 
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [busySlot, setBusySlot] = useState<string | null>(null);
-  /** Tiles the admin just added, before a photo has been chosen for them. */
-  const [draftSlots, setDraftSlots] = useState<string[]>([]);
 
   const bySlot = new Map<string, (typeof mediaRows)[number]>();
   for (const row of mediaRows) bySlot.set(row.slot, row);
-
-  // The built-in six, everything published in Supabase, and any tile being
-  // drafted — in slot order, so the admin list matches the public strip.
-  const slots = [...new Set([...DEFAULT_SLOTS, ...bySlot.keys(), ...draftSlots])].sort(
-    (a, b) => slotIndex(a) - slotIndex(b),
-  );
 
   const publish = async (
     slot: string,
@@ -46,7 +46,7 @@ export function PhotoManager() {
     setBusySlot(slot);
     try {
       await setSiteMedia(slot, result.storageId, caption);
-      toast.success("Photo published — live on the site");
+      toast.success("Photo published — live in the gallery");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not publish the photo.",
@@ -60,7 +60,7 @@ export function PhotoManager() {
     setBusySlot(slot);
     try {
       await clearSiteMedia(slot);
-      toast.success("Slot cleared — the built-in default is back");
+      toast.success("Slot cleared — the built-in photo is back");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not clear the slot.",
@@ -70,41 +70,23 @@ export function PhotoManager() {
     }
   };
 
-  const addTile = () => {
-    const highest = slots.reduce((max, slot) => Math.max(max, slotIndex(slot)), 0);
-    setDraftSlots((prev) => [...prev, `gallery-${highest + 1}`]);
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="font-display text-base font-semibold">
-            Gallery tiles
-          </h3>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addTile}
-            className="gap-1.5"
-          >
-            <Plus className="size-3.5" aria-hidden />
-            Add tile
-          </Button>
-        </div>
+        <h3 className="font-display text-base font-semibold">Gallery tiles</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          The tiles under &ldquo;Recently plated&rdquo; on the reviews section.
-          These are the same images guests see, so anything you change here
-          appears on the public site the moment it saves. A tile marked{" "}
-          <span className="text-gold">Demo</span> is still a stock placeholder.
+          The six tiles in the public <span className="text-gold">Gallery</span>{" "}
+          section and nowhere else. These are the same images guests see, so
+          anything you change here appears on the site the moment it saves. A
+          tile marked <span className="text-gold">Demo</span> is still a stock
+          placeholder waiting for a real photo.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {slots.map((slot) => {
+        {GALLERY_SLOTS.map((slot) => {
           const row = bySlot.get(slot);
-          const isDraft = !row && !DEFAULT_SLOTS.includes(slot as never);
+          const fallback = defaultFor(slot);
           return (
             <div
               key={slot}
@@ -129,9 +111,9 @@ export function PhotoManager() {
                   />
                 ) : (
                   <span className="px-3 text-center text-xs text-muted-foreground">
-                    {isDraft
-                      ? "Upload a photo to publish this tile"
-                      : "No photo — the built-in default is showing"}
+                    {fallback
+                      ? `No upload — the built-in photo is showing`
+                      : "Upload a photo to publish this tile"}
                   </span>
                 )}
               </span>
@@ -184,21 +166,6 @@ export function PhotoManager() {
                     Reset
                   </Button>
                 ) : null}
-                {isDraft ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={busySlot !== null}
-                    onClick={() =>
-                      setDraftSlots((prev) => prev.filter((item) => item !== slot))
-                    }
-                    className="gap-1.5 text-muted-foreground"
-                  >
-                    <X className="size-3.5" aria-hidden />
-                    Discard
-                  </Button>
-                ) : null}
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -207,7 +174,7 @@ export function PhotoManager() {
                 </Label>
                 <Input
                   id={`caption-${slot}`}
-                  value={captions[slot] ?? row?.caption ?? ""}
+                  value={captions[slot] ?? row?.caption ?? fallback?.caption ?? ""}
                   placeholder="e.g. Seekh kebab off the coals"
                   onChange={(e) =>
                     setCaptions({ ...captions, [slot]: e.target.value })

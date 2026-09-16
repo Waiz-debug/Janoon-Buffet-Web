@@ -98,12 +98,9 @@ export function MenuSection() {
     categories,
     getDish,
     dishesByCategory,
+    signatures,
     unitPrice,
   } = useLiveSite();
-
-  const signatures = ["beef-seekh-kebab", "mutton-nihari", "grilled-fish", "kulfi-falooda"]
-    .map((slug) => getDish(slug))
-    .filter((dish): dish is NonNullable<typeof dish> => Boolean(dish));
 
   const special = getDish("grilled-fish");
 
@@ -182,6 +179,11 @@ export function MenuSection() {
               Prepared to order
             </span>
           </div>
+          {signatures.length === 0 ? (
+            <p className="mt-5 rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
+              Our signature dishes are being updated. The full spread is below.
+            </p>
+          ) : null}
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {signatures.map((dish, index) => (
               <motion.div
@@ -247,7 +249,11 @@ export function MenuSection() {
         <div className="mt-16 grid gap-5 md:grid-cols-2">
           {categories.map((category, index) => {
             const Icon = CATEGORY_ICONS[category.icon];
-            const dishes = dishesByCategory(category.id);
+            // Signature dishes are shown once, in the section above, and are
+            // deliberately kept out of the counters so nothing appears twice.
+            const dishes = dishesByCategory(category.id).filter(
+              (dish) => !dish.featured,
+            );
             return (
               <motion.article
                 key={category.id}
@@ -277,6 +283,11 @@ export function MenuSection() {
                   {dishes.map((dish) => (
                     <DishRow key={dish.slug} dish={dish} unitPrice={unitPrice} add={add} />
                   ))}
+                  {dishes.length === 0 ? (
+                    <li className="py-3 text-xs text-muted-foreground">
+                      Every dish at this counter is featured in Signatures above.
+                    </li>
+                  ) : null}
                 </ul>
               </motion.article>
             );

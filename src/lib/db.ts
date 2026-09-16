@@ -1,6 +1,7 @@
 import {
   DISHES,
   MENU_CATEGORIES,
+  SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
   DELIVERY_FEE,
   FREE_DELIVERY_THRESHOLD,
@@ -101,6 +102,12 @@ export type SiteMediaRow = {
   imageStorageId?: string;
   /** Still the seeded placeholder rather than a real upload. */
   demo: boolean;
+};
+
+/** One editable line of copy in `site_content`. */
+export type SiteContentRow = {
+  key: string;
+  value: string;
 };
 
 export type MenuCategoryRow = {
@@ -210,6 +217,11 @@ type SiteMediaDb = {
   url: string | null;
   image_path: string | null;
   demo: boolean | null;
+};
+
+type SiteContentDb = {
+  key: string;
+  value: string | null;
 };
 
 type CategoryDb = {
@@ -465,6 +477,44 @@ export async function seedDemoGallery(): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Top up the Signature section to the full four dishes.
+ *
+ * Bases seeded before the four-dish rule existed can end up with fewer
+ * featured dishes than the site needs, which leaves the public strip short and
+ * the admin panel showing almost nothing. This restores the missing ones from
+ * the built-in list, never overwrites a choice the team already made, and
+ * never pushes past the limit. Returns how many dishes it featured.
+ */
+export async function ensureSignatureDishes(): Promise<number> {
+  const rows = await selectRows<{ slug: string; featured: boolean }>(
+    TABLES.dishes,
+    undefined,
+    "slug, featured",
+  );
+  if (rows.length === 0) return 0;
+
+  const featured = new Set(
+    rows.filter((row) => row.featured).map((row) => row.slug),
+  );
+  if (featured.size >= SIGNATURE_LIMIT) return 0;
+
+  const missing = SIGNATURE_SLUGS.filter(
+    (slug) => !featured.has(slug) && rows.some((row) => row.slug === slug),
+  ).slice(0, SIGNATURE_LIMIT - featured.size);
+
+  let restored = 0;
+  for (const slug of missing) {
+    const { error } = await supabase
+      .from(TABLES.dishes)
+      .update({ featured: true, updated_at: Date.now() })
+      .eq("slug", slug);
+    fail(error, "Could not restore the signature dishes.");
+    restored += 1;
+  }
+  return restored;
+}
+
 export type CategoryInput = {
   id: string;
   name: string;
@@ -615,6 +665,30 @@ export async function clearSiteMedia(slot: string): Promise<void> {
     .delete()
     .eq("slot", slot);
   fail(error, "Could not clear the slot.");
+}
+
+/**
+ * Editable copy (the seating counter and anything similar). Read as a list of
+ * rows rather than a map so it can ride the same realtime table subscription
+ * as every other admin-managed collection.
+ */
+export async function fetchSiteContent(): Promise<SiteContentRow[]> {
+  const rows = await selectRows<SiteContentDb>(TABLES.siteContent);
+  return rows
+    .filter((row) => Boolean(row.value))
+    .map((row) => ({ key: row.key, value: row.value as string }));
+}
+
+export async function setSiteContent(
+  key: string,
+  value: string,
+): Promise<void> {
+  const trimmed = value.trim();
+  const { error } = await supabase.from(TABLES.siteContent).upsert(
+    { key, value: trimmed, updated_at: Date.now() },
+    { onConflict: "key" },
+  );
+  fail(error, "Could not save that text.");
 }
 
 /* ------------------------------------------------------------------ */

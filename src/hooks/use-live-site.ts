@@ -1,14 +1,20 @@
-import { usePublicMenu, useSiteMedia } from "@/hooks/use-live-db";
+import {
+  usePublicMenu,
+  useSiteContent,
+  useSiteMedia,
+} from "@/hooks/use-live-db";
 import {
   DISHES as STATIC_DISHES,
   MENU_CATEGORIES as STATIC_CATEGORIES,
+  SIGNATURE_LIMIT,
+  SIGNATURE_SLUGS,
   deliveryUnitPrice,
   type CategoryId,
   type Dish,
   type MenuCategory,
 } from "@/lib/menu";
 import type { MenuCategoryRow, MenuDishRow } from "@/lib/db";
-import { GALLERY } from "@/lib/restaurant";
+import { GALLERY, SITE_CONTENT_DEFAULTS } from "@/lib/restaurant";
 import { mediaUrl } from "@/lib/supabase";
 import { useMemo } from "react";
 
@@ -35,8 +41,6 @@ export type LiveGalleryItem = {
   url: string;
   caption: string;
 };
-
-const galleryIndex = (slot: string) => Number(slot.split("-")[1]) || 0;
 
 function toCategory(row: MenuCategoryRow): LiveCategory {
   const staticCategory = STATIC_CATEGORIES.find((c) => c.id === row.id);
@@ -86,6 +90,7 @@ function toDish(row: MenuDishRow): LiveDish {
 export function useLiveSite() {
   const { categories: liveCategories, dishes: liveDishes } = usePublicMenu();
   const mediaRows = useSiteMedia();
+  const contentRows = useSiteContent();
 
   const media = useMemo<LiveMedia>(() => {
     const map: LiveMedia = {};
@@ -134,44 +139,62 @@ export function useLiveSite() {
       ? dish.pricePerPlate
       : deliveryUnitPrice(dish.slug);
 
-  const heroImage = media["hero"]?.url;
+  /** The admin-uploaded photo for a slot, or the built-in default. */
+  const mediaOr = (slot: string, fallback: string): string =>
+    media[slot]?.url ?? fallback;
 
   /**
-   * The gallery strip. The six built-in photos are the baseline; any
-   * `gallery-*` row the admin has published overrides its slot, and slots
-   * beyond the sixth (added in the admin panel) append to the end. That keeps
-   * the public strip and the admin's tile list reading from one list.
+   * The gallery strip — a fixed six tiles, one per `gallery-N` slot. Each tile
+   * shows the admin's published photo for its slot or falls back to the
+   * matching built-in photo, so the public gallery and the admin's six upload
+   * slots are always the same list.
    */
   const gallery = useMemo<LiveGalleryItem[]>(() => {
-    const base: LiveGalleryItem[] = GALLERY.map((post, index) => ({
-      slot: `gallery-${index + 1}`,
-      url: post.image,
-      caption: post.caption,
-    }));
-    const known = new Set(base.map((item) => item.slot));
-    const extras = Object.keys(media)
-      .filter((slot) => slot.startsWith("gallery-") && !known.has(slot))
-      .map((slot) => ({
+    return GALLERY.map((post, index) => {
+      const slot = `gallery-${index + 1}`;
+      const live = media[slot];
+      return {
         slot,
-        url: media[slot].url,
-        caption: media[slot].caption ?? "",
-      }));
-
-    return [...base, ...extras]
-      .map((item) => {
-        const live = media[item.slot];
-        return live
-          ? { ...item, url: live.url, caption: live.caption ?? item.caption }
-          : item;
-      })
-      .sort((a, b) => galleryIndex(a.slot) - galleryIndex(b.slot));
+        url: live?.url ?? post.image,
+        caption: live?.caption ?? post.caption,
+      };
+    });
   }, [media]);
+
+  /** Owner-editable copy, with the built-in wording as the fallback. */
+  const content = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = { ...SITE_CONTENT_DEFAULTS };
+    for (const row of contentRows ?? []) {
+      if (row.value.trim()) map[row.key] = row.value;
+    }
+    return map;
+  }, [contentRows]);
+
+  /**
+   * The Signature strip: exactly the dishes marked `featured`, capped at four.
+   * Those same dishes are withheld from the category counters below, so a
+   * signature dish appears once on the page. Before the catalogue has been
+   * seeded the built-in four stand in.
+   */
+  const signatures = useMemo<LiveDish[]>(() => {
+    if (data.isLive) {
+      return data.dishes
+        .filter((dish) => dish.featured)
+        .slice(0, SIGNATURE_LIMIT);
+    }
+    return SIGNATURE_SLUGS.map((slug) => bySlug.get(slug)).filter(
+      (dish): dish is LiveDish => Boolean(dish),
+    );
+  }, [data, bySlug]);
 
   return {
     ...data,
     media,
-    heroImage,
+    heroImage: media["hero"]?.url,
+    mediaOr,
+    content,
     gallery,
+    signatures,
     bySlug,
     getDish,
     dishesByCategory,

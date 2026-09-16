@@ -1,6 +1,7 @@
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
-import { RESTAURANT } from "@/lib/restaurant";
+import { useLiveSite } from "@/hooks/use-live-site";
+import { EXPERIENCE_MEDIA } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import { Moon, Quote, Trees, Users } from "lucide-react";
 
@@ -23,6 +24,9 @@ const VIBES = [
 ] as const;
 
 export function AboutVibe() {
+  // Photos and the seating counter are both owner-managed in the admin panel.
+  const { mediaOr, content } = useLiveSite();
+
   return (
     <section id="vibe" className="hearth-texture scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
@@ -70,21 +74,27 @@ export function AboutVibe() {
           >
             <div className="grid grid-cols-5 gap-3">
               <SmartImage
-                src={RESTAURANT.heroImage}
+                src={mediaOr(
+                  EXPERIENCE_MEDIA.ambiance.slot,
+                  EXPERIENCE_MEDIA.ambiance.url,
+                )}
                 alt="Open-air seating at Tribe of Taste"
                 className="col-span-5 h-52 w-full rounded-3xl border border-border/70 object-cover sm:h-64"
               />
               <SmartImage
-                src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=700&q=70"
+                src={mediaOr(
+                  EXPERIENCE_MEDIA.food.slot,
+                  EXPERIENCE_MEDIA.food.url,
+                )}
                 alt="Seekh kebab on the charcoal grill"
                 className="col-span-3 h-32 w-full rounded-3xl border border-border/70 object-cover sm:h-36"
               />
               <div className="col-span-2 flex h-32 flex-col justify-center gap-1 rounded-3xl border border-gold/25 bg-gold/[0.07] p-4 text-center sm:h-36">
                 <span className="font-display text-2xl font-semibold text-gold">
-                  4–20
+                  {content["experience-seats"]}
                 </span>
                 <span className="text-[0.7rem] leading-snug tracking-wide text-muted-foreground uppercase">
-                  seats per family table
+                  {content["experience-seats-label"]}
                 </span>
               </div>
             </div>

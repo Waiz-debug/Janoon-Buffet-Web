@@ -55,6 +55,16 @@ create table if not exists public.site_media (
   updated_at  bigint not null default 0
 );
 
+-- Editable copy that is not a photo — the seating counter under "The
+-- Experience", and room for any future headline or note the owner wants to
+-- change without a redeploy. One row per key; `key` is the stable identifier
+-- the frontend reads (see SITE_CONTENT_DEFAULTS in src/lib/restaurant.ts).
+create table if not exists public.site_content (
+  key         text primary key,
+  value       text not null,
+  updated_at  bigint not null default 0
+);
+
 -- -------------------------------------------------------------- orders ------
 create table if not exists public.delivery_orders (
   id            uuid primary key default gen_random_uuid(),
@@ -146,7 +156,7 @@ declare
   tbl text;
 begin
   foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'site_media',
+    'menu_categories', 'menu_dishes', 'site_media', 'site_content',
     'delivery_orders', 'reservations', 'promotions', 'preorders'
   ]
   loop
@@ -164,6 +174,7 @@ end $$;
 --  Supabase Auth, so the policies below grant the publishable key full access
 --  to the restaurant's own data. Tighten these if you later add real auth.
 -- ============================================================================
+alter table public.site_content      enable row level security;
 alter table public.menu_categories  enable row level security;
 alter table public.menu_dishes      enable row level security;
 alter table public.site_media       enable row level security;
@@ -177,7 +188,7 @@ declare
   tbl text;
 begin
   foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'site_media',
+    'menu_categories', 'menu_dishes', 'site_media', 'site_content',
     'delivery_orders', 'reservations', 'promotions', 'preorders'
   ]
   loop
@@ -306,3 +317,135 @@ where not exists (select 1 from public.promotions);
 --  Distinct years present in the history (for the filter sidebar):
 --    select distinct extract(year from to_timestamp(created_at / 1000.0))
 --      from public.delivery_orders order by 1 desc;
+
+-- ============================================================================
+--  Signature dishes — exactly four, enforced in the database
+--  The public "Signatures" strip shows four dishes and nothing else; those
+--  same four are hidden from the category counters so a dish never appears
+--  twice on the page. The admin panel caps its toggle at four, and this
+--  trigger is the backstop: no code path — including the seed — can publish a
+--  fifth signature dish.
+--
+--  Unfinished records are unaffected: the check only fires when `featured`
+--  actually turns on, so re-running the seed or editing any other column of an
+--  already-featured dish is free.
+-- ============================================================================
+create or replace function public.tribe_limit_signature_dishes()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if not new.featured then
+      return new;
+    end if;
+  else
+    if not new.featured or old.featured then
+      return new;
+    end if;
+  end if;
+
+  if (select count(*) from public.menu_dishes
+       where featured and slug <> new.slug) >= 4 then
+    raise exception
+      'Only four signature dishes are allowed. Clear one before featuring another.';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists menu_dishes_signature_limit on public.menu_dishes;
+create trigger menu_dishes_signature_limit
+  before insert or update of featured on public.menu_dishes
+  for each row execute function public.tribe_limit_signature_dishes();
+
+-- ============================================================================
+--  `orders` — every guest request in one searchable view
+--  Reservations, online deliveries and takeaway pre-orders live in three
+--  tables because they carry different fields. This view unions them into a
+--  single read model so "all orders" can be queried, exported or reported on
+--  without the app joining three shapes. Read-only: writes still go to the
+--  individual tables.
+--
+--  `service_day` is always a `YYYY-MM-DD` string — the reservation date, the
+--  pre-order pickup date, or the calendar day a delivery was placed — so one
+--  filter works across all three kinds.
+-- ============================================================================
+create or replace view public.orders as
+  select
+    'delivery'::text            as kind,
+    d.id::text                  as id,
+    d.reference                 as reference,
+    d.customer_name             as customer_name,
+    d.phone                     as phone,
+    d.status                    as status,
+    d.total                     as total,
+    d.items                     as items,
+    d.notes                     as detail,
+    d.created_at                as created_at,
+    d.delivered_at              as closed_at,
+    to_char(to_timestamp(d.created_at / 1000.0), 'YYYY-MM-DD') as service_day
+  from public.delivery_orders d
+  union all
+  select
+    'preorder'::text,
+    p.id::text,
+    p.reference,
+    p.customer_name,
+    p.phone,
+    p.status,
+    null::integer,
+    null::jsonb,
+    p.dish || ' · pickup ' || p.pickup_date || ' ' || p.pickup_time,
+    p.created_at,
+    null::bigint,
+    p.pickup_date
+  from public.preorders p
+  union all
+  select
+    'reservation'::text,
+    r.id::text,
+    r.reference,
+    r.name,
+    r.phone,
+    r.status,
+    null::integer,
+    null::jsonb,
+    r.party_size::text || ' guests · ' || r.time || ' · ' || r.seating,
+    r.created_at,
+    null::bigint,
+    r.date
+  from public.reservations r;
+
+--  Exposed to the publishable key the same way the tables are.
+grant select on public.orders to anon, authenticated;
+
+--  All orders for one day, newest first:
+--    select * from public.orders where service_day = to_char(now(), 'YYYY-MM-DD');
+--
+--  Everything still open across all three kinds:
+--    select * from public.orders
+--     where status not in ('delivered', 'collected', 'cancelled', 'seated')
+--     order by created_at desc;
+--
+--  One month of history, grouped by kind:
+--    select kind, count(*) from public.orders
+--     where service_day >= '2026-09-01' and service_day < '2026-10-01'
+--     group by kind;
+
+-- ============================================================================
+--  Editable copy defaults
+--  Seeds the "The Experience" seating counter so the section renders the same
+--  numbers before the owner has changed anything. Idempotent: existing values
+--  are never overwritten.
+-- ============================================================================
+insert into public.site_content (key, value, updated_at)
+select v.key, v.value, (extract(epoch from now()) * 1000)::bigint
+from (values
+  ('experience-seats',       '4–20'),
+  ('experience-seats-label', 'seats per family table')
+) as v(key, value)
+where not exists (select 1 from public.site_content c where c.key = v.key);
+
+--  Read back everything the owner has customised:
+--    select key, value from public.site_content order by key;
