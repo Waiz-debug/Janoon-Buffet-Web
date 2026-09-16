@@ -1,3 +1,4 @@
+import { AdminOverview } from "@/components/admin/AdminOverview";
 import { AddOnManager } from "@/components/admin/AddOnManager";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
@@ -98,8 +99,9 @@ export default function AdminPortal() {
         </Button>
       </div>
 
-      <Tabs defaultValue="dishes">
+      <Tabs defaultValue="overview">
         <TabsList className="mb-6 flex-wrap">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="dishes">Dishes &amp; prices</TabsTrigger>
           <TabsTrigger value="counters">Counters</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
@@ -107,6 +109,10 @@ export default function AdminPortal() {
           <TabsTrigger value="promos">Promotions</TabsTrigger>
           <TabsTrigger value="records">Records</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview">
+          <AdminOverview />
+        </TabsContent>
 
         <TabsContent value="dishes">
           <DishManager
