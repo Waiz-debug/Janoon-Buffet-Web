@@ -1063,15 +1063,21 @@ export async function fetchDeliveryOrder(
   reference: string,
   phone: string,
 ): Promise<DeliveryOrder | null> {
-  const rows = await selectRows<DeliveryOrderDb>(TABLES.deliveryOrders, (q) =>
-    q.eq("reference", reference.trim().toUpperCase()).limit(1),
-  );
-  const row = rows[0];
-  if (!row) return null;
-  const wanted = digitsOnly(phone);
-  const stored = digitsOnly(row.phone);
-  if (wanted.length < 6 || stored !== wanted) return null;
-  return toDeliveryOrder(row);
+  // A `security definer` function in Postgres: guests have no SELECT policy on
+  // delivery_orders at all, so the reference *and* the phone must match in the
+  // database before a single row is returned.
+  const { data, error } = await supabase.rpc("lookup_delivery_order", {
+    p_reference: reference.trim().toUpperCase(),
+    p_phone: phone,
+  });
+  if (error) {
+    console.warn(`[tribe] order lookup failed: ${error.message}`);
+    return null;
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | DeliveryOrderDb
+    | undefined;
+  return row ? toDeliveryOrder(row) : null;
 }
 
 export type PlaceOrderInput = {
@@ -1088,7 +1094,6 @@ export type PlaceOrderInput = {
  * than trusted from the browser, so a doctored cart total cannot be submitted.
  */
 export async function placeDeliveryOrder(input: PlaceOrderInput): Promise<{
-  id: string;
   reference: string;
   total: number;
   deliveryFee: number;
@@ -1159,7 +1164,7 @@ export async function placeDeliveryOrder(input: PlaceOrderInput): Promise<{
   const total = itemsTotal + deliveryFee;
   const reference = makeReference("DLV", 6);
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from(TABLES.deliveryOrders)
     .insert({
       reference,
@@ -1174,17 +1179,13 @@ export async function placeDeliveryOrder(input: PlaceOrderInput): Promise<{
       total,
       status: "placed",
       created_at: Date.now(),
-    })
-    .select("id, reference, total, delivery_fee")
-    .single();
-  if (error || !data) fail(error, "Could not place the order. Please try again.");
+    });
+  // Deliberately no `.select()` on the way back: a guest has INSERT but not
+  // SELECT on this table, so asking Postgres to return the row would be refused.
+  // The reference and the totals are already known here — computed above.
+  fail(error, "Could not place the order. Please try again.");
 
-  return {
-    id: data.id as string,
-    reference: data.reference as string,
-    total: data.total as number,
-    deliveryFee: data.delivery_fee as number,
-  };
+  return { reference, total, deliveryFee };
 }
 
 /** The two-step staff workflow: placed → confirmed → delivered. */
@@ -1251,15 +1252,18 @@ export async function fetchReservation(
   reference: string,
   phone: string,
 ): Promise<Reservation | null> {
-  const rows = await selectRows<ReservationDb>(TABLES.reservations, (q) =>
-    q.eq("reference", reference.trim().toUpperCase()).limit(1),
-  );
-  const row = rows[0];
-  if (!row) return null;
-  const wanted = digitsOnly(phone);
-  const stored = digitsOnly(row.phone);
-  if (wanted.length >= 6 && stored !== wanted) return null;
-  return toReservation(row);
+  // Same shape as the order lookup: guests cannot read the table, so the match
+  // happens inside a `security definer` function that insists on both values.
+  const { data, error } = await supabase.rpc("lookup_reservation", {
+    p_reference: reference.trim().toUpperCase(),
+    p_phone: phone,
+  });
+  if (error) {
+    console.warn(`[tribe] reservation lookup failed: ${error.message}`);
+    return null;
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as ReservationDb | undefined;
+  return row ? toReservation(row) : null;
 }
 
 export type CreateReservationInput = {
@@ -1297,12 +1301,14 @@ export async function cancelReservationByGuest(
   reference: string,
   phone: string,
 ): Promise<void> {
-  const booking = await fetchReservation(reference, phone);
-  if (!booking) throw new Error("We could not find that booking.");
-  if (booking.status === "cancelled") {
-    throw new Error("That reservation is already cancelled.");
-  }
-  await setReservationStatus(booking._id, "cancelled");
+  // One atomic call: the function re-checks the phone, refuses an already
+  // cancelled booking and flips the status. Guests have no UPDATE policy on the
+  // table at all, so this is the only path available to them.
+  const { error } = await supabase.rpc("cancel_reservation", {
+    p_reference: reference.trim().toUpperCase(),
+    p_phone: phone,
+  });
+  if (error) fail(error, "We could not cancel that booking.");
 }
 
 export async function setReservationStatus(
@@ -1760,6 +1766,7 @@ const REQUIRED_TABLES: { table: string; label: string }[] = [
   { table: TABLES.preorders, label: "Pre-orders" },
   { table: TABLES.reservations, label: "Reservations" },
   { table: TABLES.deliveryOrders, label: "Delivery orders" },
+  { table: TABLES.staffMembers, label: "Staff accounts" },
 ];
 
 export type SchemaStatus = {

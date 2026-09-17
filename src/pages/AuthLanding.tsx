@@ -19,10 +19,12 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
 import {
+  NOT_STAFF_MESSAGE,
+  UNCONFIGURED_MESSAGE,
   portalPathFor,
-  usePinSession,
-  type PINRole,
-} from "@/hooks/use-pin-auth";
+  useStaffAuth,
+  type StaffRole,
+} from "@/hooks/use-staff-auth";
 import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
 
@@ -46,7 +48,7 @@ const HIGHLIGHTS = [
 
 export default function AuthLanding() {
   const navigate = useNavigate();
-  const { session, isLoaded, verify } = usePinSession();
+  const { session, isLoaded, signIn } = useStaffAuth();
   const { heroImage } = useLiveSite();
   const backdrop = heroImage ?? RESTAURANT.heroImage;
 
@@ -57,14 +59,14 @@ export default function AuthLanding() {
   const [attempts, setAttempts] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
-  // A live 24-hour session goes straight to its portal — no re-entry.
+  // A live session goes straight to its portal — no re-entry.
   useEffect(() => {
     if (isLoaded && session) {
       navigate(portalPathFor(session.role), { replace: true });
     }
   }, [isLoaded, session, navigate]);
 
-  const openModal = (role: PINRole) => {
+  const openModal = (role: StaffRole) => {
     setError(null);
     setSearchParams({ unlock: role }, { replace: true });
   };
@@ -74,28 +76,38 @@ export default function AuthLanding() {
     setError(null);
   };
 
-  const handleVerify = (value: string) => {
+  const handleSignIn = async (email: string, password: string) => {
     const role = modalRole;
-    if ((role !== "staff" && role !== "admin") || value.length !== 5) return;
+    if (role !== "staff" && role !== "admin") return;
     setSubmitting(true);
-    if (verify(value, role)) {
-      navigate(portalPathFor(role), { replace: true });
+    const result = await signIn(email, password);
+    if (result.ok) {
+      // Straight to the right desk for the role this account actually holds.
+      navigate(portalPathFor(result.role), { replace: true });
       return;
     }
     setAttempts((count) => count + 1);
-    setError("That PIN is not correct. Please try again.");
+    setError(
+      result.reason === "not-staff"
+        ? NOT_STAFF_MESSAGE
+        : result.reason === "unconfigured"
+          ? UNCONFIGURED_MESSAGE
+          : result.reason === "unreachable"
+            ? "Could not reach the sign-in service. Check your connection and try again."
+            : "That email or password is not correct.",
+    );
     setSubmitting(false);
   };
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background">
       {modalRole ? (
-        <PinModal
-          role={modalRole as PINRole}
+        <SignInModal
+          role={modalRole as StaffRole}
           error={error}
-          attempts={attempts}
+          shake={attempts}
           submitting={submitting}
-          onVerify={handleVerify}
+          onSignIn={(email, password) => void handleSignIn(email, password)}
           onClearError={() => setError(null)}
           onClose={closeModal}
         />
@@ -340,8 +352,8 @@ export default function AuthLanding() {
               </button>
             </div>
             <p className="max-w-xs text-center text-[0.68rem] leading-relaxed text-muted-foreground/55">
-              PIN required — 01234 for both doors. A verified session stays
-              unlocked on this device for 24 hours.
+              Staff sign-in. Accounts are issued by the owner, and every read or
+              write is verified by the database rather than by this page.
             </p>
           </div>
 
@@ -354,32 +366,41 @@ export default function AuthLanding() {
   );
 }
 
-function PinModal({
+/**
+ * Sign-in for the two portals, on Supabase Auth.
+ *
+ * This card used to be a five-digit keypad whose code lived in the JavaScript
+ * bundle, unlocked by a localStorage flag. A keypad that anyone can read the
+ * code to is not a lock, so it is a real credential now — and the role that
+ * decides what the account may touch is read from the database, not the page.
+ */
+function SignInModal({
   role,
   error,
-  attempts,
+  shake,
   submitting,
-  onVerify,
+  onSignIn,
   onClearError,
   onClose,
 }: {
-  role: PINRole;
+  role: StaffRole;
   error: string | null;
-  attempts: number;
+  /** Bumped on a failed attempt so the card can shake again. */
+  shake: number;
   submitting: boolean;
-  onVerify: (value: string) => void;
+  onSignIn: (email: string, password: string) => void;
   onClearError: () => void;
   onClose: () => void;
 }) {
-  const [digits, setDigits] = useState<string[]>(["", "", "", "", ""]);
-  const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const emailRef = useRef<HTMLInputElement | null>(null);
 
-  // Fresh boxes on open and after a wrong attempt, focused and ready.
+  // Ready to type the moment the card opens.
   useEffect(() => {
-    setDigits(["", "", "", "", ""]);
-    const timer = window.setTimeout(() => inputsRef.current[0]?.focus(), 60);
+    const timer = window.setTimeout(() => emailRef.current?.focus(), 60);
     return () => window.clearTimeout(timer);
-  }, [role, attempts]);
+  }, [role]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -388,68 +409,6 @@ function PinModal({
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
-
-  const focusIndex = (index: number) => {
-    inputsRef.current[Math.max(0, Math.min(4, index))]?.focus();
-  };
-
-  const handleChange = (index: number, raw: string) => {
-    const clean = raw.replace(/\D/g, "");
-    if (!clean) return;
-    onClearError();
-    const next = [...digits];
-    const chars = clean.slice(0, 5 - index).split("");
-    for (let i = 0; i < chars.length; i++) next[index + i] = chars[i];
-    setDigits(next);
-    focusIndex(Math.min(index + chars.length, 4));
-    if (next.every((digit) => digit !== "")) onVerify(next.join(""));
-  };
-
-  const handleKeyDown = (
-    index: number,
-    event: React.KeyboardEvent<HTMLInputElement>,
-  ) => {
-    if (event.key === "Backspace") {
-      event.preventDefault();
-      onClearError();
-      const next = [...digits];
-      if (next[index]) {
-        next[index] = "";
-        setDigits(next);
-      } else if (index > 0) {
-        next[index - 1] = "";
-        setDigits(next);
-        focusIndex(index - 1);
-      }
-      return;
-    }
-    if (event.key === "ArrowLeft" && index > 0) {
-      event.preventDefault();
-      focusIndex(index - 1);
-    }
-    if (event.key === "ArrowRight" && index < 4) {
-      event.preventDefault();
-      focusIndex(index + 1);
-    }
-  };
-
-  const handlePaste = (
-    index: number,
-    event: React.ClipboardEvent<HTMLInputElement>,
-  ) => {
-    const text = event.clipboardData
-      .getData("text")
-      .replace(/\D/g, "")
-      .slice(0, 5);
-    if (!text) return;
-    event.preventDefault();
-    onClearError();
-    const next = ["", "", "", "", ""];
-    for (let i = 0; i < text.length; i++) next[i] = text[i];
-    setDigits(next);
-    focusIndex(Math.min(text.length, 4));
-    if (text.length === 5) onVerify(text);
-  };
 
   const copy =
     role === "staff"
@@ -465,7 +424,9 @@ function PinModal({
             "Menu and pricing control, restaurant photography and every reservation.",
         };
   const RoleIcon = copy.icon;
-  const complete = digits.every((digit) => digit !== "");
+  const complete = email.trim().length > 3 && password.length > 0;
+  const inputClass =
+    "h-11 w-full rounded-xl border border-input bg-background/60 px-3.5 text-sm text-foreground caret-gold transition-all duration-200 placeholder:text-muted-foreground/40 hover:border-gold/30 focus:border-gold/60 focus:bg-background focus:ring-2 focus:ring-gold/25 focus:outline-none";
 
   return (
     <motion.div
@@ -475,16 +436,16 @@ function PinModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`${copy.label} PIN verification`}
+      aria-label={`${copy.label} staff sign-in`}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <motion.div
-        key={attempts}
-        initial={attempts > 0 ? { x: 0 } : { scale: 0.95, opacity: 0, y: 12 }}
+        key={shake}
+        initial={shake > 0 ? { x: 0 } : { scale: 0.95, opacity: 0, y: 12 }}
         animate={
-          attempts > 0
+          shake > 0
             ? { x: [0, -10, 10, -6, 6, 0] }
             : { scale: 1, opacity: 1, y: 0 }
         }
@@ -513,38 +474,55 @@ function PinModal({
           className="relative mt-7 flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (complete) onVerify(digits.join(""));
+            if (complete) onSignIn(email, password);
           }}
         >
-          <label
-            id="portal-pin-label"
-            className="text-center text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
-          >
-            Enter the 5-digit PIN
-          </label>
-          <div
-            className="flex justify-center gap-2 sm:gap-3"
-            role="group"
-            aria-labelledby="portal-pin-label"
-          >
-            {digits.map((digit, index) => (
-              <input
-                key={index}
-                ref={(el) => {
-                  inputsRef.current[index] = el;
-                }}
-                value={digit}
-                onChange={(event) => handleChange(index, event.target.value)}
-                onKeyDown={(event) => handleKeyDown(index, event)}
-                onPaste={(event) => handlePaste(index, event)}
-                onFocus={(event) => event.currentTarget.select()}
-                inputMode="numeric"
-                autoComplete={index === 0 ? "one-time-code" : "off"}
-                aria-label={`PIN digit ${index + 1}`}
-                className="size-12 rounded-xl border border-input bg-background/60 text-center font-display text-xl font-semibold text-foreground caret-gold transition-all duration-200 placeholder:text-muted-foreground/30 hover:border-gold/30 focus:border-gold/60 focus:bg-background focus:ring-2 focus:ring-gold/25 focus:outline-none sm:size-14 sm:text-2xl"
-                placeholder="·"
-              />
-            ))}
+          <div className="flex flex-col gap-2 text-left">
+            <label
+              htmlFor="portal-email"
+              className="text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
+            >
+              Staff email
+            </label>
+            <input
+              id="portal-email"
+              ref={emailRef}
+              type="email"
+              name="email"
+              value={email}
+              autoComplete="username"
+              inputMode="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => {
+                onClearError();
+                setEmail(event.target.value);
+              }}
+              className={inputClass}
+              placeholder="owner@tribeoftaste.pk"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2 text-left">
+            <label
+              htmlFor="portal-password"
+              className="text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
+            >
+              Password
+            </label>
+            <input
+              id="portal-password"
+              type="password"
+              name="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(event) => {
+                onClearError();
+                setPassword(event.target.value);
+              }}
+              className={inputClass}
+              placeholder="••••••••"
+            />
           </div>
 
           {error ? (
@@ -579,7 +557,8 @@ function PinModal({
         </form>
 
         <p className="relative mt-6 text-center text-xs text-muted-foreground/80">
-          Once verified, this device stays unlocked for 24 hours.
+          Accounts are issued in Supabase. You stay signed in on this device
+          until you sign out.
         </p>
       </motion.div>
     </motion.div>

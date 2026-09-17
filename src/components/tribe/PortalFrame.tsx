@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { clearPinSession } from "@/hooks/use-pin-auth";
+import { useStaffAuth } from "@/hooks/use-staff-auth";
 import { Flame, LogOut, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -19,9 +19,12 @@ export function PortalFrame({
   children,
 }: PortalFrameProps) {
   const navigate = useNavigate();
+  const { session, signOut: endSession } = useStaffAuth();
 
-  const signOut = () => {
-    clearPinSession();
+  // Ends the Supabase Auth session, so the guard and every table policy stop
+  // answering to this device at the same moment.
+  const signOut = async () => {
+    await endSession();
     navigate("/", { replace: true });
   };
 
@@ -53,7 +56,7 @@ export function PortalFrame({
             <Button
               variant="outline"
               size="sm"
-              onClick={signOut}
+              onClick={() => void signOut()}
               className="gap-2"
             >
               <LogOut className="size-3.5" aria-hidden />
@@ -66,7 +69,7 @@ export function PortalFrame({
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
         <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
           <ShieldCheck className="size-3.5" aria-hidden />
-          PIN verified · session valid for 24 hours
+          {session ? `${session.email} · ${session.role}` : "Staff access"}
         </span>
         <h1 className="mt-4 font-display text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
           {title}

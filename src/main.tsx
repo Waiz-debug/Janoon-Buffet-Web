@@ -1,6 +1,6 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
-import { RequirePin } from "@/components/RequirePin";
+import { RequireRole } from "@/components/RequireRole";
 import { CartDrawer } from "@/components/tribe/CartDrawer";
 import { CartProvider } from "@/hooks/use-cart";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
@@ -156,17 +156,17 @@ createRoot(document.getElementById("root")!).render(
               <Route
                 path="/staff"
                 element={
-                  <RequirePin role="staff">
+                  <RequireRole role="staff">
                     <StaffPortal />
-                  </RequirePin>
+                  </RequireRole>
                 }
               />
               <Route
                 path="/admin"
                 element={
-                  <RequirePin role="admin">
+                  <RequireRole role="admin">
                     <AdminPortal />
-                  </RequirePin>
+                  </RequireRole>
                 }
               />
               <Route
@@ -176,17 +176,17 @@ createRoot(document.getElementById("root")!).render(
               <Route
                 path="/dashboard"
                 element={
-                  <RequirePin role="staff">
+                  <RequireRole role="staff">
                     <Dashboard />
-                  </RequirePin>
+                  </RequireRole>
                 }
               />
               <Route
                 path="/deliveries"
                 element={
-                  <RequirePin role="staff">
+                  <RequireRole role="staff">
                     <Deliveries />
-                  </RequirePin>
+                  </RequireRole>
                 }
               />
               <Route path="*" element={<NotFound />} />

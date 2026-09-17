@@ -290,11 +290,33 @@ begin
 end $$;
 
 -- ============================================================================
---  Row level security
---  Staff and admins authenticate with a shared PIN in the browser rather than
---  Supabase Auth, so the policies below grant the publishable key full access
---  to the restaurant's own data. Tighten these if you later add real auth.
+--  Row level security — the authorization boundary
+--
+--  Staff sign in through Supabase Auth (GoTrue) and their role is recorded in
+--  `staff_members`. Every policy below answers to that, which is what makes the
+--  join between "signed in" and "allowed" real: the check runs in Postgres, so
+--  it cannot be bypassed by calling the REST API directly. The publishable key
+--  shipping in the browser bundle is fine once the policies are correct — it
+--  grants only what the policies grant.
+--
+--  Three tiers, and nothing else:
+--
+--    1. Public catalogue — readable by anyone, readable live. The menu, the
+--       photos, the editable copy and the banners. Nothing here is a secret:
+--       the same content ships inside the JavaScript bundle as the built-in
+--       fallback, and hidden rows are filtered by the app.
+--    2. Guest writes — the three things a visitor may create and nothing more:
+--       a booking, a pre-order and a delivery order, each pinned to its opening
+--       status so a guest cannot insert an already-confirmed row.
+--    3. Customer records — bookings, pre-orders and delivery orders. Not
+--       readable by guests at all. A guest reaches their own record through the
+--       `security definer` functions at the bottom of this file, which require
+--       the reference *and* the phone number.
+--
+--  Staff get the full table for everything. "Signed in but not staff" (an
+--  ordinary customer account) is treated as a guest, not as staff.
 -- ============================================================================
+
 alter table public.site_content      enable row level security;
 alter table public.menu_categories  enable row level security;
 alter table public.menu_dishes      enable row level security;
@@ -307,31 +329,68 @@ alter table public.promotions       enable row level security;
 alter table public.preorders        enable row level security;
 alter table public.pre_order_items  enable row level security;
 
-do $$
-declare
-  tbl text;
-begin
-  foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
-    'site_media', 'site_content', 'delivery_orders', 'reservations',
-    'promotions', 'preorders', 'pre_order_items'
-  ]
-  loop
-    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
-    execute format(
-      'create policy %I on public.%I for all to anon, authenticated using (true) with check (true)',
-      tbl || '_all', tbl
-    );
-  end loop;
-end $$;
+-- ------------------------------------------------------------- staff -------
+--  One row per person who may work the portals. `role` is what future
+--  admin-only screens key off; today both roles open both doors, exactly as the
+--  shared PIN did.
+create table if not exists public.staff_members (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  email       text,
+  display_name text,
+  role        text not null default 'staff'
+              check (role in ('staff', 'admin')),
+  active      boolean not null default true,
+  created_at  bigint not null default 0
+);
 
--- ============================================================================
---  Storage — public bucket that holds dish photos and promo banner graphics.
--- ============================================================================
-insert into storage.buckets (id, name, public)
-values ('tribe-media', 'tribe-media', true)
-on conflict (id) do update set public = true;
+alter table public.staff_members enable row level security;
 
+--  Readable by the signed-in member themselves (the portal needs to know its
+--  own role) and by other staff, so the owner can see the team. Writable only
+--  from the SQL editor or the service role — there is deliberately no client
+--  path to grant yourself access.
+drop policy if exists staff_members_select on public.staff_members;
+create policy staff_members_select on public.staff_members
+  for select to authenticated
+  using (user_id = auth.uid() or public.is_staff());
+
+-- --------------------------------------------------- identity helpers ------
+--  SECURITY DEFINER, so the policy that reads `staff_members` does not recurse
+--  back into its own policies. `search_path` is pinned so the function cannot
+--  be redirected at a table an attacker controls.
+create or replace function public.is_staff()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.staff_members
+     where user_id = auth.uid() and active
+  );
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.staff_members
+     where user_id = auth.uid() and active and role = 'admin'
+  );
+$$;
+
+grant execute on function public.is_staff() to anon, authenticated;
+grant execute on function public.is_admin() to anon, authenticated;
+
+-- ------------------------------------------- 0. storage writes = staff ----
+--  The bucket was open to `anon` for insert, update and delete, which meant
+--  anyone holding the publishable key could fill or empty it. Reading stays
+--  public; changing anything now requires a staff session.
 drop policy if exists "tribe media read"   on storage.objects;
 drop policy if exists "tribe media write"  on storage.objects;
 drop policy if exists "tribe media update" on storage.objects;
@@ -341,13 +400,207 @@ create policy "tribe media read" on storage.objects
   for select to anon, authenticated using (bucket_id = 'tribe-media');
 
 create policy "tribe media write" on storage.objects
-  for insert to anon, authenticated with check (bucket_id = 'tribe-media');
+  for insert to authenticated
+  with check (bucket_id = 'tribe-media' and public.is_staff());
 
 create policy "tribe media update" on storage.objects
-  for update to anon, authenticated using (bucket_id = 'tribe-media');
+  for update to authenticated
+  using (bucket_id = 'tribe-media' and public.is_staff())
+  with check (bucket_id = 'tribe-media' and public.is_staff());
 
 create policy "tribe media delete" on storage.objects
-  for delete to anon, authenticated using (bucket_id = 'tribe-media');
+  for delete to authenticated
+  using (bucket_id = 'tribe-media' and public.is_staff());
+
+-- --------------------------------------------- 1. public catalogue --------
+--  One readable policy per table plus a staff policy that adds writes. Guests
+--  keep receiving realtime changes for these tables, which is what makes an
+--  admin edit appear on the diner's screen without a reload.
+do $$
+declare
+  tbl text;
+begin
+  foreach tbl in array array[
+    'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
+    'site_media', 'site_content', 'promotions', 'pre_order_items'
+  ]
+  loop
+    -- The old permissive policy from the PIN-era schema must go, or a re-run
+    -- would leave a `using (true)` policy sitting alongside the new ones.
+    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_public_read', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_write', tbl);
+    -- Readable by everyone, including signed-out visitors.
+    execute format(
+      'create policy %I on public.%I for select to anon, authenticated using (true)',
+      tbl || '_public_read', tbl
+    );
+    -- Changed only by staff. `for all` would also cover SELECT, so the write
+    -- policies are split out explicitly.
+    execute format(
+      'create policy %I on public.%I for insert to authenticated with check (public.is_staff())',
+      tbl || '_staff_insert', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())',
+      tbl || '_staff_update', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for delete to authenticated using (public.is_staff())',
+      tbl || '_staff_delete', tbl
+    );
+  end loop;
+end $$;
+
+-- ------------------------------------------------- 2. guest writes --------
+--  A guest may open a record and nothing else. `with check` pins the status a
+--  new row may carry, so nobody can insert a booking that is already confirmed,
+--  or a delivery that is already delivered.
+drop policy if exists reservations_guest_insert on public.reservations;
+create policy reservations_guest_insert on public.reservations
+  for insert to anon, authenticated
+  with check (status = 'pending');
+
+drop policy if exists preorders_guest_insert on public.preorders;
+create policy preorders_guest_insert on public.preorders
+  for insert to anon, authenticated
+  with check (status = 'pending');
+
+drop policy if exists delivery_orders_guest_insert on public.delivery_orders;
+create policy delivery_orders_guest_insert on public.delivery_orders
+  for insert to anon, authenticated
+  with check (status = 'placed' and total >= 0 and items_total >= 0);
+
+--  Staff own these tables outright: read, confirm, advance, delete.
+--  Guests have no SELECT policy on any of the three, so the whole book of
+--  customers is invisible over the REST API.
+do $$
+declare
+  tbl text;
+begin
+  foreach tbl in array array['reservations', 'preorders', 'delivery_orders']
+  loop
+    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_read', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
+    execute format(
+      'create policy %I on public.%I for select to authenticated using (public.is_staff())',
+      tbl || '_staff_read', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())',
+      tbl || '_staff_update', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for delete to authenticated using (public.is_staff())',
+      tbl || '_staff_delete', tbl
+    );
+  end loop;
+end $$;
+
+-- ------------------------------------- 3. customer records by secret ------
+--  The only way a guest reaches their own record. Both the reference and the
+--  phone number on the booking are required, and the comparison happens here in
+--  Postgres, so a wrong phone returns nothing rather than being filtered by the
+--  browser after the whole table has already been downloaded.
+--
+--  `security definer` is what lets these see past the policies above; they are
+--  deliberately narrow — one row in, one row out.
+create or replace function public.lookup_reservation(p_reference text, p_phone text)
+returns setof public.reservations
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select *
+    from public.reservations
+   where upper(trim(reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+$$;
+
+create or replace function public.lookup_delivery_order(p_reference text, p_phone text)
+returns setof public.delivery_orders
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select *
+    from public.delivery_orders
+   where upper(trim(reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+$$;
+
+--  A guest cancelling their own booking, checked the same way. Raises rather
+--  than silently doing nothing so the form can show a real message.
+create or replace function public.cancel_reservation(p_reference text, p_phone text)
+returns public.reservations
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target public.reservations;
+begin
+  select * into target
+    from public.reservations r
+   where upper(trim(r.reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(r.phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+
+  if not found then
+    raise exception 'We could not find that booking.';
+  end if;
+  if target.status = 'cancelled' then
+    raise exception 'That reservation is already cancelled.';
+  end if;
+
+  update public.reservations
+     set status = 'cancelled'
+   where id = target.id
+  returning * into target;
+
+  return target;
+end $$;
+
+grant execute on function public.lookup_reservation(text, text) to anon, authenticated;
+grant execute on function public.lookup_delivery_order(text, text) to anon, authenticated;
+grant execute on function public.cancel_reservation(text, text) to anon, authenticated;
+
+-- ------------------------------------------------------ sign-in helper ----
+--  Add the first staff member after creating the user in Authentication →
+--  Users (or `supabase auth signup`). Run this with the new user's id:
+--
+--    insert into public.staff_members (user_id, email, display_name, role)
+--    select id, email, 'Owner', 'admin' from auth.users where email = 'owner@tribeoftaste.pk'
+--    on conflict (user_id) do update set role = 'admin', active = true;
+--
+--  Confirm who can reach the portals:
+--    select sm.email, sm.role, sm.active from public.staff_members sm order by sm.role;
+--
+--  Confirm a guest can read nothing from the customer records:
+--    set role anon;
+--    select count(*) from public.reservations;   -- expect: permission denied
+--    reset role;
+
+-- ============================================================================
+--  Storage — public bucket that holds dish photos and promo banner graphics.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('tribe-media', 'tribe-media', true)
+on conflict (id) do update set public = true;
+
+--  Reads are public: the bucket holds the dish photos, the gallery and the
+--  banner graphics, all of which the guest site displays. Writes are not — they
+--  need `is_staff()` — so the four bucket policies are created in the row level
+--  security section above, alongside the table policies.
 
 -- ============================================================================
 --  Migration — demo media flags

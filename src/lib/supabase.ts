@@ -19,9 +19,10 @@ export const SUPABASE_KEY =
   PUBLISHABLE_KEY;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  // The platform signs staff/admin in with a PIN, not Supabase Auth, so there
-  // is no session to persist.
-  auth: { persistSession: false, autoRefreshToken: false },
+  // Staff sign in with Supabase Auth, so the session has to survive a reload
+  // and refresh itself in the background — the portal guard reads it, and so
+  // does every row level policy on the server.
+  auth: { persistSession: true, autoRefreshToken: true },
   realtime: { params: { eventsPerSecond: 10 } },
 });
 
@@ -42,6 +43,8 @@ export const TABLES = {
   preorders: "preorders",
   preOrderItems: "pre_order_items",
   promotions: "promotions",
+  /** Who may work the staff and admin portals, keyed by auth user id. */
+  staffMembers: "staff_members",
 } as const;
 
 /**
