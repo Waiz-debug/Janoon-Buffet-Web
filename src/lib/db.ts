@@ -1,12 +1,10 @@
 import {
-  ADDON_GROUPS,
   ADDONS,
   DISHES,
   MENU_CATEGORIES,
   PREORDER_CATEGORIES,
   SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
-  type AddOnGroupId,
   type PreOrderCategoryId,
   DELIVERY_FEE,
   FREE_DELIVERY_THRESHOLD,
@@ -115,7 +113,8 @@ export type AddOnRow = {
   name: string;
   urdu?: string;
   price: number;
-  category: AddOnGroupId;
+  /** id of the `addon_categories` row this item sits under. */
+  category: string;
   image?: string;
   imageStorageId?: string;
   active: boolean;
@@ -566,29 +565,56 @@ export async function ensureSignatureDishes(): Promise<number> {
 }
 
 export type CategoryInput = {
-  id: string;
+  /** Omitted when creating — the id is derived from the name. */
+  id?: string;
   name: string;
   urdu?: string;
   blurb?: string;
   icon: CategoryIcon;
-  sortOrder: number;
+  sortOrder?: number;
   active: boolean;
 };
 
-export async function upsertCategory(input: CategoryInput): Promise<void> {
+/**
+ * Create a counter or update an existing one. On create the id is derived from
+ * the name and appended to the end of the menu, so the owner only has to type
+ * the name they want guests to see — the same approach as add-on categories.
+ */
+export async function upsertCategory(
+  input: CategoryInput,
+): Promise<{ id: string; created: boolean }> {
+  const name = input.name.trim();
+  if (name.length < 2) throw new Error("Give the counter a name first.");
+
+  const id =
+    input.id ||
+    `${name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const existing = input.id
+    ? await selectRows<{ id: string }>(
+        TABLES.categories,
+        (q) => q.eq("id", input.id as string).limit(1),
+        "id",
+      )
+    : [];
+
   const { error } = await supabase.from(TABLES.categories).upsert(
     {
-      id: input.id,
-      name: input.name,
-      urdu: input.urdu ?? null,
-      blurb: input.blurb ?? null,
+      id,
+      name,
+      urdu: input.urdu?.trim() || null,
+      blurb: input.blurb?.trim() || null,
       icon: input.icon,
-      sort_order: input.sortOrder,
+      sort_order: input.sortOrder ?? 0,
       active: input.active,
     },
     { onConflict: "id" },
   );
   fail(error, "Could not save the counter.");
+  return { id, created: existing.length === 0 };
 }
 
 export async function deleteCategory(id: string): Promise<void> {
@@ -745,26 +771,116 @@ export async function setSiteContent(
 /* Traditional add-ons                                                 */
 /* ------------------------------------------------------------------ */
 
-const ADDON_CATEGORY_IDS = new Set<string>(
-  ADDON_GROUPS.map((group) => group.id),
-);
+/* ------------------------------------------------- add-on categories ----- */
+
+/** One heading on the Traditional Add-ons board, e.g. "Cold Drinks". */
+export type AddOnCategoryRow = {
+  id: string;
+  name: string;
+  urdu?: string;
+  icon: string;
+  sortOrder: number;
+  active: boolean;
+};
+
+type AddOnCategoryDb = {
+  id: string;
+  name: string;
+  urdu: string | null;
+  icon: string | null;
+  sort_order: number | null;
+  active: boolean | null;
+};
+
+function toAddOnCategory(row: AddOnCategoryDb): AddOnCategoryRow {
+  return {
+    id: row.id,
+    name: row.name,
+    urdu: row.urdu ?? undefined,
+    icon: row.icon || "\uD83C\uDF7D",
+    sortOrder: row.sort_order ?? 0,
+    active: row.active ?? true,
+  };
+}
+
+/** Every heading, hidden ones included — the admin board. */
+export async function fetchAddOnCategories(): Promise<AddOnCategoryRow[]> {
+  const rows = await selectRows<AddOnCategoryDb>(TABLES.addonCategories, (q) =>
+    q.order("sort_order", { ascending: true }),
+  );
+  return rows.map(toAddOnCategory);
+}
+
+/** Only the headings shown to guests, in display order. */
+export async function fetchPublicAddOnCategories(): Promise<AddOnCategoryRow[]> {
+  const rows = await selectRows<AddOnCategoryDb>(TABLES.addonCategories, (q) =>
+    q.eq("active", true).order("sort_order", { ascending: true }),
+  );
+  return rows.map(toAddOnCategory);
+}
+
+export type AddOnCategoryInput = {
+  id?: string;
+  name: string;
+  urdu?: string;
+  icon?: string;
+  sortOrder?: number;
+  active: boolean;
+};
+
+/**
+ * Create a heading or rename an existing one. On create the id is derived from
+ * the name, so the admin never has to invent a slug.
+ */
+export async function upsertAddOnCategory(
+  input: AddOnCategoryInput,
+): Promise<{ id: string; created: boolean }> {
+  const name = input.name.trim();
+  if (name.length < 2) throw new Error("Give the category a name first.");
+
+  const id =
+    input.id ||
+    `${name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}-${Math.random().toString(36).slice(2, 6)}`;
+  const existing = input.id
+    ? await selectRows<{ id: string }>(
+        TABLES.addonCategories,
+        (q) => q.eq("id", input.id as string).limit(1),
+        "id",
+      )
+    : [];
+
+  const { error } = await supabase.from(TABLES.addonCategories).upsert(
+    {
+      id,
+      name,
+      urdu: input.urdu?.trim() || null,
+      icon: input.icon?.trim() || "\uD83C\uDF7D",
+      sort_order: input.sortOrder ?? 0,
+      active: input.active,
+      updated_at: Date.now(),
+    },
+    { onConflict: "id" },
+  );
+  fail(error, "Could not save the category.");
+  return { id, created: existing.length === 0 };
+}
 
 function toAddOn(row: AddOnDb): AddOnRow {
-  const category = (
-    ADDON_CATEGORY_IDS.has(row.category) ? row.category : "bread"
-  ) as AddOnGroupId;
   return {
     id: row.id,
     name: row.name,
     urdu: row.urdu ?? undefined,
     price: row.price,
-    category,
+    category: row.category,
     image: row.image || mediaUrl(row.image_path) || "",
     imageStorageId: row.image_path ?? undefined,
     active: row.active,
     demo: row.demo ?? false,
     sortOrder: row.sort_order,
-    chilled: category === "cold",
+    chilled: row.category === "cold",
   };
 }
 
@@ -824,7 +940,7 @@ export type AddOnInput = {
   name: string;
   urdu?: string;
   price: number;
-  category: AddOnGroupId;
+  category: string;
   active: boolean;
   sortOrder: number;
 };
@@ -1612,3 +1728,78 @@ export async function uploadImage(
 }
 
 export { HIDE_DELIVERED_AFTER_MS };
+
+/* ------------------------------------------------------------------ */
+/* Health check                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Every table the app reads or writes. A missing one means
+ *  `supabase/schema.sql` has not been run on this project — the single reason
+ *  nothing can sync. */
+const REQUIRED_TABLES: { table: string; label: string }[] = [
+  { table: TABLES.categories, label: "Menu counters" },
+  { table: TABLES.dishes, label: "Menu dishes" },
+  { table: TABLES.addons, label: "Add-ons" },
+  { table: TABLES.addonCategories, label: "Add-on categories" },
+  { table: TABLES.siteMedia, label: "Site photos" },
+  { table: TABLES.siteContent, label: "Editable copy" },
+  { table: TABLES.promotions, label: "Promotions" },
+  { table: TABLES.preOrderItems, label: "Pre-order items" },
+  { table: TABLES.preorders, label: "Pre-orders" },
+  { table: TABLES.reservations, label: "Reservations" },
+  { table: TABLES.deliveryOrders, label: "Delivery orders" },
+];
+
+export type SchemaStatus = {
+  /** Every table present and the media bucket reachable. */
+  ready: boolean;
+  /** The tables that are missing, with a label a human recognises. */
+  missing: { table: string; label: string }[];
+  storageReady: boolean;
+  storageMessage?: string;
+  /** The project could not be reached at all (offline, wrong URL). */
+  unreachable: boolean;
+};
+
+function looksMissing(message: string): boolean {
+  return /does not exist|schema cache|Could not find the table/i.test(message);
+}
+
+/**
+ * Probe the project for every table the portals write to, plus the media
+ * bucket. The portals used to swallow these failures, which made a project with
+ * no schema at all look like a site that simply refused to update.
+ */
+export async function checkSupabaseSchema(): Promise<SchemaStatus> {
+  let unreachable = false;
+  const missing: { table: string; label: string }[] = [];
+
+  await Promise.all(
+    REQUIRED_TABLES.map(async ({ table, label }) => {
+      const { error } = await supabase
+        .from(table)
+        .select("*", { count: "exact", head: true });
+      if (!error) return;
+      if (looksMissing(error.message)) missing.push({ table, label });
+      else unreachable = true;
+    }),
+  );
+
+  let storageReady = true;
+  let storageMessage: string | undefined;
+  const { error: storageError } = await supabase.storage
+    .from(MEDIA_BUCKET)
+    .list("", { limit: 1 });
+  if (storageError) {
+    storageReady = false;
+    storageMessage = storageError.message;
+  }
+
+  return {
+    ready: missing.length === 0 && storageReady && !unreachable,
+    missing: missing.sort((a, b) => a.table.localeCompare(b.table)),
+    storageReady,
+    storageMessage,
+    unreachable,
+  };
+}

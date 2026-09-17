@@ -33,6 +33,8 @@ export const TABLES = {
   categories: "menu_categories",
   dishes: "menu_dishes",
   addons: "menu_addons",
+  /** Admin-created headings for the Traditional Add-ons board. */
+  addonCategories: "addon_categories",
   siteMedia: "site_media",
   siteContent: "site_content",
   deliveryOrders: "delivery_orders",

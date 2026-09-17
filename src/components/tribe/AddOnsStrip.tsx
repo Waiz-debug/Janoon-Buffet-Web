@@ -1,6 +1,6 @@
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite, type LiveAddOn } from "@/hooks/use-live-site";
-import { ADDON_GROUPS, formatRupees } from "@/lib/menu";
+import { formatRupees } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Check, Plus, Snowflake } from "lucide-react";
@@ -8,14 +8,15 @@ import { useState } from "react";
 
 /**
  * The Traditional Add-ons board: naan and breads, sides and salads, drinks and
- * lassi, and cold drinks. Every item, price, Urdu name and photo comes from the
- * `menu_addons` table, so whatever the admin saves here goes live immediately.
+ * lassi, and cold drinks. Every heading comes from `addon_categories`, and
+ * every item, price, Urdu name and photo from `menu_addons`, so whatever the
+ * admin saves goes live immediately — including a category the owner invents.
  * Each item is a quick "add to order" pill — the guest keeps browsing after
  * tapping.
  */
 export function AddOnsStrip() {
   const { add } = useCart();
-  const { addons } = useLiveSite();
+  const { addons, addonGroups } = useLiveSite();
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
   const handleAdd = (addon: LiveAddOn) => {
@@ -55,17 +56,23 @@ export function AddOnsStrip() {
         </div>
 
         <div className="mt-8 flex flex-col gap-8">
-          {ADDON_GROUPS.map((group) => {
+          {addonGroups.map((group) => {
             const items = addons.filter((addon) => addon.group === group.id);
             if (items.length === 0) return null;
             return (
               <div key={group.id}>
                 <p className="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
                   <span aria-hidden>{group.icon}</span>
-                  {group.label}
-                  <span className="text-[0.7rem] tracking-normal text-gold/60 normal-case">
-                    {group.urdu}
-                  </span>
+                  {group.name}
+                  {group.urdu ? (
+                    <span
+                      className="text-[0.7rem] tracking-normal text-gold/60 normal-case"
+                      dir="rtl"
+                      lang="ur"
+                    >
+                      {group.urdu}
+                    </span>
+                  ) : null}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {items.map((addon, index) => {

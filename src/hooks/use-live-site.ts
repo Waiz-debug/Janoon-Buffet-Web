@@ -1,4 +1,5 @@
 import {
+  usePublicAddOnCategories,
   usePublicAddOns,
   usePublicMenu,
   useSiteContent,
@@ -17,7 +18,11 @@ import {
   type Dish,
   type MenuCategory,
 } from "@/lib/menu";
-import type { MenuCategoryRow, MenuDishRow } from "@/lib/db";
+import type {
+  AddOnCategoryRow,
+  MenuCategoryRow,
+  MenuDishRow,
+} from "@/lib/db";
 import { GALLERY, HERO_MEDIA, SITE_CONTENT_DEFAULTS } from "@/lib/restaurant";
 import { mediaUrl } from "@/lib/supabase";
 import { useMemo } from "react";
@@ -40,8 +45,10 @@ export type LiveDish = Dish & {
 export type LiveMedia = Record<string, { url: string; caption?: string }>;
 
 /** A traditional add-on as served to the UI — the live row may carry an
- *  admin-uploaded photo that the built-in list does not have. */
-export type LiveAddOn = AddOn & {
+ *  admin-uploaded photo that the built-in list does not have, and its category
+ *  is whatever the admin has created rather than a fixed set. */
+export type LiveAddOn = Omit<AddOn, "group"> & {
+  group: string;
   image?: string;
   imageStorageId?: string;
   demo?: boolean;
@@ -105,6 +112,7 @@ export function useLiveSite() {
   const mediaRows = useSiteMedia();
   const contentRows = useSiteContent();
   const addonRows = usePublicAddOns();
+  const addonCategoryRows = usePublicAddOnCategories();
 
   const media = useMemo<LiveMedia>(() => {
     const map: LiveMedia = {};
@@ -202,6 +210,42 @@ export function useLiveSite() {
   }, [data, bySlug]);
 
   /**
+   * The add-on headings, straight from the admin panel so a category the owner
+   * creates appears on the public board immediately. The built-in four stand in
+   * until the table has been seeded.
+   */
+  const addonGroups = useMemo<AddOnCategoryRow[]>(() => {
+    const list: AddOnCategoryRow[] =
+      addonCategoryRows && addonCategoryRows.length > 0
+        ? addonCategoryRows.map((category) => ({ ...category }))
+        : ADDON_GROUPS.map((group, index) => ({
+            id: group.id,
+            name: group.label,
+            urdu: group.urdu,
+            icon: group.icon,
+            sortOrder: index + 1,
+            active: true,
+          }));
+
+    // A heading removed while add-ons still point at it would otherwise hide
+    // those items from the board entirely — they get a trailing heading
+    // instead of disappearing.
+    const known = new Set(list.map((category) => category.id));
+    const orphans = [...new Set((addonRows ?? []).map((row) => row.category))]
+      .filter((id) => id && !known.has(id))
+      .map((id, index) => ({
+        id,
+        name: id,
+        urdu: undefined,
+        icon: "\uD83C\uDF7D",
+        sortOrder: 900 + index,
+        active: true,
+      }));
+
+    return [...list, ...orphans].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [addonCategoryRows, addonRows]);
+
+  /**
    * The Traditional Add-ons board, ordered by category then by the admin's sort
    * order. Before the add-on table has been seeded the built-in list — which
    * already includes the cold drinks — stands in.
@@ -209,7 +253,7 @@ export function useLiveSite() {
   const addons = useMemo<LiveAddOn[]>(() => {
     if (!addonRows || addonRows.length === 0) return STATIC_ADDONS;
     const rank = new Map<string, number>(
-      ADDON_GROUPS.map((group, index) => [group.id, index]),
+      addonGroups.map((group, index) => [group.id, index]),
     );
 
     return [...addonRows]
@@ -230,7 +274,7 @@ export function useLiveSite() {
         active: row.active,
         demo: row.demo,
       }));
-  }, [addonRows]);
+  }, [addonRows, addonGroups]);
 
   return {
     ...data,
@@ -238,6 +282,7 @@ export function useLiveSite() {
     heroImage: media[HERO_MEDIA.slot]?.url,
     mediaOr,
     addons,
+    addonGroups,
     content,
     gallery,
     signatures,

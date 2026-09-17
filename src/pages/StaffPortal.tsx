@@ -1,3 +1,4 @@
+import { SetupNotice } from "@/components/admin/SetupNotice";
 import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
@@ -263,6 +264,10 @@ export default function StaffPortal() {
       title="The floor desk"
       description="Everything the evening team needs while the terrace is full — the live delivery feed, order totals, and every table booking, pre-order and delivery in one searchable desk."
     >
+      {/* A project with no schema looks like a desk that never receives
+          anything — say so up front rather than leaving the team guessing. */}
+      <SetupNotice />
+
       {/* Prominent new-order alert overlay */}
       <AnimatePresence>
         {freshAlert ? (

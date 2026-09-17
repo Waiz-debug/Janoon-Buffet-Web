@@ -1,105 +1,76 @@
 import {
+  fetchAddOnCategories,
   fetchAddOns,
   fetchCategories,
   fetchDeliveryOrders,
   fetchDishes,
   fetchPreorders,
   fetchPromotions,
+  fetchPublicAddOnCategories,
   fetchPublicAddOns,
   fetchPublicCategories,
   fetchPublicDishes,
   fetchReservation,
   fetchReservations,
-  fetchSiteMedia,
   fetchSiteContent,
+  fetchSiteMedia,
   fetchVisibleDeliveryOrders,
+  fetchPublicPreOrderItems,
+  fetchAllPreOrderItems,
+  type AddOnCategoryRow,
+  type AddOnRow,
   type DeliveryOrder,
   type MenuCategoryRow,
   type MenuDishRow,
+  type PreOrderItemRow,
   type Preorder,
   type Promotion,
   type Reservation,
-  type SiteMediaRow,
   type SiteContentRow,
-  type AddOnRow,
-  type PreOrderItemRow,
-  fetchPublicPreOrderItems,
-  fetchAllPreOrderItems,
+  type SiteMediaRow,
 } from "@/lib/db";
-import { TABLES, supabase } from "@/lib/supabase";
-import { useEffect, useRef, useState } from "react";
-
-/** Stable empty arrays — a fresh `[]` every render would thrash consumers. */
-const NO_CATEGORIES: MenuCategoryRow[] = [];
-const NO_DISHES: MenuDishRow[] = [];
+import { getLiveRows, liveCacheKey, subscribeLive } from "@/lib/live-sync";
+import { TABLES } from "@/lib/supabase";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
  * Subscribe to a Postgres table and keep a local copy in sync.
  *
- * Values are `undefined` until the first read resolves, which lets callers
- * show a loading state instead of an empty page on first paint.
+ * All of the work happens in `src/lib/live-sync.ts`: one Realtime channel for
+ * the whole app, one fetch per table per variant no matter how many components
+ * ask for it, and automatic recovery when a socket reconnects or the tab
+ * regains focus. Values stay `undefined` until the first read resolves, so
+ * callers can show a loading state instead of an empty page on first paint.
+ *
+ * `variant` separates readers of the same table that want different slices —
+ * the public menu wants published rows, the admin portal wants every row — so
+ * they never collide in the shared cache while still riding one subscription.
  */
 export function useLiveTable<T>(
   table: string,
   load: () => Promise<T[]>,
-  deps: unknown[] = [],
+  variant = "default",
 ): T[] | undefined {
-  const [rows, setRows] = useState<T[] | undefined>(undefined);
+  // Held in a ref so a reader written inline at the call site — which is a new
+  // function identity every render — cannot tear down the subscription.
   const loadRef = useRef(load);
-
-  // Keep the latest reader available to the realtime callback without making
-  // the subscription depend on a function identity that changes every render.
   useEffect(() => {
     loadRef.current = load;
   });
 
-  useEffect(() => {
-    let active = true;
-    const refresh = () => {
-      void loadRef.current().then((next) => {
-        if (active) setRows(next);
-      });
-    };
+  const cacheKey = liveCacheKey(table, variant);
+  const stableLoad = useCallback(() => loadRef.current(), []);
 
-    refresh();
-    // Convex-style reactivity: every insert/update/delete on the table pushes
-    // a fresh snapshot, so both portals and the public site stay live.
-    //
-    // A websocket can drop (locked laptop, flaky network) and the changes made
-    // during that gap are gone for good, so a reconnect pulls a fresh snapshot
-    // instead of waiting for the next event. Returning to the tab does the same,
-    // which is what keeps an admin demo in one window updating the guest view in
-    // the other without a hard reload.
-    let resubscribed = false;
-    const channel = supabase
-      .channel(`tribe-${table}-${Math.random().toString(36).slice(2)}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => refresh(),
-      )
-      .subscribe((status: string) => {
-        if (status !== "SUBSCRIBED") return;
-        if (resubscribed) refresh();
-        resubscribed = true;
-      });
+  const subscribe = useCallback(
+    (onChange: () => void) => subscribeLive<T>(cacheKey, table, stableLoad, onChange),
+    [cacheKey, table, stableLoad],
+  );
+  const getSnapshot = useCallback(
+    () => getLiveRows<T>(cacheKey),
+    [cacheKey],
+  );
 
-    const onVisible = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", refresh);
-
-    return () => {
-      active = false;
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", refresh);
-      void supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, ...deps]);
-
-  return rows;
+  return useSyncExternalStore(subscribe, getSnapshot, () => undefined);
 }
 
 /* -------------------------------------------------------------- menu ----- */
@@ -118,14 +89,15 @@ export function useAdminMenu(): AdminMenu {
   const categories = useLiveTable<MenuCategoryRow>(
     TABLES.categories,
     fetchCategories,
+    "admin",
   );
-  const dishes = useLiveTable<MenuDishRow>(TABLES.dishes, fetchDishes);
+  const dishes = useLiveTable<MenuDishRow>(TABLES.dishes, fetchDishes, "admin");
 
   const loaded = categories !== undefined && dishes !== undefined;
 
   return {
-    categories: categories ?? NO_CATEGORIES,
-    dishes: dishes ?? NO_DISHES,
+    categories: categories ?? [],
+    dishes: dishes ?? [],
     loaded,
     isEmpty: loaded && categories.length === 0 && dishes.length === 0,
   };
@@ -136,35 +108,64 @@ export function usePublicMenu() {
   const categories = useLiveTable<MenuCategoryRow>(
     TABLES.categories,
     fetchPublicCategories,
+    "public",
   );
-  const dishes = useLiveTable<MenuDishRow>(TABLES.dishes, fetchPublicDishes);
+  const dishes = useLiveTable<MenuDishRow>(
+    TABLES.dishes,
+    fetchPublicDishes,
+    "public",
+  );
   return { categories, dishes };
 }
 
 export function useSiteMedia(): SiteMediaRow[] | undefined {
-  return useLiveTable<SiteMediaRow>(TABLES.siteMedia, fetchSiteMedia);
+  return useLiveTable<SiteMediaRow>(TABLES.siteMedia, fetchSiteMedia, "public");
 }
 
 /** The published add-on board for the public site. */
 export function usePublicAddOns(): AddOnRow[] | undefined {
-  return useLiveTable<AddOnRow>(TABLES.addons, fetchPublicAddOns);
+  return useLiveTable<AddOnRow>(TABLES.addons, fetchPublicAddOns, "public");
 }
 
 /** Every add-on for the admin panel — hidden rows included. */
 export function useAdminAddOns(): AddOnRow[] | undefined {
-  return useLiveTable<AddOnRow>(TABLES.addons, fetchAddOns);
+  return useLiveTable<AddOnRow>(TABLES.addons, fetchAddOns, "admin");
+}
+
+/* --------------------------------------------------- add-on categories --- */
+
+/** The add-on headings shown to guests, in display order. */
+export function usePublicAddOnCategories(): AddOnCategoryRow[] | undefined {
+  return useLiveTable<AddOnCategoryRow>(
+    TABLES.addonCategories,
+    fetchPublicAddOnCategories,
+    "public",
+  );
+}
+
+/** Every add-on heading for the admin panel — hidden ones included. */
+export function useAdminAddOnCategories(): AddOnCategoryRow[] | undefined {
+  return useLiveTable<AddOnCategoryRow>(
+    TABLES.addonCategories,
+    fetchAddOnCategories,
+    "admin",
+  );
 }
 
 /** Editable copy set from the admin panel (seating counter, notes). */
 export function useSiteContent(): SiteContentRow[] | undefined {
-  return useLiveTable<SiteContentRow>(TABLES.siteContent, fetchSiteContent);
+  return useLiveTable<SiteContentRow>(TABLES.siteContent, fetchSiteContent, "public");
 }
 
 /* ------------------------------------------------------------ orders ----- */
 
 /** Staff desk: every order, newest first, live. */
 export function useDeliveryOrders(): DeliveryOrder[] | undefined {
-  return useLiveTable<DeliveryOrder>(TABLES.deliveryOrders, fetchDeliveryOrders);
+  return useLiveTable<DeliveryOrder>(
+    TABLES.deliveryOrders,
+    fetchDeliveryOrders,
+    "all",
+  );
 }
 
 /** Guest tracker: delivered orders hidden 30 minutes after delivery. */
@@ -172,6 +173,7 @@ export function useVisibleDeliveryOrders(): DeliveryOrder[] | undefined {
   return useLiveTable<DeliveryOrder>(
     TABLES.deliveryOrders,
     fetchVisibleDeliveryOrders,
+    "visible",
   );
 }
 
@@ -179,85 +181,93 @@ export function useVisibleDeliveryOrders(): DeliveryOrder[] | undefined {
 
 /** Live bookings desk feed for the admin portal. */
 export function useReservations(): Reservation[] | undefined {
-  return useLiveTable<Reservation>(TABLES.reservations, fetchReservations);
+  return useLiveTable<Reservation>(TABLES.reservations, fetchReservations, "all");
 }
 
 /**
  * A single booking, re-read whenever the reservations table changes so a
  * status change made at the desk shows up on the guest's page immediately.
+ *
+ * `undefined` means "still looking", `null` means "no such booking" — the two
+ * states the guest's confirmation panel needs to tell apart.
  */
 export function useReservationLookup(
   reference: string | null,
   phone: string,
 ): Reservation | null | undefined {
-  // The result is tagged with the lookup it answers, so a changed reference
-  // reads as "loading" without a synchronous state reset in an effect.
-  const [result, setResult] = useState<{
-    key: string;
-    value: Reservation | null;
-  } | null>(null);
+  const wanted = reference
+    ? `${reference.trim().toUpperCase()}|${phone}`
+    : null;
 
-  const key = reference ? `${reference.trim().toUpperCase()}|${phone}` : null;
-  const wanted = key;
-
-  useEffect(() => {
-    if (!wanted) return;
-    let active = true;
-    const refresh = () => {
-      const separator = wanted.indexOf("|");
-      void fetchReservation(
-        wanted.slice(0, separator),
-        wanted.slice(separator + 1),
-      ).then((next) => {
-        if (active) setResult({ key: wanted, value: next });
-      });
-    };
-    refresh();
-    const channel = supabase
-      .channel(`tribe-booking-${wanted.replace(/[^A-Za-z0-9|]/g, "")}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: TABLES.reservations },
-        () => refresh(),
-      )
-      .subscribe();
-    return () => {
-      active = false;
-      void supabase.removeChannel(channel);
-    };
+  // Pinned to the reference so a changed lookup reads as "loading" rather than
+  // briefly showing the previous booking's details.
+  const load = useCallback(async () => {
+    if (!wanted) return [] as Reservation[];
+    const separator = wanted.indexOf("|");
+    const found = await fetchReservation(
+      wanted.slice(0, separator),
+      wanted.slice(separator + 1),
+    );
+    return found ? [found] : [];
   }, [wanted]);
+
+  const cacheKey = liveCacheKey(TABLES.reservations, `lookup:${wanted ?? "none"}`);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      wanted
+        ? subscribeLive<Reservation>(cacheKey, TABLES.reservations, load, onChange)
+        : () => {},
+    [cacheKey, load, wanted],
+  );
+  const getSnapshot = useCallback(
+    () => getLiveRows<Reservation>(cacheKey),
+    [cacheKey],
+  );
+  const rows = useSyncExternalStore(subscribe, getSnapshot, () => undefined);
 
   // No reference means there is nothing to look up — never a loading state.
   if (!wanted) return null;
-  if (!result || result.key !== wanted) return undefined;
-  return result.value;
+  if (rows === undefined) return undefined;
+  return rows[0] ?? null;
 }
 
-/* ----------------------------------------------- pre_order_items ------ */
+/* ----------------------------------------------- pre_order_items ------- */
 
 /** Public pre-order form: active items only. */
 export function usePublicPreOrderItems(): PreOrderItemRow[] | undefined {
-  return useLiveTable<PreOrderItemRow>(TABLES.preOrderItems, fetchPublicPreOrderItems);
+  return useLiveTable<PreOrderItemRow>(
+    TABLES.preOrderItems,
+    fetchPublicPreOrderItems,
+    "public",
+  );
 }
 
 /** Admin panel: all pre-order items including hidden ones. */
 export function useAdminPreOrderItems(): PreOrderItemRow[] | undefined {
-  return useLiveTable<PreOrderItemRow>(TABLES.preOrderItems, fetchAllPreOrderItems);
+  return useLiveTable<PreOrderItemRow>(
+    TABLES.preOrderItems,
+    fetchAllPreOrderItems,
+    "admin",
+  );
 }
 
 /* --------------------------------------------------------- preorders ----- */
 
 /** Staff & admin desk: every pre-order, newest first, live. */
 export function usePreorders(): Preorder[] | undefined {
-  return useLiveTable<Preorder>(TABLES.preorders, fetchPreorders);
+  return useLiveTable<Preorder>(TABLES.preorders, fetchPreorders, "all");
 }
 
 /* -------------------------------------------------------- promotions ----- */
 
+/**
+ * Promotions. `activeOnly` drops anything switched off or past its expiry —
+ * the admin list asks for every row, the public banner only for live offers.
+ */
 export function usePromotions(activeOnly: boolean): Promotion[] | undefined {
   return useLiveTable<Promotion>(
     TABLES.promotions,
     () => fetchPromotions({ activeOnly }),
-    [activeOnly],
+    activeOnly ? "active" : "all",
   );
 }

@@ -15,11 +15,13 @@ import {
   removeAddOnImage,
   setAddOnImage,
   upsertAddOn,
+  upsertAddOnCategory,
+  type AddOnCategoryRow,
   type AddOnRow,
 } from "@/lib/db";
-import { ADDON_GROUPS, formatRupees, type AddOnGroupId } from "@/lib/menu";
-import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { ADDON_GROUPS, formatRupees } from "@/lib/menu";
+import { Check, Loader2, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type Draft = {
@@ -27,7 +29,7 @@ type Draft = {
   name: string;
   urdu: string;
   price: string;
-  category: AddOnGroupId;
+  category: string;
   image: string;
   /** Storage id of a just-uploaded photo awaiting the first save. */
   pendingStorageId: string | null;
@@ -35,7 +37,7 @@ type Draft = {
   sortOrder: number;
 };
 
-const emptyDraft = (category: AddOnGroupId, nextSort: number): Draft => ({
+const emptyDraft = (category: string, nextSort: number): Draft => ({
   id: null,
   name: "",
   urdu: "",
@@ -48,28 +50,79 @@ const emptyDraft = (category: AddOnGroupId, nextSort: number): Draft => ({
 });
 
 /**
- * Full CRUD for the Traditional Add-ons board — breads and naan, sides and
- * salads, drinks and lassi, and cold drinks.
+ * Full CRUD for the Traditional Add-ons board.
  *
  * Deliberately small: pick a category, type the English and Urdu names, set a
- * price, optionally attach a photo. The item id and its position in the
- * category are derived on save, so there is nothing else to fill in. All of it
- * goes live on the public board the moment it saves.
+ * price, optionally attach a photo. The item id and its position within the
+ * category are derived on save, so there is nothing else to fill in.
+ *
+ * Categories are data, not code — the admin can invent new ones ("Tandoor
+ * Breads", "Ice Cream") from the builder below, and they appear on the public
+ * board in the order shown here.
  */
-export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
+export function AddOnManager({
+  addons,
+  categories,
+  categoriesLoaded,
+}: {
+  addons: AddOnRow[];
+  categories: AddOnCategoryRow[];
+  categoriesLoaded: boolean;
+}) {
   const [editing, setEditing] = useState<Draft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState({
+    name: "",
+    urdu: "",
+    icon: "🍽",
+  });
 
-  const countIn = (category: AddOnGroupId) =>
+  /**
+   * The headings to render, in order: the admin's categories when they exist,
+   * the built-in four before the table has been seeded, plus any category an
+   * existing add-on still points at so no item can go missing from this list.
+   */
+  const groups = useMemo<AddOnCategoryRow[]>(() => {
+    const list: AddOnCategoryRow[] =
+      categories.length > 0
+        ? categories.map((category) => ({ ...category }))
+        : ADDON_GROUPS.map((group, index) => ({
+            id: group.id,
+            name: group.label,
+            urdu: group.urdu,
+            icon: group.icon,
+            sortOrder: index + 1,
+            active: true,
+          }));
+
+    const known = new Set(list.map((category) => category.id));
+    const orphans = [...new Set(addons.map((addon) => addon.category))]
+      .filter((id) => id && !known.has(id))
+      .map((id, index) => ({
+        id,
+        name: id,
+        urdu: undefined,
+        icon: "🍽",
+        sortOrder: 900 + index,
+        active: true,
+      }));
+
+    return [...list, ...orphans].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [addons, categories]);
+
+  const countIn = (category: string) =>
     addons.filter((addon) => addon.category === category).length;
 
-  const startCreate = (category: AddOnGroupId = "cold") => {
+  const startCreate = (category?: string) => {
+    const target = category ?? groups[0]?.id ?? "bread";
     const nextSort =
       addons
-        .filter((addon) => addon.category === category)
+        .filter((addon) => addon.category === target)
         .reduce((max, addon) => Math.max(max, addon.sortOrder), 0) + 1;
-    setEditing(emptyDraft(category, nextSort));
+    setEditing(emptyDraft(target, nextSort));
   };
 
   const startEdit = (addon: AddOnRow) => {
@@ -147,18 +200,137 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
     }
   };
 
+  const createCategory = async () => {
+    if (newCategory.name.trim().length < 2) {
+      toast.error("Give the category a name first.");
+      return;
+    }
+    setSavingCategory(true);
+    try {
+      const created = await upsertAddOnCategory({
+        name: newCategory.name,
+        urdu: newCategory.urdu,
+        icon: newCategory.icon,
+        sortOrder: groups.length + 1,
+        active: true,
+      });
+      toast.success(`${newCategory.name.trim()} added — add items to it now`);
+      setNewCategory({ name: "", urdu: "", icon: "🍽" });
+      setIsBuilding(false);
+      // Drop straight into a new item for the category just created.
+      setEditing(emptyDraft(created.id, 1));
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not save the category.",
+      );
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {addons.length} add-ons · {countIn("cold")} cold drinks · changes go
-          live instantly
+          {addons.length} add-ons · {groups.length}{" "}
+          {groups.length === 1 ? "category" : "categories"} · changes go live
+          instantly
         </p>
-        <Button onClick={() => startCreate()} className="gap-2">
-          <Plus className="size-4" aria-hidden />
-          Add item
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsBuilding((open) => !open)}
+            className="gap-2"
+          >
+            <Tags className="size-4" aria-hidden />
+            New category
+          </Button>
+          <Button onClick={() => startCreate()} className="gap-2">
+            <Plus className="size-4" aria-hidden />
+            Add item
+          </Button>
+        </div>
       </div>
+
+      {/* Category builder */}
+      {isBuilding ? (
+        <div className="rounded-2xl border border-gold/30 bg-card/70 p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-base font-semibold">
+              New add-on category
+            </h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Close category builder"
+              onClick={() => setIsBuilding(false)}
+            >
+              <X className="size-4" aria-hidden />
+            </Button>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Creates a new heading on the public add-ons board — like
+            &ldquo;Tandoor Breads&rdquo; or &ldquo;Ice Cream&rdquo;.
+          </p>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="addon-cat-name">Name (English)</Label>
+              <Input
+                id="addon-cat-name"
+                value={newCategory.name}
+                placeholder="e.g. Tandoor Breads"
+                onChange={(e) =>
+                  setNewCategory({ ...newCategory, name: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="addon-cat-urdu">Name (Urdu)</Label>
+              <Input
+                id="addon-cat-urdu"
+                value={newCategory.urdu}
+                dir="rtl"
+                lang="ur"
+                placeholder="e.g. تندوری روٹی"
+                onChange={(e) =>
+                  setNewCategory({ ...newCategory, urdu: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="addon-cat-icon">Icon</Label>
+              <Input
+                id="addon-cat-icon"
+                value={newCategory.icon}
+                maxLength={4}
+                className="text-center text-lg"
+                onChange={(e) =>
+                  setNewCategory({ ...newCategory, icon: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 flex items-center justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsBuilding(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void createCategory()}
+              disabled={savingCategory}
+              className="gap-2"
+            >
+              {savingCategory ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Check className="size-4" aria-hidden />
+              )}
+              Create category
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {editing ? (
         <div className="rounded-2xl border border-gold/30 bg-card/70 p-5">
@@ -182,16 +354,16 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
               <Select
                 value={editing.category}
                 onValueChange={(value) =>
-                  setEditing({ ...editing, category: value as AddOnGroupId })
+                  setEditing({ ...editing, category: value })
                 }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ADDON_GROUPS.map((group) => (
+                  {groups.map((group) => (
                     <SelectItem key={group.id} value={group.id}>
-                      {group.label}
+                      {group.icon} {group.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -236,10 +408,11 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
                 }
               />
             </div>
+
             <ImageField
               label="Item photo (optional)"
               value={editing.image}
-              hint="JPG, PNG or WebP up to 5 MB — shown on the add-ons board"
+              hint="JPG, PNG or WebP up to 5 MB — shown on the guest's add-on pill"
               onUploaded={(upload) => {
                 // Editing an existing item attaches immediately; a new one
                 // holds the storage id until the row exists to attach it to.
@@ -297,17 +470,19 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
         </div>
       ) : null}
 
-      {ADDON_GROUPS.map((group) => {
+      {groups.map((group) => {
         const items = addons.filter((addon) => addon.category === group.id);
         return (
           <div key={group.id} className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex flex-wrap items-center gap-2 text-xs tracking-[0.14em] text-muted-foreground uppercase">
                 <span aria-hidden>{group.icon}</span>
-                {group.label}
-                <span className="tracking-normal text-gold/60 normal-case">
-                  {group.urdu}
-                </span>
+                {group.name}
+                {group.urdu ? (
+                  <span className="tracking-normal text-gold/60 normal-case">
+                    {group.urdu}
+                  </span>
+                ) : null}
                 <span className="rounded-full border border-border/70 px-2 py-0.5 text-[0.65rem] normal-case">
                   {items.length}
                 </span>
@@ -319,7 +494,7 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
                 className="gap-1.5"
               >
                 <Plus className="size-3.5" aria-hidden />
-                Add to {group.label}
+                Add to {group.name}
               </Button>
             </div>
 
@@ -358,10 +533,8 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
                                 <span aria-hidden>{group.icon}</span>
                               )}
                             </span>
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">
-                                {addon.name}
-                              </span>
+                            <span className="min-w-0 truncate font-medium">
+                              {addon.name}
                             </span>
                           </div>
                         </td>
@@ -426,6 +599,12 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
           </div>
         );
       })}
+
+      {!categoriesLoaded && addons.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
+          Loading the add-ons board…
+        </p>
+      ) : null}
     </div>
   );
 }

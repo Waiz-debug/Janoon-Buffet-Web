@@ -1,18 +1,19 @@
 import { AdminOverview } from "@/components/admin/AdminOverview";
 import { AddOnManager } from "@/components/admin/AddOnManager";
-import { CategoryManager } from "@/components/admin/CategoryManager";
-import { DishManager } from "@/components/admin/DishManager";
+import { CountersManager } from "@/components/admin/CountersManager";
 import { ExperienceManager } from "@/components/admin/ExperienceManager";
 import { HeroPhotoManager } from "@/components/admin/HeroPhotoManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { PreOrderManager } from "@/components/admin/PreOrderManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
+import { SetupNotice } from "@/components/admin/SetupNotice";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  useAdminAddOnCategories,
   useAdminAddOns,
   useAdminMenu,
   useAdminPreOrderItems,
@@ -31,6 +32,7 @@ import { toast } from "sonner";
 export default function AdminPortal() {
   const { categories, dishes, loaded, isEmpty } = useAdminMenu();
   const addons = useAdminAddOns() ?? [];
+  const addonCategories = useAdminAddOnCategories();
   const preOrderItems = useAdminPreOrderItems();
   const seeding = useRef(false);
 
@@ -66,8 +68,17 @@ export default function AdminPortal() {
         if (await seedDemoPromotion()) {
           toast.success("Demo promotion published");
         }
-      } catch {
-        // The SQL may not be applied yet — the site still renders.
+      } catch (error) {
+        // Nearly always the schema has not been applied yet. Reporting it beats
+        // leaving the owner staring at an empty panel that silently does
+        // nothing — see the setup panel at the top of this page.
+        toast.error("Could not load the demo content", {
+          description:
+            error instanceof Error
+              ? error.message.split("\n")[0]
+              : "Run supabase/schema.sql, then reopen this panel.",
+          duration: 12000,
+        });
       }
     })();
   }, [loaded, isEmpty]);
@@ -92,6 +103,8 @@ export default function AdminPortal() {
       title="Menu, photos & promotions"
       description="Every change here is live on the customer site the moment you save — no redeploy needed, no refresh on the guest's side."
     >
+      <SetupNotice />
+
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1 text-xs text-muted-foreground">
           {dishes.length} dishes live
@@ -109,8 +122,7 @@ export default function AdminPortal() {
       <Tabs defaultValue="overview">
         <TabsList className="mb-6 flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="dishes">Dishes &amp; prices</TabsTrigger>
-          <TabsTrigger value="counters">Counters</TabsTrigger>
+          <TabsTrigger value="counters">Counters &amp; items</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
           <TabsTrigger value="preorders">Pre-order items</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
@@ -122,15 +134,27 @@ export default function AdminPortal() {
           <AdminOverview />
         </TabsContent>
 
-        <TabsContent value="dishes">
-          <DishManager
+        <TabsContent value="counters">
+          <CountersManager
+            categories={categories.map((category) => ({
+              id: category.id,
+              name: category.name,
+              urdu: category.urdu,
+              blurb: category.blurb,
+              icon: category.icon,
+              sortOrder: category.sortOrder ?? 0,
+              active: category.active ?? true,
+            }))}
             dishes={dishes}
-            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           />
         </TabsContent>
 
         <TabsContent value="addons">
-          <AddOnManager addons={addons} />
+          <AddOnManager
+            addons={addons}
+            categories={addonCategories ?? []}
+            categoriesLoaded={addonCategories !== undefined}
+          />
         </TabsContent>
 
         <TabsContent value="preorders" className="flex flex-col gap-4">
@@ -148,20 +172,6 @@ export default function AdminPortal() {
           <PreOrderManager
             items={preOrderItems ?? []}
             loading={preOrderItems === undefined}
-          />
-        </TabsContent>
-
-        <TabsContent value="counters">
-          <CategoryManager
-            categories={categories.map((category) => ({
-              id: category.id,
-              name: category.name,
-              urdu: category.urdu,
-              blurb: category.blurb,
-              icon: category.icon,
-              sortOrder: category.sortOrder ?? 0,
-              active: category.active ?? true,
-            }))}
           />
         </TabsContent>
 

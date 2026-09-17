@@ -69,20 +69,42 @@ create table if not exists public.site_content (
 -- The "Traditional Add-ons" board on the public site: breads and naan, sides
 -- and salads, drinks and lassi, and cold drinks. Fully admin-managed.
 --
--- `category` is one of the four groups the public board renders, in this order:
---   bread  → Breads & Naan
---   side   → Sides & Salads
---   drink  → Drinks & Lassi
---   cold   → Cold Drinks
--- The labels themselves live in ADDON_GROUPS (src/lib/menu.ts) so the admin
--- form and the public board can never disagree about them.
+-- The headings are ROWS, not a fixed list, so the owner can invent new ones
+-- ("Tandoor Breads", "Ice Cream") from the admin panel and they appear on the
+-- public board at once. The four built-ins are seeded so a fresh project still
+-- looks exactly like the designed site; the matching fallback list lives in
+-- ADDON_GROUPS (src/lib/menu.ts) for the moment before the seed has run.
+create table if not exists public.addon_categories (
+  id          text primary key,
+  name        text not null,
+  urdu        text,
+  icon        text not null default '🍽',
+  sort_order  integer not null default 0,
+  active      boolean not null default true,
+  updated_at  bigint not null default 0
+);
+
+create index if not exists addon_categories_sort_idx
+  on public.addon_categories (sort_order);
+
+insert into public.addon_categories (id, name, urdu, icon, sort_order, active)
+values
+  ('bread', 'Breads & Naan',  'روٹی و نان',   '🫓', 1, true),
+  ('side',  'Sides & Salads', 'سالن و سلاد',  '🥗', 2, true),
+  ('drink', 'Drinks & Lassi', 'مشروبات و لسی', '🥤', 3, true),
+  ('cold',  'Cold Drinks',    'کولڈ ڈرنک',    '🧊', 4, true)
+on conflict (id) do nothing;
+
 create table if not exists public.menu_addons (
   id          text primary key,
   name        text not null,
   urdu        text,
   price       integer not null default 0,
-  category    text not null default 'bread'
-              check (category in ('bread', 'side', 'drink', 'cold')),
+  -- References addon_categories(id). Deliberately no CHECK constraint: the
+  -- owner creates categories at runtime, so a fixed list would block them.
+  -- The foreign key is added in the migration section below, once any rows
+  -- written before this table existed have been given a home.
+  category    text not null default 'bread',
   -- `image` holds an external URL; `image_path` holds an uploaded object inside
   -- the tribe-media bucket. An upload always clears the other one.
   image       text,
@@ -254,9 +276,9 @@ declare
   tbl text;
 begin
   foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'menu_addons', 'site_media', 'site_content',
-    'delivery_orders', 'reservations', 'promotions', 'preorders',
-    'pre_order_items'
+    'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
+    'site_media', 'site_content', 'delivery_orders', 'reservations',
+    'promotions', 'preorders', 'pre_order_items'
   ]
   loop
     begin
@@ -277,6 +299,7 @@ alter table public.site_content      enable row level security;
 alter table public.menu_categories  enable row level security;
 alter table public.menu_dishes      enable row level security;
 alter table public.menu_addons      enable row level security;
+alter table public.addon_categories enable row level security;
 alter table public.site_media       enable row level security;
 alter table public.delivery_orders  enable row level security;
 alter table public.reservations     enable row level security;
@@ -289,9 +312,9 @@ declare
   tbl text;
 begin
   foreach tbl in array array[
-    'menu_categories', 'menu_dishes', 'menu_addons', 'site_media', 'site_content',
-    'delivery_orders', 'reservations', 'promotions', 'preorders',
-    'pre_order_items'
+    'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
+    'site_media', 'site_content', 'delivery_orders', 'reservations',
+    'promotions', 'preorders', 'pre_order_items'
   ]
   loop
     execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
@@ -645,6 +668,43 @@ begin
     on update cascade on delete restrict;
 end $$;
 
+-- --------------------------------------------------- add-on categories -----
+--  `menu_addons.category` used to be pinned to the four built-in headings by a
+--  CHECK constraint, which is exactly what stops the owner inventing a new
+--  one. It is dropped here so the column can reference `addon_categories`
+--  instead. Anything sitting on a heading that no longer exists is moved to
+--  Breads & Naan first, so the foreign key always applies.
+alter table public.menu_addons
+  drop constraint if exists menu_addons_category_check;
+
+do $$
+declare
+  moved integer;
+begin
+  update public.menu_addons a
+     set category = 'bread'
+   where not exists (
+     select 1 from public.addon_categories c where c.id = a.category
+   );
+  get diagnostics moved = row_count;
+  if moved > 0 then
+    raise notice '% add-on(s) pointed at a deleted category and were moved to Breads & Naan.', moved;
+  end if;
+
+  if exists (
+    select 1 from pg_constraint
+     where conname = 'menu_addons_category_fk'
+       and conrelid = 'public.menu_addons'::regclass
+  ) then
+    return;
+  end if;
+
+  alter table public.menu_addons
+    add constraint menu_addons_category_fk
+    foreign key (category) references public.addon_categories (id)
+    on update cascade on delete restrict;
+end $$;
+
 -- --------------------------------------------------- read-only aliases ------
 --  Exports, reporting tools and integrations expect the conventional names
 --  `image_url` and `is_active`. Renaming the live columns would break every
@@ -697,7 +757,7 @@ end $$;
 --  the realtime publication, or edits will only show up after a hard reload.
 -- ============================================================================
 --
---  Confirm the publication is complete (expect all ten tables):
+--  Confirm the publication is complete (expect all eleven tables):
 --    select tablename from pg_publication_tables
 --     where pubname = 'supabase_realtime' order by tablename;
 --
@@ -711,3 +771,10 @@ end $$;
 --
 --  Re-add a single table whose changes stopped arriving:
 --    alter publication supabase_realtime add table public.site_media;
+--
+--  Confirm every heading the owner has created, with its item count:
+--    select c.id, c.name, c.sort_order, c.active, count(a.id) as items
+--      from public.addon_categories c
+--      left join public.menu_addons a on a.category = c.id
+--     group by c.id, c.name, c.sort_order, c.active
+--     order by c.sort_order;
