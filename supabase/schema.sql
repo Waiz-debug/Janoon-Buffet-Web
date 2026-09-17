@@ -345,14 +345,8 @@ create table if not exists public.staff_members (
 
 alter table public.staff_members enable row level security;
 
---  Readable by the signed-in member themselves (the portal needs to know its
---  own role) and by other staff, so the owner can see the team. Writable only
---  from the SQL editor or the service role — there is deliberately no client
---  path to grant yourself access.
-drop policy if exists staff_members_select on public.staff_members;
-create policy staff_members_select on public.staff_members
-  for select to authenticated
-  using (user_id = auth.uid() or public.is_staff());
+--  The policy that lets a member read their own row lives in the identity
+--  helpers section below, because it calls `is_staff()` — see the note there.
 
 -- --------------------------------------------------- identity helpers ------
 --  SECURITY DEFINER, so the policy that reads `staff_members` does not recurse
@@ -386,6 +380,27 @@ $$;
 
 grant execute on function public.is_staff() to anon, authenticated;
 grant execute on function public.is_admin() to anon, authenticated;
+
+--  staff_members policy — created HERE, after both helpers exist.
+--
+--  A policy's USING expression is resolved when the policy is created, so a
+--  policy calling `public.is_staff()` must come after `create function
+--  public.is_staff()`. This policy used to sit directly under the `staff_members`
+--  table above, which failed on a fresh database with:
+--
+--    ERROR: 42883: function public.is_staff() does not exist
+--
+--  Every other caller of these two helpers already came later in the file; this
+--  was the only one ahead of them.
+--
+--  Readable by the signed-in member themselves (the portal needs to know its
+--  own role) and by other staff, so the owner can see the team. Writable only
+--  from the SQL editor or the service role — there is deliberately no client
+--  path to grant yourself access.
+drop policy if exists staff_members_select on public.staff_members;
+create policy staff_members_select on public.staff_members
+  for select to authenticated
+  using (user_id = auth.uid() or public.is_staff());
 
 -- ------------------------------------------- 0. storage writes = staff ----
 --  The bucket was open to `anon` for insert, update and delete, which meant
