@@ -49,30 +49,20 @@ export default function ManageBooking() {
   const [reference, setReference] = useState(pointer?.reference ?? "");
   const [phone, setPhone] = useState(pointer?.phone ?? "");
   const [lookup, setLookup] = useState<Lookup | null>(pointer);
-  const [hydrated, setHydrated] = useState(() => typeof window !== "undefined");
   const [error, setError] = useState<string | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [removedReference, setRemovedReference] = useState<string | null>(null);
+  /** A reference cancelled during this visit, announced on its own. */
+  const [cancelledNow, setCancelledNow] = useState<string | null>(null);
 
   // The reservation is always fetched from the database for the lookup in
   // state, so a refresh (or a desk-side change) re-loads it on first render.
+  // (The stored pointer is read by `storedLookup` during the first render, so
+  // there is nothing to hydrate from an effect.)
   const reservation = useReservationLookup(
     lookup?.reference ?? null,
     lookup?.phone ?? "",
   );
-
-  // Server-render fallback: hydrate the stored pointer once mounted.
-  useEffect(() => {
-    if (hydrated) return;
-    const stored = readReservationPointer();
-    if (stored) {
-      setReference(stored.reference);
-      setPhone(stored.phone);
-      setLookup(stored);
-    }
-    setHydrated(true);
-  }, [hydrated]);
 
   // Remember the booking once it resolves, so the next visit opens it directly.
   useEffect(() => {
@@ -84,14 +74,20 @@ export default function ManageBooking() {
   }, [reservation]);
 
   // A cancelled booking is taken off the website, including here — whether it
-  // was cancelled a moment ago or by the reservations desk on the guest's behalf.
+  // was cancelled a moment ago or by the reservations desk on the guest's
+  // behalf. The record itself decides it, so a desk-side cancellation shows the
+  // released card too instead of the lookup form quietly reappearing.
+  const cancelled = reservation?.status === "cancelled" ? reservation : null;
+  const releasedReference = cancelledNow ?? cancelled?.reference ?? null;
+  // A released booking must not leave the lookup form filled in as if it still
+  // stood, so the panel stays closed for the rest of the visit.
+  const activeLookup = releasedReference ? null : lookup;
+
+  // The stale pointer only lives in localStorage, so clearing it is the one
+  // side effect left here.
   useEffect(() => {
-    if (!reservation || reservation.status !== "cancelled") return;
-    clearReservationPointer();
-    setRemovedReference(reservation.reference);
-    setLookup(null);
-    setConfirmingCancel(false);
-  }, [reservation]);
+    if (cancelled) clearReservationPointer();
+  }, [cancelled]);
 
   useEffect(() => {
     document.title = `Manage a reservation · ${RESTAURANT.name}`;
@@ -111,7 +107,7 @@ export default function ManageBooking() {
     }
     setError(null);
     setConfirmingCancel(false);
-    setRemovedReference(null);
+    setCancelledNow(null);
     setLookup({ reference: code, phone: phone.trim() });
   };
 
@@ -124,7 +120,7 @@ export default function ManageBooking() {
       clearReservationPointer();
       setConfirmingCancel(false);
       setLookup(null);
-      setRemovedReference(reference);
+      setCancelledNow(reference);
       toast.success("Reservation cancelled", {
         description: `Reference ${reference} has been released.`,
       });
@@ -212,7 +208,7 @@ export default function ManageBooking() {
               </p>
             </form>
 
-            {removedReference ? (
+            {releasedReference ? (
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -228,7 +224,7 @@ export default function ManageBooking() {
                       Reservation cancelled
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Reference {removedReference} has been released and removed
+                      Reference {releasedReference} has been released and removed
                       from the website. No table is being held.
                     </p>
                   </div>
@@ -249,7 +245,7 @@ export default function ManageBooking() {
                     variant="outline"
                     className="border-border/70"
                     onClick={() => {
-                      setRemovedReference(null);
+                      setCancelledNow(null);
                       setReference("");
                       setPhone("");
                       setError(null);
@@ -259,7 +255,7 @@ export default function ManageBooking() {
                   </Button>
                 </div>
               </motion.div>
-            ) : lookup ? (
+            ) : activeLookup ? (
               reservation === undefined ? (
                 <div className="flex items-center justify-center rounded-2xl border border-border/70 bg-card/40 py-14">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />

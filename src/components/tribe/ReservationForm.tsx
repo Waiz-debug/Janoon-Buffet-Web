@@ -277,49 +277,49 @@ export function ReservationForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Read the device pointer synchronously on the client so a refresh paints the
-  // confirmation immediately; fall back to an effect when rendered on a server.
-  const [pointer, setPointer] = useState<ReservationPointer | null>(() =>
-    typeof window === "undefined" ? null : readReservationPointer(),
+  // The device pointer is read from storage on the first render: it is the one
+  // thing that decides which panel shows, so deferring it to an effect painted
+  // the booking form first and then swapped it for the confirmation.
+  const [pointer, setPointer] = useState<ReservationPointer | null>(
+    readReservationPointer,
   );
-  const [hydrated, setHydrated] = useState(() => typeof window !== "undefined");
 
-  useEffect(() => {
-    if (hydrated) return;
-    setPointer(readReservationPointer());
-    setHydrated(true);
-  }, [hydrated]);
-
-  // The record is re-read from Supabase on every change to the bookings table,
-  // so a refresh — or a status change made at the desk — never goes stale.
+  // Re-read on an interval while the page is open, so a refresh — or a status
+  // change made at the desk — never goes stale.
   const stored = useReservationLookup(
     pointer?.reference ?? null,
     pointer?.phone ?? "",
   );
 
-  // A pointer that no longer resolves (booking purged) should not trap the guest.
+  // A cancelled booking is taken off the website entirely — whether the guest
+  // cancelled it here or the reservations desk cancelled on their behalf — and a
+  // pointer that no longer resolves at all (booking purged) must not trap the
+  // guest on a confirmation for a table that is gone.
+  //
+  // Both are derived rather than copied into state. They are answers *about the
+  // record*, not events: mirroring them meant clearing the pointer, clearing the
+  // panel and writing the message by hand from an effect. What is left is the
+  // one real side effect — clearing the stale pointer out of localStorage.
+  const cancelled = stored?.status === "cancelled" ? stored : null;
+  const livePointer = cancelled || stored === null ? null : pointer;
+
   useEffect(() => {
-    if (pointer && stored === null) {
-      clearReservationPointer();
-      setPointer(null);
-    }
+    if (pointer && stored === null) clearReservationPointer();
   }, [pointer, stored]);
 
-  // Cancelled bookings are taken off the website entirely — whether the guest
-  // cancelled just now or the reservations desk cancelled on their behalf.
   useEffect(() => {
-    if (!stored || stored.status !== "cancelled") return;
-    clearReservationPointer();
-    setPointer(null);
-    setNotice(
-      (current) =>
-        current ??
-        `Reservation ${stored.reference} was cancelled, so it has been removed.`,
-    );
-  }, [stored]);
+    if (cancelled) clearReservationPointer();
+  }, [cancelled]);
 
-  const isRestoring = !hydrated || (pointer !== null && stored === undefined);
+  const isRestoring = livePointer !== null && stored === undefined;
   const minDate = useMemo(() => todayKey(), []);
+
+  /** A cancellation caught from the record, kept alongside the local message. */
+  const noticeText =
+    notice ??
+    (cancelled
+      ? `Reservation ${cancelled.reference} was cancelled, so it has been removed.`
+      : null);
 
   const update = <Key extends keyof BookingForm>(
     key: Key,
@@ -414,7 +414,7 @@ export function ReservationForm() {
     );
   }
 
-  if (pointer && stored) {
+  if (livePointer && stored) {
     return (
       <ConfirmationPanel
         reservation={stored}
@@ -430,17 +430,21 @@ export function ReservationForm() {
       noValidate
       className="flex flex-col gap-5 rounded-3xl border border-border/70 bg-card/60 p-6 sm:p-8"
     >
-      {notice ? (
+      {noticeText ? (
         <div className="flex items-start justify-between gap-4 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3">
-          <p className="text-sm leading-relaxed">{notice}</p>
-          <button
-            type="button"
-            aria-label="Dismiss message"
-            onClick={() => setNotice(null)}
-            className="mt-0.5 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
+          <p className="text-sm leading-relaxed">{noticeText}</p>
+          {/* Only the local message can be dismissed; a cancellation reported by
+              the record stays until the guest books again. */}
+          {notice ? (
+            <button
+              type="button"
+              aria-label="Dismiss message"
+              onClick={() => setNotice(null)}
+              className="mt-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          ) : null}
         </div>
       ) : null}
 

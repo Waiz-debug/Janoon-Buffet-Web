@@ -24,7 +24,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type PromotionDraft = {
@@ -70,6 +70,15 @@ export function PromotionsManager() {
   const [isUploading, setIsUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Read the clock from state and tick it, instead of calling Date.now() while
+  // rendering (which makes the render impure and the expiry badge go stale).
+  // Same 30-second beat the public banner counts down on.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const startCreate = () => {
     setDraft({ ...emptyDraft });
@@ -477,7 +486,7 @@ export function PromotionsManager() {
 
       <div className="flex flex-col gap-3">
         {all.map((promo) => {
-          const isExpired = promo.expiresAt && promo.expiresAt < Date.now();
+          const isExpired = promo.expiresAt && promo.expiresAt < now;
           return (
             <div
               key={promo._id}

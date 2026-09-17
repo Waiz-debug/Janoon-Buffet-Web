@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { SIGNATURE_LIMIT } from "@/lib/menu";
 import { ChevronDown, Loader2 } from "lucide-react";
-import { useLayoutEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 export type ItemFormValues = {
@@ -53,23 +53,12 @@ const EMPTY: ItemFormValues = {
  * the visibility and Signature switches; their summary and description sit
  * behind a disclosure so the everyday form stays short.
  */
-export function ItemDialog({
-  open,
-  onOpenChange,
-  mode,
-  categoryName,
-  /** Set when editing, so a photo can attach to the row immediately. */
-  itemId,
-  initial,
-  signatureCount = 0,
-  onUpload,
-  onClear,
-  onSubmit,
-}: {
+type ItemDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: "dish" | "addon";
   categoryName: string;
+  /** Set when editing, so a photo can attach to the row immediately. */
   itemId?: string | null;
   initial?: Partial<ItemFormValues>;
   /** How many signature dishes are already featured. */
@@ -79,22 +68,35 @@ export function ItemDialog({
   onClear?: () => Promise<void>;
   /** Persist the item. Throwing keeps the dialog open and shows the error. */
   onSubmit: (values: ItemFormValues) => Promise<void>;
-}) {
-  const [values, setValues] = useState<ItemFormValues>({ ...EMPTY, ...initial });
-  const [showMore, setShowMore] = useState(false);
-  const [saving, setSaving] = useState(false);
+};
 
-  // A layout effect so the swap happens before the browser paints, with no
-  // flash of the previous item's fields.
-  useLayoutEffect(() => {
-    if (!open) return;
-    setValues({ ...EMPTY, ...initial });
-    // Only surface the long fields when they already carry text.
-    setShowMore(Boolean(initial?.summary || initial?.description));
-    // `initial` is rebuilt by the caller on every render, so comparing it here
-    // would loop; reopening the dialog is the only trigger that matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+/**
+ * The form is mounted only while the dialog is open, so it is built from
+ * `initial` every single time it appears — no effect has to copy the previous
+ * item out of state, and no reopen can flash the last item's fields. The
+ * long fields only start expanded when they already carry text.
+ */
+export function ItemDialog({ open, ...form }: ItemDialogProps) {
+  if (!open) return null;
+  return <ItemForm {...form} />;
+}
+
+function ItemForm({
+  onOpenChange,
+  mode,
+  categoryName,
+  itemId,
+  initial,
+  signatureCount = 0,
+  onUpload,
+  onClear,
+  onSubmit,
+}: Omit<ItemDialogProps, "open">) {
+  const [values, setValues] = useState<ItemFormValues>({ ...EMPTY, ...initial });
+  const [showMore, setShowMore] = useState(
+    () => Boolean(initial?.summary || initial?.description),
+  );
+  const [saving, setSaving] = useState(false);
 
   const editing = Boolean(itemId);
   const signatureFull =
@@ -125,7 +127,7 @@ export function ItemDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>

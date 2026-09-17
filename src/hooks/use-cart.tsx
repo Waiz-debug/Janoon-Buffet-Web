@@ -70,23 +70,20 @@ function readCart(): CartItem[] {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  // Read straight from localStorage in the state initialiser. Doing it in an
+  // effect painted one frame of an empty cart first, so a reload briefly showed
+  // "0 items" in the header — and the write-back below then had to be guarded
+  // so it could not clobber the stored cart with that empty one.
+  const [items, setItems] = useState<CartItem[]>(readCart);
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    setItems(readCart());
-    setIsLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isLoaded) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch {
       /* private browsing — cart lives for the tab only */
     }
-  }, [items, isLoaded]);
+  }, [items]);
 
   const add = useCallback((item: {
     slug: string;

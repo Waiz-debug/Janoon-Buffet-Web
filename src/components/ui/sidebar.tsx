@@ -602,14 +602,19 @@ function SidebarMenuBadge({
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
+  width = "70%",
   ...props
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
+  /**
+   * Placeholder length. Pass one in when stacking several skeletons for variety.
+   *
+   * This used to draw a random width between 50% and 90% during render, which
+   * makes the component impure (two renders of the same props could disagree).
+   * A placeholder's exact length carries no meaning, so it is a plain prop.
+   */
+  width?: string
 }) {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
 
   return (
     <div

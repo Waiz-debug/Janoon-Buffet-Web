@@ -79,6 +79,22 @@ export function refreshAllLive() {
   for (const entry of entries.values()) refresh(entry);
 }
 
+/**
+ * Re-read one cached entry now, whether or not anything reported a change.
+ *
+ * Used by the guest lookups, which poll. A guest has no SELECT policy on the
+ * tables their own booking or order lives in — that is exactly what keeps other
+ * customers' records off their screen — so Supabase sends them no Realtime
+ * events for it, and a status changed at the desk would otherwise only appear
+ * on their next reload.
+ *
+ * A no-op for a key nobody is subscribed to.
+ */
+export function refreshLive(key: string) {
+  const entry = entries.get(key);
+  if (entry) refresh(entry);
+}
+
 /** Collapse a burst of events on one table into a single read. */
 function scheduleTableRefresh(table: string) {
   dirtyTables.add(table);

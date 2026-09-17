@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { Loader2 } from "lucide-react";
-import { useLayoutEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 export type CategoryIconName = keyof typeof CATEGORY_ICONS;
@@ -34,13 +34,7 @@ export type CategoryFormValues = {
  * icon picker because the public menu draws that icon next to the section;
  * add-on headings carry an emoji the panel sets for them.
  */
-export function CategoryDialog({
-  open,
-  onOpenChange,
-  kind,
-  initial,
-  onSubmit,
-}: {
+type CategoryDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   kind: "counter" | "addon";
@@ -52,23 +46,31 @@ export function CategoryDialog({
   };
   /** Persist the category. Throwing keeps the dialog open and shows the error. */
   onSubmit: (values: CategoryFormValues) => Promise<void>;
-}) {
+};
+
+/**
+ * The form is mounted only while the dialog is open, so it is built from
+ * `initial` every single time it appears. Reopening for a different category can
+ * therefore never show the last one's text, and no effect is needed to swap four
+ * fields — which is why this used to flash the previous category before
+ * repainting.
+ */
+export function CategoryDialog({ open, ...form }: CategoryDialogProps) {
+  if (!open) return null;
+  return <CategoryForm {...form} />;
+}
+
+function CategoryForm({
+  onOpenChange,
+  kind,
+  initial,
+  onSubmit,
+}: Omit<CategoryDialogProps, "open">) {
   const [name, setName] = useState(initial?.name ?? "");
   const [urdu, setUrdu] = useState(initial?.urdu ?? "");
   const [icon, setIcon] = useState<CategoryIconName>(initial?.icon ?? "flame");
   const [active, setActive] = useState(initial?.active ?? true);
   const [saving, setSaving] = useState(false);
-
-  // Reopening for a different category must not show the last one's text. A
-  // layout effect so the swap happens before the browser paints, with no
-  // flash of the previous category's fields.
-  useLayoutEffect(() => {
-    if (!open) return;
-    setName(initial?.name ?? "");
-    setUrdu(initial?.urdu ?? "");
-    setIcon(initial?.icon ?? "flame");
-    setActive(initial?.active ?? true);
-  }, [open, initial?.name, initial?.urdu, initial?.icon, initial?.active]);
 
   const editing = Boolean(initial?.name);
 
@@ -96,7 +98,7 @@ export function CategoryDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>

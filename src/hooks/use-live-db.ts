@@ -29,7 +29,12 @@ import {
   type SiteContentRow,
   type SiteMediaRow,
 } from "@/lib/db";
-import { getLiveRows, liveCacheKey, subscribeLive } from "@/lib/live-sync";
+import {
+  getLiveRows,
+  liveCacheKey,
+  refreshLive,
+  subscribeLive,
+} from "@/lib/live-sync";
 import { TABLES } from "@/lib/supabase";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
@@ -169,17 +174,36 @@ export function useDeliveryOrders(): DeliveryOrder[] | undefined {
 }
 
 /**
+ * How often a guest's own record is re-read while its page is open.
+ *
+ * Realtime cannot cover this case. `reservations`, `preorders` and
+ * `delivery_orders` deliberately have no SELECT policy for guests, so Supabase
+ * sends a guest no change events — not even for their own row. That is the
+ * trade that keeps other customers' names, phone numbers and addresses off
+ * their screen. Polling is the safe half of it: the browser re-runs the same
+ * one-row lookup that demands the reference *and* the phone, so the guest sees
+ * the desk's confirmation within seconds while still never receiving anyone
+ * else's record.
+ */
+const GUEST_LOOKUP_POLL_MS = 15_000;
+
+/**
  * One row of a table, re-read whenever that table changes.
  *
  * `undefined` means "still looking", `null` means "no such row" — the two
  * states a confirmation panel has to tell apart. Shared by the reservation and
  * delivery lookups so both ride the same channel and cache.
+ *
+ * `pollMs` adds the guest fallback above: a timed re-read that is skipped
+ * entirely while the tab is in the background, so a forgotten tab is not
+ * quietly querying the database all day.
  */
 function useRowLookup<T>(
   table: string,
   /** The lookup key, or null when the caller has not supplied one yet. */
   wanted: string | null,
   load: () => Promise<T[]>,
+  pollMs?: number,
 ): T | null | undefined {
   const cacheKey = liveCacheKey(table, `lookup:${wanted ?? "none"}`);
   const subscribe = useCallback(
@@ -192,6 +216,14 @@ function useRowLookup<T>(
     [cacheKey],
   );
   const rows = useSyncExternalStore(subscribe, getSnapshot, () => undefined);
+
+  useEffect(() => {
+    if (!wanted || !pollMs) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshLive(cacheKey);
+    }, pollMs);
+    return () => window.clearInterval(id);
+  }, [cacheKey, pollMs, wanted]);
 
   if (!wanted) return null;
   if (rows === undefined) return undefined;
@@ -222,7 +254,12 @@ export function useDeliveryOrderLookup(
     return found ? [found] : [];
   }, [wanted]);
 
-  return useRowLookup<DeliveryOrder>(TABLES.deliveryOrders, wanted, load);
+  return useRowLookup<DeliveryOrder>(
+    TABLES.deliveryOrders,
+    wanted,
+    load,
+    GUEST_LOOKUP_POLL_MS,
+  );
 }
 
 /* ------------------------------------------------------ reservations ----- */
@@ -259,7 +296,12 @@ export function useReservationLookup(
     return found ? [found] : [];
   }, [wanted]);
 
-  return useRowLookup<Reservation>(TABLES.reservations, wanted, load);
+  return useRowLookup<Reservation>(
+    TABLES.reservations,
+    wanted,
+    load,
+    GUEST_LOOKUP_POLL_MS,
+  );
 }
 
 /* ----------------------------------------------- pre_order_items ------- */

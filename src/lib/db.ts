@@ -6,8 +6,6 @@ import {
   SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
   type PreOrderCategoryId,
-  DELIVERY_FEE,
-  FREE_DELIVERY_THRESHOLD,
   deliveryUnitPrice,
   type CategoryId,
 } from "@/lib/menu";
@@ -311,18 +309,6 @@ const ms = (value: number | string | null | undefined): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-/** Short, unambiguous reference a guest can read over the phone. */
-function makeReference(prefix: string, length: number): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < length; i += 1) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return `${prefix}-${out}`;
-}
-
-const digitsOnly = (value: string) => value.replace(/\D/g, "");
-
 /**
  * Reads never throw: if a table is missing (the SQL has not been run yet) or
  * the network is down, the caller gets an empty list and the site falls back
@@ -370,6 +356,20 @@ function fail(error: { message: string } | null, fallback: string): never {
     );
   }
   throw new Error(message || fallback);
+}
+
+/**
+ * Unwrap a value a `security definer` function promised to return.
+ *
+ * Written as a function rather than an inline `if (!value) throw` because
+ * `fail()` above is typed `never`: everything after a call to it is
+ * unreachable as far as TypeScript's flow analysis is concerned, and narrowing
+ * inside unreachable code does not happen. Reading the value through here keeps
+ * the call sites honest without depending on that.
+ */
+function required<T>(value: T | null | undefined, message: string): T {
+  if (value === null || value === undefined) throw new Error(message);
+  return value;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1098,94 +1098,43 @@ export async function placeDeliveryOrder(input: PlaceOrderInput): Promise<{
   total: number;
   deliveryFee: number;
 }> {
-  const customerName = input.customerName.trim();
-  const phoneDigits = digitsOnly(input.phone);
-  const address = input.address.trim();
-  const area = input.area.trim();
-
-  if (customerName.length < 2) {
-    throw new Error("Please enter the name for the order.");
-  }
-  if (phoneDigits.length < 10 || phoneDigits.length > 12) {
-    throw new Error("Please enter a valid phone number.");
-  }
-  if (address.length < 8) {
-    throw new Error("Please enter a full delivery address in Lahore.");
-  }
-  if (!area) throw new Error("Please choose your area in Lahore.");
-
-  // Prices are read back from the database rather than trusted from the
-  // browser, and the add-on table counts too — a naan, a raita or a cold drink
-  // has no row in `menu_dishes`, so without this lookup every extra would be
-  // billed at the default per-plate price instead of its own.
-  const [pricedDishes, pricedAddOns] = await Promise.all([
-    selectRows<{ slug: string; price_per_plate: number | null }>(
-      TABLES.dishes,
-      undefined,
-      "slug, price_per_plate",
-    ),
-    selectRows<{ id: string; price: number | null }>(
-      TABLES.addons,
-      undefined,
-      "id, price",
-    ),
-  ]);
-
-  const managed = new Map<string, number>();
-  for (const dish of pricedDishes) {
-    if ((dish.price_per_plate ?? 0) > 0) {
-      managed.set(dish.slug, dish.price_per_plate as number);
-    }
-  }
-  for (const addon of pricedAddOns) {
-    if ((addon.price ?? 0) > 0) managed.set(addon.id, addon.price as number);
-  }
-
-  const lines: DeliveryOrderLine[] = [];
-  for (const item of input.items) {
-    const count = Math.floor(Number(item.count));
-    if (!item.slug || count < 1) continue;
-    lines.push({
+  // The browser sends what is being bought and nothing else — no prices, no
+  // totals. `place_delivery_order` in schema.sql re-prices every line from
+  // `menu_dishes` / `menu_addons`, applies the delivery fee and the free
+  // delivery threshold, throttles the caller, mints the reference and writes
+  // the row. The number that comes back is therefore the number that was
+  // charged, and a doctored cart cannot underpay.
+  const { data, error } = await supabase.rpc("place_delivery_order", {
+    p_customer_name: input.customerName,
+    p_phone: input.phone,
+    p_address: input.address,
+    p_area: input.area,
+    p_items: input.items.map((item) => ({
       slug: item.slug,
-      name: item.name.trim().slice(0, 80),
-      count: Math.min(count, 20),
-      unitPrice: managed.get(item.slug) ?? deliveryUnitPrice(item.slug),
-    });
-  }
-  if (lines.length === 0) {
-    throw new Error("Your cart is empty — add a dish before ordering.");
-  }
-
-  const itemsTotal = lines.reduce(
-    (sum, line) => sum + line.unitPrice * line.count,
-    0,
-  );
-  const deliveryFee = itemsTotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
-  const total = itemsTotal + deliveryFee;
-  const reference = makeReference("DLV", 6);
-
-  const { error } = await supabase
-    .from(TABLES.deliveryOrders)
-    .insert({
-      reference,
-      customer_name: customerName,
-      phone: phoneDigits,
-      address,
-      area,
-      notes: input.notes?.trim() ? input.notes.trim().slice(0, 300) : null,
-      items: lines,
-      items_total: itemsTotal,
-      delivery_fee: deliveryFee,
-      total,
-      status: "placed",
-      created_at: Date.now(),
-    });
-  // Deliberately no `.select()` on the way back: a guest has INSERT but not
-  // SELECT on this table, so asking Postgres to return the row would be refused.
-  // The reference and the totals are already known here — computed above.
+      name: item.name,
+      count: Math.floor(Number(item.count)),
+    })),
+    p_notes: input.notes?.trim() ? input.notes.trim() : null,
+  });
   fail(error, "Could not place the order. Please try again.");
 
-  return { reference, total, deliveryFee };
+  // The function returns the reference and the totals it decided on. They are
+  // read back rather than recomputed here, so what the guest is shown is what
+  // Postgres wrote.
+  const result = data as {
+    reference?: string;
+    total?: number;
+    deliveryFee?: number;
+  } | null;
+
+  return {
+    reference: required(
+      result?.reference,
+      "Could not place the order. Please try again.",
+    ),
+    total: result?.total ?? 0,
+    deliveryFee: result?.deliveryFee ?? 0,
+  };
 }
 
 /** The two-step staff workflow: placed → confirmed → delivered. */
@@ -1279,21 +1228,27 @@ export type CreateReservationInput = {
 export async function createReservation(
   input: CreateReservationInput,
 ): Promise<{ reference: string }> {
-  const reference = makeReference("TT", 4);
-  const { error } = await supabase.from(TABLES.reservations).insert({
-    reference,
-    name: input.name.trim(),
-    phone: input.phone.trim(),
-    party_size: Math.max(1, Math.round(input.partySize)),
-    date: input.date,
-    time: input.time,
-    seating: input.seating,
-    notes: input.notes?.trim() ? input.notes.trim().slice(0, 400) : null,
-    status: "pending",
-    created_at: Date.now(),
+  // One atomic call: Postgres validates the booking, throttles the caller,
+  // mints a reference that is checked against the table and writes the row.
+  // Guests have no direct INSERT policy on `reservations`, so this is the only
+  // path into the desk's book.
+  const { data, error } = await supabase.rpc("create_reservation", {
+    p_name: input.name,
+    p_phone: input.phone,
+    p_party_size: Math.max(1, Math.round(input.partySize)),
+    p_date: input.date,
+    p_time: input.time,
+    p_seating: input.seating,
+    p_notes: input.notes?.trim() ? input.notes.trim() : null,
   });
   fail(error, "We could not save your booking. Please try again.");
-  return { reference };
+
+  return {
+    reference: required(
+      (data as { reference?: string } | null)?.reference,
+      "We could not save your booking. Please try again.",
+    ),
+  };
 }
 
 /** Guest-initiated cancellation, guarded by the phone on the booking. */
@@ -1511,37 +1466,25 @@ export type CreatePreorderInput = {
 export async function createPreorder(
   input: CreatePreorderInput,
 ): Promise<{ reference: string }> {
-  const customerName = input.customerName.trim();
-  const phoneDigits = digitsOnly(input.phone);
-  if (customerName.length < 2) {
-    throw new Error("Please enter the name for the pre-order.");
-  }
-  // Accept any local or international formatting — 03XX… or +92 3XX… — as long
-  // as there are enough digits to call back on.
-  if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-    throw new Error("Enter a valid phone number we can reach you on.");
-  }
-  if (!input.dish.trim()) throw new Error("Please choose a dish to pre-order.");
-  if (!input.pickupDate || !input.pickupTime) {
-    throw new Error("Please choose a pickup date and time.");
-  }
-
-  const reference = makeReference("PRE", 5);
-  const { error } = await supabase.from(TABLES.preorders).insert({
-    reference,
-    customer_name: customerName,
-    phone: phoneDigits,
-    dish: input.dish.trim(),
-    quantity: Math.min(Math.max(1, Math.round(input.quantity ?? 1)), 20),
-    pickup_date: input.pickupDate,
-    pickup_time: input.pickupTime,
-    notes: input.notes?.trim() ? input.notes.trim().slice(0, 300) : null,
-    status: "pending",
-    created_at: Date.now(),
-    updated_at: Date.now(),
+  // Same shape as booking a table: validated, throttled and written inside
+  // Postgres, with the reference decided there.
+  const { data, error } = await supabase.rpc("create_preorder", {
+    p_customer_name: input.customerName,
+    p_phone: input.phone,
+    p_dish: input.dish,
+    p_quantity: input.quantity ?? 1,
+    p_pickup_date: input.pickupDate,
+    p_pickup_time: input.pickupTime,
+    p_notes: input.notes?.trim() ? input.notes.trim() : null,
   });
   fail(error, "We could not save your pre-order. Please try again.");
-  return { reference };
+
+  return {
+    reference: required(
+      (data as { reference?: string } | null)?.reference,
+      "We could not save your pre-order. Please try again.",
+    ),
+  };
 }
 
 /** Staff workflow: pending → confirmed → ready → collected (or cancelled). */
@@ -1770,10 +1713,17 @@ const REQUIRED_TABLES: { table: string; label: string }[] = [
 ];
 
 export type SchemaStatus = {
-  /** Every table present and the media bucket reachable. */
+  /** Every table present, every guest-write function installed, bucket up. */
   ready: boolean;
   /** The tables that are missing, with a label a human recognises. */
   missing: { table: string; label: string }[];
+  /**
+   * Guest-write functions the database does not have. Their tables can all be
+   * present while these are absent, which is what running an older copy of
+   * `schema.sql` looks like — and every booking, pre-order and delivery would
+   * then be rejected.
+   */
+  missingFunctions: string[];
   storageReady: boolean;
   storageMessage?: string;
   /** The project could not be reached at all (offline, wrong URL). */
@@ -1785,6 +1735,66 @@ function looksMissing(message: string): boolean {
 }
 
 /**
+ * The `security definer` functions every guest form now writes through.
+ *
+ * Called with deliberately invalid arguments, so each one raises on its first
+ * validation check — before the throttle is consulted and long before any row
+ * is written. What is being read is which *kind* of error comes back: PostgREST
+ * answers a function it cannot find with PGRST202, while our own validation
+ * raises an ordinary message. Nothing is created either way.
+ */
+async function probeGuestWriteFunctions(): Promise<string[]> {
+  const probes: { name: string; args: Record<string, unknown> }[] = [
+    {
+      name: "create_reservation",
+      args: {
+        p_name: "",
+        p_phone: "",
+        p_party_size: 0,
+        p_date: "",
+        p_time: "",
+        p_seating: "",
+        p_notes: null,
+      },
+    },
+    {
+      name: "create_preorder",
+      args: {
+        p_customer_name: "",
+        p_phone: "",
+        p_dish: "",
+        p_quantity: 0,
+        p_pickup_date: "",
+        p_pickup_time: "",
+        p_notes: null,
+      },
+    },
+    {
+      name: "place_delivery_order",
+      args: {
+        p_customer_name: "",
+        p_phone: "",
+        p_address: "",
+        p_area: "",
+        p_items: [],
+        p_notes: null,
+      },
+    },
+  ];
+
+  const absent: string[] = [];
+  for (const probe of probes) {
+    const { error } = await supabase.rpc(probe.name, probe.args);
+    if (!error) continue;
+    const message = error.message ?? "";
+    if (error.code === "PGRST202" || /Could not find the function/i.test(message)) {
+      absent.push(probe.name);
+    }
+  }
+  return absent;
+}
+
+/**
  * Probe the project for every table the portals write to, plus the media
  * bucket. The portals used to swallow these failures, which made a project with
  * no schema at all look like a site that simply refused to update.
@@ -1793,16 +1803,19 @@ export async function checkSupabaseSchema(): Promise<SchemaStatus> {
   let unreachable = false;
   const missing: { table: string; label: string }[] = [];
 
-  await Promise.all(
-    REQUIRED_TABLES.map(async ({ table, label }) => {
-      const { error } = await supabase
-        .from(table)
-        .select("*", { count: "exact", head: true });
-      if (!error) return;
-      if (looksMissing(error.message)) missing.push({ table, label });
-      else unreachable = true;
-    }),
-  );
+  const [, missingFunctions] = await Promise.all([
+    Promise.all(
+      REQUIRED_TABLES.map(async ({ table, label }) => {
+        const { error } = await supabase
+          .from(table)
+          .select("*", { count: "exact", head: true });
+        if (!error) return;
+        if (looksMissing(error.message)) missing.push({ table, label });
+        else unreachable = true;
+      }),
+    ),
+    probeGuestWriteFunctions(),
+  ]);
 
   let storageReady = true;
   let storageMessage: string | undefined;
@@ -1815,8 +1828,13 @@ export async function checkSupabaseSchema(): Promise<SchemaStatus> {
   }
 
   return {
-    ready: missing.length === 0 && storageReady && !unreachable,
+    ready:
+      missing.length === 0 &&
+      missingFunctions.length === 0 &&
+      storageReady &&
+      !unreachable,
     missing: missing.sort((a, b) => a.table.localeCompare(b.table)),
+    missingFunctions: missingFunctions.sort(),
     storageReady,
     storageMessage,
     unreachable,

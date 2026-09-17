@@ -22,8 +22,11 @@ export function SetupNotice() {
   const [status, setStatus] = useState<SchemaStatus | null>(null);
   const [checking, setChecking] = useState(false);
 
+  // Only flips back to false here: the flag is turned on by whoever asks for a
+  // check. Setting it at the top of this function would mean a synchronous
+  // state update from inside the mount effect below, which is exactly the
+  // cascading render React warns about.
   const check = useCallback(async () => {
-    setChecking(true);
     try {
       setStatus(await checkSupabaseSchema());
     } finally {
@@ -102,6 +105,36 @@ export function SetupNotice() {
         </div>
       ) : null}
 
+      {status.missingFunctions.length > 0 ? (
+        <div className="rounded-xl border-2 border-amber-500/40 bg-background/40 p-4">
+          <p className="flex items-center gap-2 text-xs tracking-[0.14em] text-muted-foreground uppercase">
+            <Database className="size-3.5" aria-hidden />
+            {status.missingFunctions.length} write function
+            {status.missingFunctions.length === 1 ? "" : "s"} missing
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Every table is in place, but the database functions that the
+            booking, pre-order and delivery forms write through are not. That is
+            what running an older copy of the schema looks like, and it means
+            those three forms would be rejected. Re-run this repository&apos;s{" "}
+            <span className="font-mono text-xs text-foreground">
+              supabase/schema.sql
+            </span>{" "}
+            — it only adds what is missing.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {status.missingFunctions.map((name) => (
+              <li
+                key={name}
+                className="rounded-lg border border-border/70 bg-card/50 px-2 py-1 font-mono text-[0.7rem] text-muted-foreground"
+              >
+                {name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {!status.storageReady ? (
         <p className="rounded-xl border border-border/70 bg-background/40 p-4 text-sm text-muted-foreground">
           The <span className="font-mono text-xs">tribe-media</span> storage
@@ -141,7 +174,14 @@ export function SetupNotice() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={() => void check()} disabled={checking} className="gap-2">
+        <Button
+          onClick={() => {
+            setChecking(true);
+            void check();
+          }}
+          disabled={checking}
+          className="gap-2"
+        >
           {checking ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />
           ) : (

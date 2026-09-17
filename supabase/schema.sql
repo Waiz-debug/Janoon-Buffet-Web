@@ -453,23 +453,27 @@ begin
 end $$;
 
 -- ------------------------------------------------- 2. guest writes --------
---  A guest may open a record and nothing else. `with check` pins the status a
---  new row may carry, so nobody can insert a booking that is already confirmed,
---  or a delivery that is already delivered.
+--  A guest may create exactly three things: a booking, a pre-order and a
+--  delivery order. None of them is written directly any more.
+--
+--  These three policies used to allow a direct INSERT with the status pinned
+--  by `with check`. That stopped a guest inserting an already-confirmed row,
+--  but it could not check the two things that actually matter: the *money* on a
+--  delivery order, and how often the form is used. A direct insert let the
+--  browser choose its own `total` (the row was only required to be >= 0), and
+--  there was no limit at all on how many rows one caller could create.
+--
+--  Both are now decided in Postgres by `create_reservation`, `create_preorder`
+--  and `place_delivery_order` in section 4 below, which re-price every line
+--  from the menu tables and throttle each caller. With no INSERT policy on the
+--  three tables, those functions are the only door for `anon`.
+--
+--  The drops stay so that re-running this file removes the older, more
+--  permissive policies from a database that already has them.
 drop policy if exists reservations_guest_insert on public.reservations;
-create policy reservations_guest_insert on public.reservations
-  for insert to anon, authenticated
-  with check (status = 'pending');
-
 drop policy if exists preorders_guest_insert on public.preorders;
-create policy preorders_guest_insert on public.preorders
-  for insert to anon, authenticated
-  with check (status = 'pending');
-
 drop policy if exists delivery_orders_guest_insert on public.delivery_orders;
-create policy delivery_orders_guest_insert on public.delivery_orders
-  for insert to anon, authenticated
-  with check (status = 'placed' and total >= 0 and items_total >= 0);
+drop policy if exists delivery_orders_guest_priced on public.delivery_orders;
 
 --  Staff own these tables outright: read, confirm, advance, delete.
 --  Guests have no SELECT policy on any of the three, so the whole book of
@@ -573,6 +577,478 @@ end $$;
 grant execute on function public.lookup_reservation(text, text) to anon, authenticated;
 grant execute on function public.lookup_delivery_order(text, text) to anon, authenticated;
 grant execute on function public.cancel_reservation(text, text) to anon, authenticated;
+
+-- --------------------------------- 4. guest writes, priced and throttled --
+--  The three things a visitor may create are created here and nowhere else.
+--  Two problems are solved by moving them off the client:
+--
+--    * Money. A delivery total computed in the browser is a number the browser
+--      chooses. `place_delivery_order` re-prices every line from
+--      `menu_dishes.price_per_plate` and `menu_addons.price` inside Postgres
+--      and writes the total itself, so a doctored cart cannot underpay. The
+--      delivery fee and the free-delivery threshold are applied here too.
+--    * Spam. Each function is throttled per phone number and per caller
+--      address, so these forms cannot be used to flood the desks.
+--
+--  All three are `security definer`, so they write past the policies as the
+--  table owner. There is deliberately no INSERT policy on the three tables, so
+--  this is the only door for `anon`.
+
+--  One row per accepted guest write. Read over the API by nobody: RLS is on
+--  and no policy is created, so only the functions below can touch it.
+create table if not exists public.guest_write_log (
+  id          bigserial primary key,
+  bucket      text not null,
+  key         text not null,
+  created_at  bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+
+create index if not exists guest_write_log_lookup_idx
+  on public.guest_write_log (bucket, key, created_at desc);
+
+alter table public.guest_write_log enable row level security;
+
+--  Delivery references are the customer's only handle on an order, so they
+--  should be unique. Skipped rather than forced when an existing database
+--  already holds duplicates, so this file stays safe to re-run.
+do $$
+begin
+  if exists (
+    select 1 from public.delivery_orders group by reference having count(*) > 1
+  ) then
+    raise notice 'delivery_orders holds duplicate references — uniqueness index skipped.';
+    return;
+  end if;
+
+  create unique index if not exists delivery_orders_reference_key
+    on public.delivery_orders (reference);
+end $$;
+
+--  The caller's address as PostgREST saw it, so a throttle still holds when a
+--  script changes the phone number on every request. Falls back to one shared
+--  'unknown' bucket when the header is absent.
+--
+--  Written as plpgsql rather than a one-line `sql` function on purpose: casting
+--  the header setting to json raises if the setting is present but empty, and
+--  this function is on the path of every guest write, so a raised error here
+--  would stop guests from booking at all rather than merely throttling them.
+create or replace function public.tribe_client_ip()
+returns text
+language plpgsql
+stable
+as $$
+declare
+  headers json;
+begin
+  begin
+    headers := nullif(current_setting('request.headers', true), '')::json;
+  exception when others then
+    return 'unknown';
+  end;
+
+  if headers is null then
+    return 'unknown';
+  end if;
+
+  return coalesce(
+    nullif(split_part(coalesce(headers ->> 'x-forwarded-for', ''), ',', 1), ''),
+    'unknown'
+  );
+end $$;
+
+--  Count one write against a bucket and raise once the window is full. Rows
+--  older than the window are pruned first, so the table stays small without a
+--  scheduled cleanup job.
+create or replace function public.tribe_rate_limit(
+  p_bucket text,
+  p_key text,
+  p_limit integer,
+  p_window_seconds integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  since bigint;
+  hits  integer;
+begin
+  since := (extract(epoch from now()) * 1000)::bigint
+           - (p_window_seconds::bigint * 1000);
+
+  delete from public.guest_write_log
+   where bucket = p_bucket and key = p_key and created_at < since;
+
+  select count(*) into hits
+    from public.guest_write_log
+   where bucket = p_bucket and key = p_key and created_at >= since;
+
+  if hits >= p_limit then
+    raise exception
+      'Too many requests from this number just now. Please wait a few minutes and try again.'
+      using errcode = 'P0001';
+  end if;
+
+  insert into public.guest_write_log (bucket, key) values (p_bucket, p_key);
+end $$;
+
+--  Both throttles at once: a per-number limit so one guest cannot hammer the
+--  form, and a looser per-caller limit so a script that keeps changing the
+--  number still cannot flood the desk.
+create or replace function public.tribe_throttle_guest(
+  p_bucket text,
+  p_phone text,
+  p_per_phone integer,
+  p_per_caller integer,
+  p_window_seconds integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  digits text;
+begin
+  digits := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+
+  if length(digits) >= 6 then
+    perform public.tribe_rate_limit(
+      p_bucket || ':phone', digits, p_per_phone, p_window_seconds
+    );
+  end if;
+
+  perform public.tribe_rate_limit(
+    p_bucket || ':caller', public.tribe_client_ip(), p_per_caller, p_window_seconds
+  );
+end $$;
+
+--  A booking reference short enough to read down the phone and not guessable.
+--  The `1`/`I`/`O`/`0` look-alikes are left out of the alphabet on purpose.
+create or replace function public.tribe_reference(p_prefix text, p_length integer)
+returns text
+language plpgsql
+as $$
+declare
+  alphabet  text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  candidate text := p_prefix || '-';
+begin
+  for _i in 1..p_length loop
+    candidate := candidate
+      || substr(alphabet, 1 + floor(random() * length(alphabet))::integer, 1);
+  end loop;
+  return candidate;
+end $$;
+
+--  Book a table. Returns the reference the guest keeps.
+create or replace function public.create_reservation(
+  p_name text,
+  p_phone text,
+  p_party_size integer,
+  p_date text,
+  p_time text,
+  p_seating text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name      text := trim(coalesce(p_name, ''));
+  v_digits    text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_notes     text := nullif(trim(coalesce(p_notes, '')), '');
+  v_reference text;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the booking.';
+  end if;
+  -- Any local or international formatting is accepted, as long as there are
+  -- enough digits to call back on.
+  if length(v_digits) < 10 or length(v_digits) > 15 then
+    raise exception 'Enter a valid phone number we can reach you on.';
+  end if;
+  if coalesce(p_date, '') !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'Please choose the date you are coming.';
+  end if;
+  if coalesce(p_time, '') !~ '^\d{2}:\d{2}$' then
+    raise exception 'Please choose the time you are coming.';
+  end if;
+  if coalesce(p_seating, '') not in ('outdoor', 'indoor') then
+    raise exception 'Please choose outdoor or indoor seating.';
+  end if;
+  if p_party_size is null or p_party_size < 1 or p_party_size > 40 then
+    raise exception 'Please choose how many guests are coming (1 to 40).';
+  end if;
+
+  perform public.tribe_throttle_guest('reservation', v_digits, 5, 25, 600);
+
+  -- Draw a reference and keep drawing until it is free. plpgsql has no
+  -- REPEAT/UNTIL, so this is the plain LOOP with the exit test at the foot.
+  loop
+    v_reference := public.tribe_reference('TT', 4);
+    exit when not exists (
+      select 1 from public.reservations where reference = v_reference
+    );
+  end loop;
+
+  insert into public.reservations
+    (reference, name, phone, party_size, date, time, seating, notes,
+     status, created_at)
+  values
+    (v_reference, v_name, v_digits, p_party_size, p_date, p_time, p_seating,
+     left(v_notes, 400), 'pending', (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object('reference', v_reference);
+end $$;
+
+--  Pre-order a slow-cooked specialty for collection.
+create or replace function public.create_preorder(
+  p_customer_name text,
+  p_phone text,
+  p_dish text,
+  p_quantity integer,
+  p_pickup_date text,
+  p_pickup_time text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name      text := trim(coalesce(p_customer_name, ''));
+  v_digits    text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_dish      text := trim(coalesce(p_dish, ''));
+  v_notes     text := nullif(trim(coalesce(p_notes, '')), '');
+  v_quantity  integer := coalesce(p_quantity, 1);
+  v_reference text;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the pre-order.';
+  end if;
+  if length(v_digits) < 10 or length(v_digits) > 15 then
+    raise exception 'Enter a valid phone number we can reach you on.';
+  end if;
+  if length(v_dish) = 0 then
+    raise exception 'Please choose a dish to pre-order.';
+  end if;
+  if coalesce(p_pickup_date, '') !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'Please choose a pickup date.';
+  end if;
+  if coalesce(p_pickup_time, '') !~ '^\d{2}:\d{2}$' then
+    raise exception 'Please choose a pickup time.';
+  end if;
+
+  -- Clamped rather than rejected, exactly as the form does it.
+  v_quantity := least(greatest(v_quantity, 1), 20);
+
+  perform public.tribe_throttle_guest('preorder', v_digits, 5, 25, 600);
+
+  loop
+    v_reference := public.tribe_reference('PRE', 5);
+    exit when not exists (
+      select 1 from public.preorders where reference = v_reference
+    );
+  end loop;
+
+  insert into public.preorders
+    (reference, customer_name, phone, dish, quantity, pickup_date, pickup_time,
+     notes, status, created_at, updated_at)
+  values
+    (v_reference, v_name, v_digits, v_dish, v_quantity, p_pickup_date,
+     p_pickup_time, left(v_notes, 300), 'pending',
+     (extract(epoch from now()) * 1000)::bigint,
+     (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object('reference', v_reference);
+end $$;
+
+--  Place a delivery order.
+--
+--  The client sends what it wants to buy, never what it costs: `p_items` is a
+--  list of `{slug, name, count}` and every unit price is looked up here. An
+--  item is priced from the dish it names, falling back to the add-on it names
+--  (a naan, a raita or a cold drink has no row in `menu_dishes`), and to the
+--  house default per plate when neither carries a managed price.
+create or replace function public.place_delivery_order(
+  p_customer_name text,
+  p_phone text,
+  p_address text,
+  p_area text,
+  p_items jsonb,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  -- Must match DELIVERY_FEE / FREE_DELIVERY_THRESHOLD in src/lib/menu.ts, and
+  -- the default plate price `deliveryUnitPrice` falls back to.
+  c_delivery_fee     constant integer := 150;
+  c_free_from        constant integer := 2500;
+  c_default_price    constant integer := 600;
+  c_max_lines        constant integer := 40;
+
+  v_name        text := trim(coalesce(p_customer_name, ''));
+  v_digits      text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_address     text := trim(coalesce(p_address, ''));
+  v_area        text := trim(coalesce(p_area, ''));
+  v_notes       text := nullif(trim(coalesce(p_notes, '')), '');
+  v_reference   text;
+  v_lines       jsonb := '[]'::jsonb;
+  v_item        jsonb;
+  v_slug        text;
+  v_label       text;
+  v_count       integer;
+  v_price       integer;
+  v_items_total integer := 0;
+  v_fee         integer;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the order.';
+  end if;
+  if length(v_digits) < 10 or length(v_digits) > 12 then
+    raise exception 'Please enter a valid phone number.';
+  end if;
+  if length(v_address) < 8 then
+    raise exception 'Please enter a full delivery address in Lahore.';
+  end if;
+  if length(v_area) = 0 then
+    raise exception 'Please choose your area in Lahore.';
+  end if;
+  if jsonb_typeof(coalesce(p_items, 'null'::jsonb)) <> 'array' then
+    raise exception 'Your cart is empty — add a dish before ordering.';
+  end if;
+
+  perform public.tribe_throttle_guest('delivery', v_digits, 6, 30, 600);
+
+  for v_item in select value from jsonb_array_elements(p_items)
+  loop
+    exit when jsonb_array_length(v_lines) >= c_max_lines;
+
+    v_slug := trim(coalesce(v_item ->> 'slug', ''));
+    v_label := left(coalesce(nullif(trim(v_item ->> 'name'), ''), v_slug), 80);
+
+    -- `count` arrives as JSON: accept whole numbers only and skip anything
+    -- else rather than letting a bad cast abort the whole order.
+    if v_slug = '' or coalesce(v_item ->> 'count', '') !~ '^\d+$' then
+      continue;
+    end if;
+    v_count := (v_item ->> 'count')::integer;
+    if v_count < 1 then
+      continue;
+    end if;
+    v_count := least(v_count, 20);
+
+    select coalesce(
+      (select d.price_per_plate from public.menu_dishes d
+        where d.slug = v_slug and d.price_per_plate > 0 limit 1),
+      (select a.price from public.menu_addons a
+        where a.id = v_slug and a.price > 0 limit 1),
+      c_default_price
+    ) into v_price;
+
+    v_lines := v_lines || jsonb_build_object(
+      'slug', v_slug,
+      'name', v_label,
+      'count', v_count,
+      'unitPrice', v_price
+    );
+  end loop;
+
+  if jsonb_array_length(v_lines) = 0 then
+    raise exception 'Your cart is empty — add a dish before ordering.';
+  end if;
+
+  -- `as lines(line)` names the set-returning function's single `value` column,
+  -- so `line` below is the jsonb object itself. Naming only the function would
+  -- leave `line` a one-field composite row, which has no `->>` operator.
+  select coalesce(sum((line ->> 'count')::integer * (line ->> 'unitPrice')::integer), 0)
+    into v_items_total
+    from jsonb_array_elements(v_lines) as lines(line);
+
+  v_fee := case when v_items_total >= c_free_from then 0 else c_delivery_fee end;
+
+  loop
+    v_reference := public.tribe_reference('DLV', 6);
+    exit when not exists (
+      select 1 from public.delivery_orders where reference = v_reference
+    );
+  end loop;
+
+  insert into public.delivery_orders
+    (reference, customer_name, phone, address, area, notes, items,
+     items_total, delivery_fee, total, status, created_at)
+  values
+    (v_reference, v_name, v_digits, v_address, v_area, left(v_notes, 300),
+     v_lines, v_items_total, v_fee, v_items_total + v_fee, 'placed',
+     (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object(
+    'reference', v_reference,
+    'total', v_items_total + v_fee,
+    'deliveryFee', v_fee
+  );
+end $$;
+
+grant execute on function public.tribe_client_ip() to anon, authenticated;
+grant execute on function public.create_reservation(text, text, integer, text, text, text, text) to anon, authenticated;
+grant execute on function public.create_preorder(text, text, text, integer, text, text, text) to anon, authenticated;
+grant execute on function public.place_delivery_order(text, text, text, text, jsonb, text) to anon, authenticated;
+
+--  The throttle helpers are internal: the create functions above call them as
+--  the owner. Nothing on the public API should reach them directly.
+revoke all on function public.tribe_rate_limit(text, text, integer, integer) from public, anon, authenticated;
+revoke all on function public.tribe_throttle_guest(text, text, integer, integer, integer) from public, anon, authenticated;
+revoke all on function public.tribe_reference(text, integer) from public, anon, authenticated;
+revoke all on function public.tribe_client_ip() from public, anon, authenticated;
+
+-- ============================================================================
+--  Verifying the guest-write functions
+--  A booking, a pre-order and a delivery order are created by these functions
+--  and by nothing else, so confirm they exist and that the direct-insert path
+--  really is closed before handing the site over.
+-- ============================================================================
+--
+--  The three guest-write functions, with their arguments (expect three rows):
+--    select proname, pg_get_function_arguments(oid) as args
+--      from pg_proc
+--     where pronamespace = 'public'::regnamespace
+--       and proname in ('create_reservation', 'create_preorder',
+--                       'place_delivery_order')
+--     order by proname;
+--
+--  Every guest-reachable function at once (expect six):
+--    select proname from pg_proc
+--     where pronamespace = 'public'::regnamespace
+--       and proname in ('create_reservation', 'create_preorder',
+--                       'place_delivery_order', 'lookup_reservation',
+--                       'lookup_delivery_order', 'cancel_reservation')
+--     order by proname;
+--
+--  No INSERT policy may remain on the customer tables (expect ZERO rows — any
+--  row here is a direct write path around the server-side pricing):
+--    select tablename, policyname from pg_policies
+--     where schemaname = 'public' and cmd = 'INSERT'
+--       and tablename in ('reservations', 'preorders', 'delivery_orders');
+--
+--  What the database would charge for a plate, with no browser involved:
+--    select d.slug,
+--           coalesce(d.price_per_plate,
+--             (select a.price from public.menu_addons a where a.id = d.slug),
+--             600) as charged
+--      from public.menu_dishes d order by d.slug limit 10;
+--
+--  Accepted guest writes in the last ten minutes, per throttle bucket:
+--    select bucket, count(*) from public.guest_write_log
+--     where created_at > (extract(epoch from now()) * 1000)::bigint - 600000
+--     group by bucket order by 2 desc;
 
 -- ------------------------------------------------------ sign-in helper ----
 --  Add the first staff member after creating the user in Authentication →
