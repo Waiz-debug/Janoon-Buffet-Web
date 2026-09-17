@@ -123,6 +123,21 @@ export type AddOnRow = {
   chilled: boolean;
 };
 
+/** One item available for pre-order (Dumpukht, Sajji, platters, etc.). */
+export type PreOrderItemRow = {
+  id: string;
+  name: string;
+  urdu?: string;
+  description?: string;
+  price: number;
+  serves?: string;
+  image?: string;
+  imagePath?: string;
+  active: boolean;
+  demo: boolean;
+  sortOrder: number;
+};
+
 /** One editable line of copy in `site_content`. */
 export type SiteContentRow = {
   key: string;
@@ -1187,6 +1202,146 @@ function toPreorder(row: PreorderDb): Preorder {
     status: row.status,
     createdAt: ms(row.created_at) ?? 0,
   };
+}
+
+/* --------------------------------------------------- pre_order_items ----- */
+
+/** Public list: active items only, sorted for the pre-order form. */
+export async function fetchPublicPreOrderItems(): Promise<PreOrderItemRow[]> {
+  const { data, error } = await supabase
+    .from(TABLES.preOrderItems)
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  if (error) {
+    console.warn("Could not read pre_order_items, using static list.", error.message);
+    return [];
+  }
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    urdu: r.urdu ?? undefined,
+    description: r.description ?? undefined,
+    price: r.price ?? 0,
+    serves: r.serves ?? undefined,
+    image: r.image ?? undefined,
+    imagePath: r.image_path ?? undefined,
+    active: r.active ?? true,
+    demo: r.demo ?? false,
+    sortOrder: r.sort_order ?? 0,
+  }));
+}
+
+/** Admin list: all items including hidden ones. */
+export async function fetchAllPreOrderItems(): Promise<PreOrderItemRow[]> {
+  const { data, error } = await supabase
+    .from(TABLES.preOrderItems)
+    .select("*")
+    .order("sort_order", { ascending: true });
+  if (error) {
+    console.warn("Could not read pre_order_items.", error.message);
+    return [];
+  }
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    urdu: r.urdu ?? undefined,
+    description: r.description ?? undefined,
+    price: r.price ?? 0,
+    serves: r.serves ?? undefined,
+    image: r.image ?? undefined,
+    imagePath: r.image_path ?? undefined,
+    active: r.active ?? true,
+    demo: r.demo ?? false,
+    sortOrder: r.sort_order ?? 0,
+  }));
+}
+
+/** Create a new pre-order item (admin only). */
+export async function createPreOrderItem(
+  item: Omit<PreOrderItemRow, "id">,
+): Promise<PreOrderItemRow> {
+  const { data, error } = await supabase
+    .from(TABLES.preOrderItems)
+    .insert({
+      name: item.name,
+      urdu: item.urdu ?? null,
+      description: item.description ?? null,
+      price: item.price,
+      serves: item.serves ?? null,
+      image: item.image ?? null,
+      active: item.active,
+      sort_order: item.sortOrder,
+      demo: false,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    id: data.id,
+    name: data.name,
+    urdu: data.urdu ?? undefined,
+    description: data.description ?? undefined,
+    price: data.price,
+    serves: data.serves ?? undefined,
+    image: data.image ?? undefined,
+    imagePath: data.image_path ?? undefined,
+    active: data.active,
+    demo: data.demo,
+    sortOrder: data.sort_order,
+  };
+}
+
+/** Update an existing pre-order item (admin only). */
+export async function updatePreOrderItem(
+  id: string,
+  patch: Partial<Omit<PreOrderItemRow, "id">>,
+): Promise<void> {
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.name !== undefined) dbPatch.name = patch.name;
+  if (patch.urdu !== undefined) dbPatch.urdu = patch.urdu ?? null;
+  if (patch.description !== undefined) dbPatch.description = patch.description ?? null;
+  if (patch.price !== undefined) dbPatch.price = patch.price;
+  if (patch.serves !== undefined) dbPatch.serves = patch.serves ?? null;
+  if (patch.active !== undefined) dbPatch.active = patch.active;
+  if (patch.sortOrder !== undefined) dbPatch.sort_order = patch.sortOrder;
+  const { error } = await supabase
+    .from(TABLES.preOrderItems)
+    .update(dbPatch)
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Set the image for a pre-order item via Supabase Storage. */
+export async function setPreOrderItemImage(
+  id: string,
+  storageId: string,
+): Promise<string> {
+  const url = mediaUrl(storageId);
+  const { error } = await supabase
+    .from(TABLES.preOrderItems)
+    .update({ image: url, image_path: storageId })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  return url ?? "";
+}
+
+/** Clear the image from a pre-order item. */
+export async function removePreOrderItemImage(id: string): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.preOrderItems)
+    .update({ image: null, image_path: null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Delete a pre-order item entirely (admin only). */
+export async function deletePreOrderItem(id: string): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.preOrderItems)
+    .delete()
+    .eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 /** Every pre-order, newest first — the staff and admin desks. */

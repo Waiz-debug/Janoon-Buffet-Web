@@ -38,6 +38,7 @@ export const TABLES = {
   deliveryOrders: "delivery_orders",
   reservations: "reservations",
   preorders: "preorders",
+  preOrderItems: "pre_order_items",
   promotions: "promotions",
 } as const;
 

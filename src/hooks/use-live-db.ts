@@ -22,6 +22,9 @@ import {
   type SiteMediaRow,
   type SiteContentRow,
   type AddOnRow,
+  type PreOrderItemRow,
+  fetchPublicPreOrderItems,
+  fetchAllPreOrderItems,
 } from "@/lib/db";
 import { TABLES, supabase } from "@/lib/supabase";
 import { useEffect, useRef, useState } from "react";
@@ -209,6 +212,18 @@ export function useReservationLookup(
   if (!wanted) return null;
   if (!result || result.key !== wanted) return undefined;
   return result.value;
+}
+
+/* ----------------------------------------------- pre_order_items ------ */
+
+/** Public pre-order form: active items only. */
+export function usePublicPreOrderItems(): PreOrderItemRow[] | undefined {
+  return useLiveTable<PreOrderItemRow>(TABLES.preOrderItems, fetchPublicPreOrderItems);
+}
+
+/** Admin panel: all pre-order items including hidden ones. */
+export function useAdminPreOrderItems(): PreOrderItemRow[] | undefined {
+  return useLiveTable<PreOrderItemRow>(TABLES.preOrderItems, fetchAllPreOrderItems);
 }
 
 /* --------------------------------------------------------- preorders ----- */

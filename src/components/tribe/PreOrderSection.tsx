@@ -211,7 +211,7 @@ export function PreOrderSection() {
                 <Input
                   id="preorder-phone"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/[^\\d+ ]/g, ""))}
+                  onChange={(e) => setPhone(e.target.value.replace(/[^\d+ ]/g, ""))}
                   placeholder="03XX XXXXXXX"
                   inputMode="tel"
                 />

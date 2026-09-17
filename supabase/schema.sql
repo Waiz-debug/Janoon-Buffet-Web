@@ -157,6 +157,35 @@ create table if not exists public.promotions (
 
 create index if not exists promotions_visible_idx on public.promotions (visible);
 
+-- ------------------------------------------------- pre_order_items ------
+-- Admin-managed catalogue of items available for pre-order (Dumpukht, Sajji,
+-- party platters, etc.).  No limit on how many items the admin can add.
+create table if not exists public.pre_order_items (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  urdu          text,
+  description   text,
+  price         integer not null default 0,   -- PKR
+  serves        text,                          -- e.g. '2-4 guests'
+  image         text,                          -- external URL
+  image_path    text,                          -- uploaded storage object
+  active        boolean not null default true,
+  sort_order    integer not null default 0,
+  demo          boolean not null default false,
+  created_at    bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  updated_at    bigint
+);
+
+create index if not exists pre_order_items_sort_idx on public.pre_order_items (sort_order);
+
+-- Seed the 3 default dishes so the public site renders immediately.
+insert into public.pre_order_items (name, urdu, description, price, serves, sort_order, demo)
+values
+  ('Mount Dumpukht', '\u\u6225\u\u67e\u\u62e\u\u62a', 'Slow-cooked for 6+ hours in a sealed handi with whole spices and bone marrow. Available on 24-hour pre-order only.', 3500, '2-4 guests', 1, true),
+  ('Whole Roasted Sajji', '\u\u633\u\u62c\u\u6cc', 'Marinated whole chicken roasted over open coals for hours. Pre-order by noon for evening collection.', 2800, '3-5 guests', 2, true),
+  ('Seekh Kebab Platter (Party)', '\u\u633\u\u6cc\u\u62e \u\u6a9\u\u628\u\u627\u\u628 \u\u6777\u\u6cc\u\u6778\u\u631', 'A 50-piece mixed platter of our charcoal seekh kebabs for large family gatherings.', 8000, '10-15 guests', 3, true)
+on conflict do nothing;
+
 -- ------------------------------------------------------------ preorders ----
 -- Takeaway / slow-cooked pre-orders (Dumpukht, Sajji, party platters) placed
 -- from the public site. These are the "takeaway orders" that must land on the
@@ -191,7 +220,8 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'site_media', 'site_content',
-    'delivery_orders', 'reservations', 'promotions', 'preorders'
+    'delivery_orders', 'reservations', 'promotions', 'preorders',
+    'pre_order_items'
   ]
   loop
     begin
@@ -224,7 +254,8 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'site_media', 'site_content',
-    'delivery_orders', 'reservations', 'promotions', 'preorders'
+    'delivery_orders', 'reservations', 'promotions', 'preorders',
+    'pre_order_items'
   ]
   loop
     execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
