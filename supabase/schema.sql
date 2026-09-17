@@ -166,6 +166,11 @@ create table if not exists public.pre_order_items (
   urdu          text,
   description   text,
   price         integer not null default 0,   -- PKR
+  -- Which heading the item is filed under on the public pre-order form.
+  -- The labels live in PREORDER_CATEGORIES (src/lib/menu.ts) so the admin
+  -- form and the public form can never disagree about them.
+  category      text not null default 'slow-cooked'
+                check (category in ('slow-cooked', 'grills', 'platters', 'sweets')),
   serves        text,                          -- e.g. '2-4 guests'
   image         text,                          -- external URL
   image_path    text,                          -- uploaded storage object
@@ -176,15 +181,45 @@ create table if not exists public.pre_order_items (
   updated_at    bigint
 );
 
-create index if not exists pre_order_items_sort_idx on public.pre_order_items (sort_order);
+create index if not exists pre_order_items_sort_idx     on public.pre_order_items (sort_order);
+create index if not exists pre_order_items_category_idx on public.pre_order_items (category);
+
+-- Migration: databases created before the category column existed.
+-- Safe to re-run.
+alter table public.pre_order_items
+  add column if not exists category text not null default 'slow-cooked';
 
 -- Seed the 3 default dishes so the public site renders immediately.
-insert into public.pre_order_items (name, urdu, description, price, serves, sort_order, demo)
-values
-  ('Mount Dumpukht', '\u\u6225\u\u67e\u\u62e\u\u62a', 'Slow-cooked for 6+ hours in a sealed handi with whole spices and bone marrow. Available on 24-hour pre-order only.', 3500, '2-4 guests', 1, true),
-  ('Whole Roasted Sajji', '\u\u633\u\u62c\u\u6cc', 'Marinated whole chicken roasted over open coals for hours. Pre-order by noon for evening collection.', 2800, '3-5 guests', 2, true),
-  ('Seekh Kebab Platter (Party)', '\u\u633\u\u6cc\u\u62e \u\u6a9\u\u628\u\u627\u\u628 \u\u6777\u\u6cc\u\u6778\u\u631', 'A 50-piece mixed platter of our charcoal seekh kebabs for large family gatherings.', 8000, '10-15 guests', 3, true)
-on conflict do nothing;
+-- Idempotent: it only fills an empty table, so re-running this script never
+-- duplicates the demo items. The admin panel can add, edit or remove as many
+-- pre-order items as the kitchen takes on — there is no cap.
+insert into public.pre_order_items
+  (name, urdu, description, price, category, serves, sort_order, demo)
+select v.name, v.urdu, v.description, v.price, v.category, v.serves, v.sort_order, v.demo
+from (values
+  ('Mutton Dumpukht', '\u\u6225\u\u67e\u\u62e\u\u62a', 'Slow-cooked for 6+ hours in a sealed handi with whole spices and bone marrow. Available on 24-hour pre-order only.', 3500, 'slow-cooked', '2-4 guests', 1, true),
+  ('Whole Roasted Sajji', '\u\u633\u\u62c\u\u6cc', 'Marinated whole chicken roasted over open coals for hours. Pre-order by noon for evening collection.', 2800, 'grills', '3-5 guests', 2, true),
+  ('Seekh Kebab Platter (Party)', '\u\u633\u\u6cc\u\u62e \u\u6a9\u\u628\u\u627\u\u628 \u\u6777\u\u6cc\u\u6778\u\u631', 'A 50-piece mixed platter of our charcoal seekh kebabs for large family gatherings.', 8000, 'platters', '10-15 guests', 3, true)
+) as v(name, urdu, description, price, category, serves, sort_order, demo)
+where not exists (select 1 from public.pre_order_items);
+
+--  The public pre-order form: only the live items, in category then sort order.
+--    select name, urdu, price, category, serves, image, image_path
+--      from public.pre_order_items
+--     where active
+--     order by category, sort_order;
+--
+--  The admin panel: everything, hidden items included.
+--    select * from public.pre_order_items order by sort_order;
+--
+--  Reprice one item:
+--    update public.pre_order_items set price = 3800, updated_at = 0
+--     where name = 'Mutton Dumpukht';
+--
+--  Which items are still on a demo photo (or no photo at all)?
+--    select id, name, category, demo,
+--           case when image_path is null then 'demo url' else 'uploaded' end as source
+--      from public.pre_order_items order by category, sort_order;
 
 -- ------------------------------------------------------------ preorders ----
 -- Takeaway / slow-cooked pre-orders (Dumpukht, Sajji, party platters) placed

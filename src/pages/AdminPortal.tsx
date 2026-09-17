@@ -4,13 +4,18 @@ import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
 import { ExperienceManager } from "@/components/admin/ExperienceManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
+import { PreOrderManager } from "@/components/admin/PreOrderManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAdminAddOns, useAdminMenu } from "@/hooks/use-live-db";
+import {
+  useAdminAddOns,
+  useAdminMenu,
+  useAdminPreOrderItems,
+} from "@/hooks/use-live-db";
 import {
   ensureSignatureDishes,
   seedAddOns,
@@ -25,6 +30,7 @@ import { toast } from "sonner";
 export default function AdminPortal() {
   const { categories, dishes, loaded, isEmpty } = useAdminMenu();
   const addons = useAdminAddOns() ?? [];
+  const preOrderItems = useAdminPreOrderItems();
   const seeding = useRef(false);
 
   // First run against a fresh Supabase project: copy the built-in catalogue
@@ -105,6 +111,7 @@ export default function AdminPortal() {
           <TabsTrigger value="dishes">Dishes &amp; prices</TabsTrigger>
           <TabsTrigger value="counters">Counters</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
+          <TabsTrigger value="preorders">Pre-order items</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="promos">Promotions</TabsTrigger>
           <TabsTrigger value="records">Records</TabsTrigger>
@@ -123,6 +130,24 @@ export default function AdminPortal() {
 
         <TabsContent value="addons">
           <AddOnManager addons={addons} />
+        </TabsContent>
+
+        <TabsContent value="preorders" className="flex flex-col gap-4">
+          <div>
+            <h3 className="font-display text-base font-semibold">
+              Pre-order &amp; takeaway items
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Everything guests can reserve ahead of time. Add, edit or remove as
+              many items as you like — each one appears on the public pre-order
+              form the moment you save, and the requests land on the staff desk
+              in real time.
+            </p>
+          </div>
+          <PreOrderManager
+            items={preOrderItems ?? []}
+            loading={preOrderItems === undefined}
+          />
         </TabsContent>
 
         <TabsContent value="counters">

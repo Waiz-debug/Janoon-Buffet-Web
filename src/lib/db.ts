@@ -3,9 +3,11 @@ import {
   ADDONS,
   DISHES,
   MENU_CATEGORIES,
+  PREORDER_CATEGORIES,
   SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
   type AddOnGroupId,
+  type PreOrderCategoryId,
   DELIVERY_FEE,
   FREE_DELIVERY_THRESHOLD,
   deliveryUnitPrice,
@@ -130,6 +132,7 @@ export type PreOrderItemRow = {
   urdu?: string;
   description?: string;
   price: number;
+  category: PreOrderCategoryId;
   serves?: string;
   image?: string;
   imagePath?: string;
@@ -1206,6 +1209,44 @@ function toPreorder(row: PreorderDb): Preorder {
 
 /* --------------------------------------------------- pre_order_items ----- */
 
+const PREORDER_CATEGORY_IDS = new Set<string>(
+  PREORDER_CATEGORIES.map((category) => category.id),
+);
+
+function toPreOrderItemRow(row: {
+  id: string;
+  name: string;
+  urdu: string | null;
+  description: string | null;
+  price: number | null;
+  category: string | null;
+  serves: string | null;
+  image: string | null;
+  image_path: string | null;
+  active: boolean | null;
+  demo: boolean | null;
+  sort_order: number | null;
+}): PreOrderItemRow {
+  const category = (
+    PREORDER_CATEGORY_IDS.has(row.category ?? "") ? row.category : "slow-cooked"
+  ) as PreOrderCategoryId;
+  return {
+    id: row.id,
+    name: row.name,
+    urdu: row.urdu ?? undefined,
+    description: row.description ?? undefined,
+    price: row.price ?? 0,
+    category,
+    serves: row.serves ?? undefined,
+    // Prefer an external URL, otherwise resolve the uploaded object.
+    image: row.image || mediaUrl(row.image_path) || undefined,
+    imagePath: row.image_path ?? undefined,
+    active: row.active ?? true,
+    demo: row.demo ?? false,
+    sortOrder: row.sort_order ?? 0,
+  };
+}
+
 /** Public list: active items only, sorted for the pre-order form. */
 export async function fetchPublicPreOrderItems(): Promise<PreOrderItemRow[]> {
   const { data, error } = await supabase
@@ -1217,19 +1258,7 @@ export async function fetchPublicPreOrderItems(): Promise<PreOrderItemRow[]> {
     console.warn("Could not read pre_order_items, using static list.", error.message);
     return [];
   }
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    name: r.name,
-    urdu: r.urdu ?? undefined,
-    description: r.description ?? undefined,
-    price: r.price ?? 0,
-    serves: r.serves ?? undefined,
-    image: r.image ?? undefined,
-    imagePath: r.image_path ?? undefined,
-    active: r.active ?? true,
-    demo: r.demo ?? false,
-    sortOrder: r.sort_order ?? 0,
-  }));
+  return (data ?? []).map(toPreOrderItemRow);
 }
 
 /** Admin list: all items including hidden ones. */
@@ -1242,19 +1271,7 @@ export async function fetchAllPreOrderItems(): Promise<PreOrderItemRow[]> {
     console.warn("Could not read pre_order_items.", error.message);
     return [];
   }
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    name: r.name,
-    urdu: r.urdu ?? undefined,
-    description: r.description ?? undefined,
-    price: r.price ?? 0,
-    serves: r.serves ?? undefined,
-    image: r.image ?? undefined,
-    imagePath: r.image_path ?? undefined,
-    active: r.active ?? true,
-    demo: r.demo ?? false,
-    sortOrder: r.sort_order ?? 0,
-  }));
+  return (data ?? []).map(toPreOrderItemRow);
 }
 
 /** Create a new pre-order item (admin only). */
@@ -1268,6 +1285,7 @@ export async function createPreOrderItem(
       urdu: item.urdu ?? null,
       description: item.description ?? null,
       price: item.price,
+      category: item.category,
       serves: item.serves ?? null,
       image: item.image ?? null,
       active: item.active,
@@ -1277,19 +1295,7 @@ export async function createPreOrderItem(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  return {
-    id: data.id,
-    name: data.name,
-    urdu: data.urdu ?? undefined,
-    description: data.description ?? undefined,
-    price: data.price,
-    serves: data.serves ?? undefined,
-    image: data.image ?? undefined,
-    imagePath: data.image_path ?? undefined,
-    active: data.active,
-    demo: data.demo,
-    sortOrder: data.sort_order,
-  };
+  return toPreOrderItemRow(data);
 }
 
 /** Update an existing pre-order item (admin only). */
@@ -1302,6 +1308,7 @@ export async function updatePreOrderItem(
   if (patch.urdu !== undefined) dbPatch.urdu = patch.urdu ?? null;
   if (patch.description !== undefined) dbPatch.description = patch.description ?? null;
   if (patch.price !== undefined) dbPatch.price = patch.price;
+  if (patch.category !== undefined) dbPatch.category = patch.category;
   if (patch.serves !== undefined) dbPatch.serves = patch.serves ?? null;
   if (patch.active !== undefined) dbPatch.active = patch.active;
   if (patch.sortOrder !== undefined) dbPatch.sort_order = patch.sortOrder;
@@ -1374,8 +1381,10 @@ export async function createPreorder(
   if (customerName.length < 2) {
     throw new Error("Please enter the name for the pre-order.");
   }
-  if (phoneDigits.length < 10 || phoneDigits.length > 12) {
-    throw new Error("Please enter a valid phone number.");
+  // Accept any local or international formatting — 03XX… or +92 3XX… — as long
+  // as there are enough digits to call back on.
+  if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+    throw new Error("Enter a valid phone number we can reach you on.");
   }
   if (!input.dish.trim()) throw new Error("Please choose a dish to pre-order.");
   if (!input.pickupDate || !input.pickupTime) {

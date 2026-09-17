@@ -2,7 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
+import { usePublicPreOrderItems } from "@/hooks/use-live-db";
 import { createPreorder } from "@/lib/db";
+import { formatRupees, preOrderCategoryLabel } from "@/lib/menu";
 import { RESTAURANT, dayKeyFromMs } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -10,32 +12,51 @@ import { CalendarClock, Clock, Flame, Loader2, Phone } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const PREORDER_DISHES = [
+/** The dishes shown when Supabase has no pre-order items yet. */
+const FALLBACK_DISHES = [
   {
+    id: "mutton-dumpukht",
     name: "Mutton Dumpukht",
     urdu: "دم پخت",
     description:
       "Slow-cooked for 6+ hours in a sealed handi with whole spices and bone marrow. Available on 24-hour pre-order only.",
-    estimatedPrice: "Rs 3,500",
+    price: 3500,
+    category: "slow-cooked",
     serves: "2–4 guests",
   },
   {
+    id: "whole-roasted-sajji",
     name: "Whole Roasted Sajji",
     urdu: "سجی",
     description:
       "Marinated whole chicken roasted over open coals for hours. Pre-order by noon for evening collection.",
-    estimatedPrice: "Rs 2,800",
+    price: 2800,
+    category: "grills",
     serves: "3–5 guests",
   },
   {
+    id: "seekh-kebab-platter",
     name: "Seekh Kebab Platter (Party)",
     urdu: "سیخ کباب پلیٹر",
     description:
       "A 50-piece mixed platter of our charcoal seekh kebabs — beef and chicken — for large family gatherings.",
-    estimatedPrice: "Rs 8,000",
+    price: 8000,
+    category: "platters",
     serves: "10–15 guests",
   },
 ] as const;
+
+/** One row on the pre-order board — live items and the fallback share it. */
+type PreOrderCard = {
+  id: string;
+  name: string;
+  urdu: string;
+  description: string;
+  price: number;
+  category: string;
+  serves: string;
+  image?: string;
+};
 
 /** Available pickup slots for the next 2 days. */
 function getSlots() {
@@ -63,17 +84,51 @@ export function PreOrderSection() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [selectedDish, setSelectedDish] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmedRef, setConfirmedRef] = useState<string | null>(null);
 
+  // Live from Supabase — whatever the admin adds, hides or re-prices is
+  // reflected here without a reload. The built-in list stands in until the
+  // table has been seeded.
+  const liveItems = usePublicPreOrderItems();
+  const dishes: PreOrderCard[] =
+    liveItems && liveItems.length > 0
+      ? liveItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          urdu: item.urdu ?? "",
+          description: item.description ?? "",
+          price: item.price,
+          category: item.category,
+          serves: item.serves ?? "",
+          image: item.image,
+        }))
+      : FALLBACK_DISHES.map((dish) => ({ ...dish, image: undefined }));
+
   const slots = getSlots();
+  const selectedDish = dishes.find((dish) => dish.id === selectedId);
 
   const handleSubmit = async () => {
-    if (!selectedDish || !selectedSlot || !name.trim() || !phone.trim()) {
-      toast.error("Please fill in all fields and select a dish and time slot.");
+    const digits = phone.replace(/\D/g, "");
+    const nextErrors: Record<string, string> = {};
+    if (!selectedDish) nextErrors.dish = "Choose a dish to pre-order.";
+    if (!selectedSlot) nextErrors.slot = "Pick a pickup slot.";
+    if (name.trim().length < 2) {
+      nextErrors.name = "Please enter the name for the pre-order.";
+    }
+    if (digits.length < 10 || digits.length > 15) {
+      nextErrors.phone = "Enter a valid phone number we can reach you on.";
+    }
+    setErrors(nextErrors);
+    const firstError = Object.values(nextErrors)[0];
+    if (firstError) {
+      toast.error(firstError);
       return;
     }
+    if (!selectedDish || !selectedSlot) return;
+
     // The slot key is `<YYYY-MM-DD>:<HH:MM>` — split on the first colon only.
     const separator = selectedSlot.indexOf(":");
     setIsSubmitting(true);
@@ -81,18 +136,19 @@ export function PreOrderSection() {
       const { reference } = await createPreorder({
         customerName: name,
         phone,
-        dish: selectedDish,
+        dish: selectedDish.name,
         pickupDate: selectedSlot.slice(0, separator),
         pickupTime: selectedSlot.slice(separator + 1),
       });
       setConfirmedRef(reference);
       toast.success("Pre-order sent to the kitchen", {
-        description: `${selectedDish} · reference ${reference}. Our team will call ${phone} to confirm.`,
+        description: `${selectedDish.name} · reference ${reference}. Our team will call ${phone} to confirm.`,
       });
-      setSelectedDish(null);
+      setSelectedId(null);
       setSelectedSlot(null);
       setName("");
       setPhone("");
+      setErrors({});
     } catch (error) {
       toast.error("Could not place the pre-order", {
         description:
@@ -118,41 +174,72 @@ export function PreOrderSection() {
         <div className="mt-12 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
           {/* Dishes list */}
           <div className="flex flex-col gap-4">
-            {PREORDER_DISHES.map((dish) => (
+            {dishes.map((dish) => (
               <motion.button
-                key={dish.name}
+                key={dish.id}
                 type="button"
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.4 }}
-                onClick={() => setSelectedDish(dish.name)}
+                onClick={() => {
+                  setSelectedId(dish.id);
+                  setErrors((previous) => {
+                    if (!previous.dish) return previous;
+                    const next = { ...previous };
+                    delete next.dish;
+                    return next;
+                  });
+                }}
                 className={cn(
                   "flex flex-col gap-2 rounded-2xl border p-5 text-left transition-all",
-                  selectedDish === dish.name
+                  selectedId === dish.id
                     ? "border-gold/50 bg-gold/[0.08] shadow-[0_0_30px_rgba(212,168,83,0.08)]"
                     : "border-border/70 bg-card/40 hover:border-gold/25",
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="font-display text-base font-semibold">
-                      {dish.name}
-                    </h4>
-                    <p className="text-xs text-gold/60">{dish.urdu}</p>
+                  <div className="flex min-w-0 items-start gap-3">
+                    {dish.image ? (
+                      <span className="size-12 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-background/60">
+                        <img
+                          src={dish.image}
+                          alt=""
+                          className="size-full object-cover"
+                          loading="lazy"
+                        />
+                      </span>
+                    ) : null}
+                    <div className="min-w-0">
+                      <h4 className="font-display text-base font-semibold">
+                        {dish.name}
+                      </h4>
+                      {dish.urdu ? (
+                        <p className="text-xs text-gold/60" dir="rtl" lang="ur">
+                          {dish.urdu}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   <span className="shrink-0 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 text-xs font-medium text-gold">
-                    {dish.estimatedPrice}
+                    {formatRupees(dish.price)}
                   </span>
                 </div>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {dish.description}
-                </p>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Flame className="size-3 text-gold" aria-hidden />
-                    Serves {dish.serves}
+                {dish.description ? (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {dish.description}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[0.65rem] tracking-wide uppercase">
+                    {preOrderCategoryLabel(dish.category)}
                   </span>
+                  {dish.serves ? (
+                    <span className="flex items-center gap-1">
+                      <Flame className="size-3 text-gold" aria-hidden />
+                      Serves {dish.serves}
+                    </span>
+                  ) : null}
                 </div>
               </motion.button>
             ))}
@@ -177,7 +264,15 @@ export function PreOrderSection() {
                     <button
                       key={slotKey}
                       type="button"
-                      onClick={() => setSelectedSlot(slotKey)}
+                      onClick={() => {
+                        setSelectedSlot(slotKey);
+                        setErrors((previous) => {
+                          if (!previous.slot) return previous;
+                          const next = { ...previous };
+                          delete next.slot;
+                          return next;
+                        });
+                      }}
                       className={cn(
                         "flex flex-col items-center gap-0.5 rounded-xl border px-2 py-2.5 text-center transition-colors",
                         selectedSlot === slotKey
@@ -201,20 +296,56 @@ export function PreOrderSection() {
                 <Label htmlFor="preorder-name">Your name</Label>
                 <Input
                   id="preorder-name"
+                  name="name"
+                  autoComplete="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  aria-invalid={Boolean(errors.name)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setErrors((previous) => {
+                      if (!previous.name) return previous;
+                      const next = { ...previous };
+                      delete next.name;
+                      return next;
+                    });
+                  }}
                   placeholder="e.g. Ahmed Khan"
                 />
+                {errors.name ? (
+                  <p className="text-xs text-destructive">{errors.name}</p>
+                ) : null}
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="preorder-phone">Phone number</Label>
                 <Input
                   id="preorder-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/[^\d+ ]/g, ""))}
-                  placeholder="03XX XXXXXXX"
+                  name="phone"
+                  // A real `tel` field: mobile keyboards open on the number pad
+                  // and the value is stored exactly as typed, so `+92 3XX…`
+                  // and `03XX-XXXXXXX` both go through.
+                  type="tel"
                   inputMode="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  aria-invalid={Boolean(errors.phone)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setErrors((previous) => {
+                      if (!previous.phone) return previous;
+                      const next = { ...previous };
+                      delete next.phone;
+                      return next;
+                    });
+                  }}
+                  placeholder="03XX XXXXXXX"
                 />
+                {errors.phone ? (
+                  <p className="text-xs text-destructive">{errors.phone}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    We call this number to confirm your pre-order.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -231,7 +362,7 @@ export function PreOrderSection() {
 
             <Button
               size="lg"
-              disabled={!selectedDish || !selectedSlot || !name.trim() || !phone.trim() || isSubmitting}
+              disabled={isSubmitting}
               onClick={() => void handleSubmit()}
               className="h-12 gap-2"
             >

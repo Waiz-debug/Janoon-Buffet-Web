@@ -481,6 +481,30 @@ export const ADDONS: AddOn[] = [
   { id: "water-bottle", name: "Mineral Water", urdu: "منرل واٹر", price: 60, group: "cold", chilled: true },
 ];
 
+/* ------------------------------------------------------------------ */
+/* Pre-order catalogue                                                */
+/*                                                                    */
+/* Dishes that need ordering ahead — Dumpukht, Sajji, party platters.  */
+/* The catalogue lives in the `pre_order_items` Supabase table and is   */
+/* fully editable from the admin panel, with no cap on how many items   */
+/* the team can add. This list is only the category headings.           */
+/* ------------------------------------------------------------------ */
+
+/** The categories a pre-order item can be filed under, in display order. */
+export const PREORDER_CATEGORIES = [
+  { id: "slow-cooked", label: "Slow-cooked & Handi", urdu: "دم پخت و ہانڈی" },
+  { id: "grills", label: "Grills & Roast", urdu: "گرل و روسٹ" },
+  { id: "platters", label: "Party Platters", urdu: "پارٹی پلیٹر" },
+  { id: "sweets", label: "Desserts & Sweets", urdu: "میٹھا" },
+] as const;
+
+export type PreOrderCategoryId = (typeof PREORDER_CATEGORIES)[number]["id"];
+
+/** Human label for a stored category id, with a safe fallback. */
+export function preOrderCategoryLabel(id: string): string {
+  return PREORDER_CATEGORIES.find((category) => category.id === id)?.label ?? "Pre-order";
+}
+
 /** Slugs for dishes that support weight/portion-based pricing. */
 export const WEIGHTED_SLUGS = [
   "chicken-karahi",
