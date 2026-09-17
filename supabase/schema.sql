@@ -705,6 +705,30 @@ begin
     on update cascade on delete restrict;
 end $$;
 
+-- --------------------------------------------------- category → items ------
+--  Two independent parent/child links, both created above:
+--
+--    menu_categories  (id) ← menu_dishes.category_id   [menu_dishes_category_fk]
+--    addon_categories (id) ← menu_addons.category      [menu_addons_category_fk]
+--
+--  Both are `on update cascade on delete restrict`: renaming a category keeps
+--  its items, and deleting one is refused while items still point at it. The
+--  admin panel therefore reassigns an item to `uncategorized` before deleting
+--  its category (see deleteCategory() in src/lib/db.ts) rather than relying on
+--  a cascade.
+--
+--  Confirm both links are in place:
+--    select conname, conrelid::regclass as child, confrelid::regclass as parent
+--      from pg_constraint
+--     where contype = 'f' and connamespace = 'public'::regnamespace
+--     order by child;
+--
+--  Every category with the number of items inside it:
+--    select c.id, c.name, c.sort_order, c.active, count(d.id) as items
+--      from public.menu_categories c
+--      left join public.menu_dishes d on d.category_id = c.id
+--     group by 1, 2, 3, 4 order by c.sort_order;
+
 -- --------------------------------------------------- read-only aliases ------
 --  Exports, reporting tools and integrations expect the conventional names
 --  `image_url` and `is_active`. Renaming the live columns would break every

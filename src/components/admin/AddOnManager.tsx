@@ -1,15 +1,9 @@
-import { ImageField } from "@/components/admin/ImageField";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+  CategoryDialog,
+  type CategoryFormValues,
+} from "@/components/admin/CategoryDialog";
+import { ItemDialog, type ItemFormValues } from "@/components/admin/ItemDialog";
+import { Button } from "@/components/ui/button";
 import {
   deleteAddOn,
   removeAddOnImage,
@@ -20,45 +14,19 @@ import {
   type AddOnRow,
 } from "@/lib/db";
 import { ADDON_GROUPS, formatRupees } from "@/lib/menu";
-import { Check, Loader2, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Draft = {
-  id: string | null;
-  name: string;
-  urdu: string;
-  price: string;
-  category: string;
-  image: string;
-  /** Storage id of a just-uploaded photo awaiting the first save. */
-  pendingStorageId: string | null;
-  active: boolean;
-  sortOrder: number;
-};
-
-const emptyDraft = (category: string, nextSort: number): Draft => ({
-  id: null,
-  name: "",
-  urdu: "",
-  price: "",
-  category,
-  image: "",
-  pendingStorageId: null,
-  active: true,
-  sortOrder: nextSort,
-});
-
 /**
- * Full CRUD for the Traditional Add-ons board.
+ * The Traditional Add-ons board, in the same shape as the Counters board:
+ * **Create category** at the top, and an **Add item** button inside every
+ * category.
  *
- * Deliberately small: pick a category, type the English and Urdu names, set a
- * price, optionally attach a photo. The item id and its position within the
- * category are derived on save, so there is nothing else to fill in.
- *
- * Categories are data, not code — the admin can invent new ones ("Tandoor
- * Breads", "Ice Cream") from the builder below, and they appear on the public
- * board in the order shown here.
+ * Categories are data, not code — the owner invents them ("Tandoor Breads",
+ * "Ice Cream") and they appear on the guest board immediately. An item needs a
+ * name in English and Urdu, a price and optionally a photo; everything else is
+ * derived on save.
  */
 export function AddOnManager({
   addons,
@@ -69,16 +37,18 @@ export function AddOnManager({
   categories: AddOnCategoryRow[];
   categoriesLoaded: boolean;
 }) {
-  const [editing, setEditing] = useState<Draft | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [categoryForm, setCategoryForm] = useState<{
+    open: boolean;
+    editing: AddOnCategoryRow | null;
+  }>({ open: false, editing: null });
+  const [itemForm, setItemForm] = useState<{
+    open: boolean;
+    addon: AddOnRow | null;
+    categoryId: string;
+    /** Set for a category just created, before realtime has delivered it. */
+    label: string;
+  }>({ open: false, addon: null, categoryId: "", label: "" });
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isBuilding, setIsBuilding] = useState(false);
-  const [savingCategory, setSavingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState({
-    name: "",
-    urdu: "",
-    icon: "🍽",
-  });
 
   /**
    * The headings to render, in order: the admin's categories when they exist,
@@ -113,70 +83,74 @@ export function AddOnManager({
     return [...list, ...orphans].sort((a, b) => a.sortOrder - b.sortOrder);
   }, [addons, categories]);
 
-  const countIn = (category: string) =>
-    addons.filter((addon) => addon.category === category).length;
+  const itemsIn = (categoryId: string) =>
+    addons
+      .filter((addon) => addon.category === categoryId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  const startCreate = (category?: string) => {
-    const target = category ?? groups[0]?.id ?? "bread";
-    const nextSort =
-      addons
-        .filter((addon) => addon.category === target)
-        .reduce((max, addon) => Math.max(max, addon.sortOrder), 0) + 1;
-    setEditing(emptyDraft(target, nextSort));
-  };
+  const nextSortIn = (categoryId: string) =>
+    itemsIn(categoryId).reduce((max, addon) => Math.max(max, addon.sortOrder), 0) + 1;
 
-  const startEdit = (addon: AddOnRow) => {
-    setEditing({
-      id: addon.id,
-      name: addon.name,
-      urdu: addon.urdu ?? "",
-      price: String(addon.price),
-      category: addon.category,
-      image: addon.image ?? "",
-      pendingStorageId: null,
-      active: addon.active,
-      sortOrder: addon.sortOrder,
+  /* -------------------------------------------------------- categories --- */
+
+  const saveCategory = async (values: CategoryFormValues) => {
+    const editing = categoryForm.editing;
+    const result = await upsertAddOnCategory({
+      id: editing?.id,
+      name: values.name,
+      urdu: values.urdu,
+      // The emoji is the add-on headings' own decoration; a new one gets the
+      // board's default cutlery mark.
+      icon: editing?.icon,
+      sortOrder:
+        editing?.sortOrder ??
+        groups.reduce((max, group) => Math.max(max, group.sortOrder), 0) + 1,
+      active: values.active,
     });
+    toast.success(
+      result.created
+        ? `${values.name} created — add its items now`
+        : `${values.name} renamed`,
+    );
+    if (result.created) {
+      setItemForm({
+        open: true,
+        addon: null,
+        categoryId: result.id,
+        label: values.name,
+      });
+    }
   };
 
-  const save = async () => {
-    if (!editing) return;
-    if (editing.name.trim().length < 2) {
-      toast.error("Give the item a name first.");
-      return;
+  /* ------------------------------------------------------------- items --- */
+
+  const saveItem = async (values: ItemFormValues) => {
+    const { addon, categoryId } = itemForm;
+    if (!categoryId) return;
+    if (values.price.trim() === "" || Number(values.price) < 0) {
+      throw new Error("Enter a price in rupees.");
     }
-    if (!editing.price.trim() || Number(editing.price) < 0) {
-      toast.error("Enter a price in rupees.");
-      return;
+
+    const result = await upsertAddOn({
+      id: addon?.id,
+      name: values.name,
+      urdu: values.urdu,
+      price: Math.max(0, Math.round(Number(values.price))),
+      category: categoryId,
+      active: values.active,
+      sortOrder: addon?.sortOrder ?? nextSortIn(categoryId),
+    });
+
+    // A photo chosen before the first save attaches now that the row exists.
+    if (values.pendingStorageId) {
+      await setAddOnImage(result.id, values.pendingStorageId);
     }
-    setIsSaving(true);
-    try {
-      const result = await upsertAddOn({
-        id: editing.id ?? undefined,
-        name: editing.name,
-        urdu: editing.urdu,
-        price: Number(editing.price),
-        category: editing.category,
-        active: editing.active,
-        sortOrder: editing.sortOrder,
-      });
-      // A photo chosen before the first save is attached now that the row exists.
-      if (editing.pendingStorageId) {
-        await setAddOnImage(result.id, editing.pendingStorageId);
-      }
-      toast.success(
-        result.updated
-          ? `${editing.name.trim()} updated — live on the site`
-          : `${editing.name.trim()} added to the board`,
-      );
-      setEditing(null);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not save the item.",
-      );
-    } finally {
-      setIsSaving(false);
-    }
+
+    toast.success(
+      result.updated
+        ? `${values.name} updated — live on the site`
+        : `${values.name} added to the board`,
+    );
   };
 
   const remove = async (addon: AddOnRow) => {
@@ -200,278 +174,31 @@ export function AddOnManager({
     }
   };
 
-  const createCategory = async () => {
-    if (newCategory.name.trim().length < 2) {
-      toast.error("Give the category a name first.");
-      return;
-    }
-    setSavingCategory(true);
-    try {
-      const created = await upsertAddOnCategory({
-        name: newCategory.name,
-        urdu: newCategory.urdu,
-        icon: newCategory.icon,
-        sortOrder: groups.length + 1,
-        active: true,
-      });
-      toast.success(`${newCategory.name.trim()} added — add items to it now`);
-      setNewCategory({ name: "", urdu: "", icon: "🍽" });
-      setIsBuilding(false);
-      // Drop straight into a new item for the category just created.
-      setEditing(emptyDraft(created.id, 1));
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not save the category.",
-      );
-    } finally {
-      setSavingCategory(false);
-    }
-  };
+  const editingAddOn = itemForm.addon;
+  const itemCategoryName =
+    itemForm.label || groups.find((group) => group.id === itemForm.categoryId)?.name || "";
 
   return (
     <div className="flex flex-col gap-5">
+      {/* ------------------------------------------------------ top bar --- */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {addons.length} add-ons · {groups.length}{" "}
           {groups.length === 1 ? "category" : "categories"} · changes go live
           instantly
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setIsBuilding((open) => !open)}
-            className="gap-2"
-          >
-            <Tags className="size-4" aria-hidden />
-            New category
-          </Button>
-          <Button onClick={() => startCreate()} className="gap-2">
-            <Plus className="size-4" aria-hidden />
-            Add item
-          </Button>
-        </div>
+        <Button
+          onClick={() => setCategoryForm({ open: true, editing: null })}
+          className="gap-2"
+        >
+          <Plus className="size-4" aria-hidden />
+          Create category
+        </Button>
       </div>
 
-      {/* Category builder */}
-      {isBuilding ? (
-        <div className="rounded-2xl border border-gold/30 bg-card/70 p-5">
-          <div className="flex items-center justify-between">
-            <h3 className="font-display text-base font-semibold">
-              New add-on category
-            </h3>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Close category builder"
-              onClick={() => setIsBuilding(false)}
-            >
-              <X className="size-4" aria-hidden />
-            </Button>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Creates a new heading on the public add-ons board — like
-            &ldquo;Tandoor Breads&rdquo; or &ldquo;Ice Cream&rdquo;.
-          </p>
-
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-cat-name">Name (English)</Label>
-              <Input
-                id="addon-cat-name"
-                value={newCategory.name}
-                placeholder="e.g. Tandoor Breads"
-                onChange={(e) =>
-                  setNewCategory({ ...newCategory, name: e.target.value })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-cat-urdu">Name (Urdu)</Label>
-              <Input
-                id="addon-cat-urdu"
-                value={newCategory.urdu}
-                dir="rtl"
-                lang="ur"
-                placeholder="e.g. تندوری روٹی"
-                onChange={(e) =>
-                  setNewCategory({ ...newCategory, urdu: e.target.value })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-cat-icon">Icon</Label>
-              <Input
-                id="addon-cat-icon"
-                value={newCategory.icon}
-                maxLength={4}
-                className="text-center text-lg"
-                onChange={(e) =>
-                  setNewCategory({ ...newCategory, icon: e.target.value })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="mt-5 flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsBuilding(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void createCategory()}
-              disabled={savingCategory}
-              className="gap-2"
-            >
-              {savingCategory ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Check className="size-4" aria-hidden />
-              )}
-              Create category
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {editing ? (
-        <div className="rounded-2xl border border-gold/30 bg-card/70 p-5">
-          <div className="flex items-center justify-between">
-            <h3 className="font-display text-base font-semibold">
-              {editing.id ? `Edit ${editing.name}` : "New add-on"}
-            </h3>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Close editor"
-              onClick={() => setEditing(null)}
-            >
-              <X className="size-4" aria-hidden />
-            </Button>
-          </div>
-
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label>Category</Label>
-              <Select
-                value={editing.category}
-                onValueChange={(value) =>
-                  setEditing({ ...editing, category: value })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.icon} {group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-name">Name (English)</Label>
-              <Input
-                id="addon-name"
-                value={editing.name}
-                placeholder="e.g. Cola"
-                onChange={(e) =>
-                  setEditing({ ...editing, name: e.target.value })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-urdu">Name (Urdu)</Label>
-              <Input
-                id="addon-urdu"
-                value={editing.urdu}
-                dir="rtl"
-                lang="ur"
-                placeholder="e.g. کولا"
-                onChange={(e) =>
-                  setEditing({ ...editing, urdu: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-price">Price (PKR)</Label>
-              <Input
-                id="addon-price"
-                type="number"
-                min={0}
-                value={editing.price}
-                placeholder="e.g. 100"
-                onChange={(e) =>
-                  setEditing({ ...editing, price: e.target.value })
-                }
-              />
-            </div>
-
-            <ImageField
-              label="Item photo (optional)"
-              value={editing.image}
-              hint="JPG, PNG or WebP up to 5 MB — shown on the guest's add-on pill"
-              onUploaded={(upload) => {
-                // Editing an existing item attaches immediately; a new one
-                // holds the storage id until the row exists to attach it to.
-                if (editing.id) {
-                  void setAddOnImage(editing.id, upload.storageId)
-                    .then((url) => setEditing({ ...editing, image: url }))
-                    .catch(() => toast.error("Could not attach the photo."));
-                } else {
-                  setEditing({
-                    ...editing,
-                    image: upload.previewUrl,
-                    pendingStorageId: upload.storageId,
-                  });
-                }
-              }}
-              onCleared={() => {
-                if (editing.id) {
-                  void removeAddOnImage(editing.id).catch(() =>
-                    toast.error("Could not remove the photo."),
-                  );
-                }
-                setEditing({ ...editing, image: "", pendingStorageId: null });
-              }}
-            />
-
-            <div className="flex flex-col justify-center">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-border/70 px-4 py-3">
-                <span className="text-sm">
-                  Visible on the add-ons board
-                  <span className="block text-xs text-muted-foreground">
-                    Turn off to hide it without deleting
-                  </span>
-                </span>
-                <Switch
-                  checked={editing.active}
-                  onCheckedChange={(checked) =>
-                    setEditing({ ...editing, active: checked })
-                  }
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-5 flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setEditing(null)}>
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={isSaving} className="gap-2">
-              {isSaving ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : null}
-              {editing.id ? "Save changes" : "Add to board"}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
+      {/* ------------------------------------------------ categories + items */}
       {groups.map((group) => {
-        const items = addons.filter((addon) => addon.category === group.id);
+        const items = itemsIn(group.id);
         return (
           <div key={group.id} className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -487,20 +214,38 @@ export function AddOnManager({
                   {items.length}
                 </span>
               </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => startCreate(group.id)}
-                className="gap-1.5"
-              >
-                <Plus className="size-3.5" aria-hidden />
-                Add to {group.name}
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() =>
+                    setItemForm({
+                      open: true,
+                      addon: null,
+                      categoryId: group.id,
+                      label: "",
+                    })
+                  }
+                >
+                  <Plus className="size-3.5" aria-hidden />
+                  Add item
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Rename ${group.name}`}
+                  onClick={() => setCategoryForm({ open: true, editing: group })}
+                >
+                  <Pencil className="size-3.5" aria-hidden />
+                </Button>
+              </div>
             </div>
 
             {items.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-border/70 p-6 text-center text-xs text-muted-foreground">
-                Nothing in this category yet.
+                Nothing in this category yet — use{" "}
+                <span className="text-foreground">Add item</span> to build it.
               </p>
             ) : (
               <div className="overflow-hidden rounded-2xl border border-border/70">
@@ -565,7 +310,14 @@ export function AddOnManager({
                               variant="ghost"
                               size="icon"
                               aria-label={`Edit ${addon.name}`}
-                              onClick={() => startEdit(addon)}
+                              onClick={() =>
+                                setItemForm({
+                                  open: true,
+                                  addon,
+                                  categoryId: addon.category,
+                                  label: "",
+                                })
+                              }
                             >
                               <Pencil className="size-3.5" aria-hidden />
                             </Button>
@@ -605,6 +357,52 @@ export function AddOnManager({
           Loading the add-ons board…
         </p>
       ) : null}
+
+      <CategoryDialog
+        open={categoryForm.open}
+        onOpenChange={(open) => setCategoryForm((form) => ({ ...form, open }))}
+        kind="addon"
+        initial={
+          categoryForm.editing
+            ? {
+                name: categoryForm.editing.name,
+                urdu: categoryForm.editing.urdu ?? "",
+                active: categoryForm.editing.active,
+              }
+            : undefined
+        }
+        onSubmit={saveCategory}
+      />
+
+      <ItemDialog
+        open={itemForm.open}
+        onOpenChange={(open) => setItemForm((form) => ({ ...form, open }))}
+        mode="addon"
+        categoryName={itemCategoryName}
+        itemId={editingAddOn?.id ?? null}
+        initial={
+          editingAddOn
+            ? {
+                name: editingAddOn.name,
+                urdu: editingAddOn.urdu ?? "",
+                price: String(editingAddOn.price),
+                image: editingAddOn.image ?? "",
+                active: editingAddOn.active,
+              }
+            : undefined
+        }
+        onUpload={
+          editingAddOn
+            ? (storageId) => setAddOnImage(editingAddOn.id, storageId)
+            : undefined
+        }
+        onClear={
+          editingAddOn
+            ? () => removeAddOnImage(editingAddOn.id)
+            : undefined
+        }
+        onSubmit={saveItem}
+      />
     </div>
   );
 }

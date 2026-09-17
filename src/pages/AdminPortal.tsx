@@ -110,7 +110,7 @@ export default function AdminPortal() {
           {dishes.length} dishes live
         </span>
         <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1 text-xs text-muted-foreground">
-          {categories.length} counters
+          {categories.length} categories
         </span>
         <Button asChild variant="outline" size="sm" className="ml-auto gap-2">
           <a href="/restaurant" target="_blank" rel="noreferrer">
@@ -122,7 +122,7 @@ export default function AdminPortal() {
       <Tabs defaultValue="overview">
         <TabsList className="mb-6 flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="counters">Counters &amp; items</TabsTrigger>
+          <TabsTrigger value="counters">Menu categories</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
           <TabsTrigger value="preorders">Pre-order items</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
@@ -134,7 +134,16 @@ export default function AdminPortal() {
           <AdminOverview />
         </TabsContent>
 
-        <TabsContent value="counters">
+        <TabsContent value="counters" className="flex flex-col gap-4">
+          <div>
+            <h3 className="font-display text-base font-semibold">
+              Menu categories &amp; their items
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create a category, then add its items from inside it. The public
+              menu draws one counter per category, in this order.
+            </p>
+          </div>
           <CountersManager
             categories={categories.map((category) => ({
               id: category.id,
