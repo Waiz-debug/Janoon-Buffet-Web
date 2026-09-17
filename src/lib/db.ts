@@ -1046,19 +1046,32 @@ export async function fetchDeliveryOrders(): Promise<DeliveryOrder[]> {
   return rows.map(toDeliveryOrder);
 }
 
-const HIDE_DELIVERED_AFTER_MS = 30 * 60 * 1000;
-
-/** The guest-facing feed: delivered orders drop off after 30 minutes. */
-export async function fetchVisibleDeliveryOrders(): Promise<DeliveryOrder[]> {
-  const orders = await fetchDeliveryOrders();
-  const now = Date.now();
-  return orders.filter((order) => {
-    if (order.status !== "delivered") return true;
-    if (order.deliveredAt && now - order.deliveredAt > HIDE_DELIVERED_AFTER_MS) {
-      return false;
-    }
-    return true;
-  });
+/**
+ * Look one delivery order up by its reference, verifying the phone it was
+ * placed with.
+ *
+ * This replaces a "public delivery feed" that returned every order to every
+ * visitor: a guest's browser could read the whole book of customers — names,
+ * phones and home addresses — and the tracker's client-side phone filter fell
+ * back to showing all of them whenever the field was still empty, which is the
+ * state the page loads in.
+ *
+ * A short phone is treated as a failed check rather than a skipped one, so an
+ * empty or partial number can never unlock someone else's order.
+ */
+export async function fetchDeliveryOrder(
+  reference: string,
+  phone: string,
+): Promise<DeliveryOrder | null> {
+  const rows = await selectRows<DeliveryOrderDb>(TABLES.deliveryOrders, (q) =>
+    q.eq("reference", reference.trim().toUpperCase()).limit(1),
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const wanted = digitsOnly(phone);
+  const stored = digitsOnly(row.phone);
+  if (wanted.length < 6 || stored !== wanted) return null;
+  return toDeliveryOrder(row);
 }
 
 export type PlaceOrderInput = {
@@ -1727,7 +1740,6 @@ export async function uploadImage(
   };
 }
 
-export { HIDE_DELIVERED_AFTER_MS };
 
 /* ------------------------------------------------------------------ */
 /* Health check                                                        */

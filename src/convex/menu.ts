@@ -1,6 +1,19 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { requireStaff } from "./reservations";
+
+/**
+ * The admin half of the menu API.
+ *
+ * The portal routes are PIN-gated in the browser, but a route guard is not an
+ * authorization boundary — these functions are reachable directly over HTTP at
+ * `<deployment>.convex.cloud/api/{query,mutation}` with no PIN involved. Every
+ * unguarded handler below was therefore an open read/write path, so each one
+ * now calls `requireStaff`. Only the genuinely public reads stay open:
+ * `publicMenu`, `publicSiteMedia`, `seedState`, `imageUrlFor`, and the two
+ * by-id lookups `getDish` / `getCategory`.
+ */
 
 /** Validate a category icon against the known set. */
 function validateIcon(icon: string): "flame" | "pot" | "bites" | "dessert" {
@@ -107,6 +120,7 @@ export const imageUrlFor = query({
 export const listSiteMedia = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("siteMedia").collect();
     return rows.sort((a, b) => a.slot.localeCompare(b.slot));
   },
@@ -119,6 +133,7 @@ export const listSiteMedia = query({
 export const listCategories = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("menuCategories").collect();
     return rows.sort((a, b) => a.sortOrder - b.sortOrder);
   },
@@ -152,6 +167,7 @@ export const upsertCategory = mutation({
     active: v.boolean(),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const icon = validateIcon(args.icon);
     const existing = await ctx.db
       .query("menuCategories")
@@ -186,6 +202,7 @@ export const upsertCategory = mutation({
 export const deleteCategory = mutation({
   args: { id: v.string() },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existing = await ctx.db
       .query("menuCategories")
       .withIndex("by_categoryId", (q) => q.eq("id", args.id))
@@ -212,6 +229,7 @@ export const deleteCategory = mutation({
 export const listDishes = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("menuDishes").collect();
     return rows.sort((a, b) => a.sortOrder - b.sortOrder);
   },
@@ -249,6 +267,7 @@ export const upsertDish = mutation({
     pricePerPlate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     let targetSlug = args.slug;
     if (!targetSlug) {
       targetSlug = slugify(args.name);
@@ -340,6 +359,7 @@ export const upsertDish = mutation({
 export const deleteDish = mutation({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existing = await ctx.db
       .query("menuDishes")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
@@ -358,6 +378,7 @@ export const deleteDish = mutation({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -392,6 +413,7 @@ export const uploadDishImage = mutation({
     bytes: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     if (!IMAGE_MIME.has(args.mimeType)) {
       throw new Error("Only JPEG, PNG, WebP, GIF or AVIF images are allowed.");
     }
@@ -444,6 +466,7 @@ export const uploadDishImage = mutation({
 export const removeDishImage = mutation({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const dish = await ctx.db
       .query("menuDishes")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
@@ -468,6 +491,7 @@ export const setSiteMedia = mutation({
     caption: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     if (!isValidSlot(args.slot)) {
       throw new Error(`Unknown media slot "${args.slot}".`);
     }
@@ -514,6 +538,7 @@ export const setSiteMedia = mutation({
 export const clearSiteMedia = mutation({
   args: { slot: v.string() },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     if (!isValidSlot(args.slot)) {
       throw new Error(`Unknown media slot "${args.slot}".`);
     }
@@ -537,6 +562,7 @@ export const clearSiteMedia = mutation({
 export const listAssets = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("menuAssets").collect();
     return rows.sort((a, b) => b.uploadedAt - a.uploadedAt);
   },
@@ -564,6 +590,7 @@ export const registerAsset = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existingAsset = await ctx.db
       .query("menuAssets")
       .withIndex("by_assetId", (q) => q.eq("assetId", args.assetId))
@@ -591,6 +618,7 @@ export const registerAsset = mutation({
 export const deleteAsset = mutation({
   args: { assetId: v.string() },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existing = await ctx.db
       .query("menuAssets")
       .withIndex("by_assetId", (q) => q.eq("assetId", args.assetId))

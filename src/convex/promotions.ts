@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import type { Id } from "./_generated/dataModel";
+import { requireStaff } from "./reservations";
+
+/**
+ * Banners. `active` is the guest-facing read and stays open; the management
+ * half is staff-only, because a PIN-gated route does not protect a Convex
+ * function that any browser can POST to directly.
+ */
 
 type Promotion = Doc<"promotions">;
 
@@ -25,6 +31,7 @@ export const active = query({
 export const listAll = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("promotions").collect();
     return rows.sort((a, b) => b.createdAt - a.createdAt) as Promotion[];
   },
@@ -34,6 +41,7 @@ export const listAll = query({
 export const generateBannerUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -50,9 +58,10 @@ export const create = mutation({
     expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     // Resolve image URL from storage id if provided
     let resolvedImageUrl = args.imageUrl?.trim() || undefined;
-    let resolvedStorageId = args.imageStorageId;
+    const resolvedStorageId = args.imageStorageId;
     if (args.imageStorageId) {
       const url = await ctx.storage.getUrl(args.imageStorageId);
       if (!url) throw new Error("Could not resolve the uploaded image URL.");
@@ -88,6 +97,7 @@ export const update = mutation({
     expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Promotion not found.");
 
@@ -125,6 +135,7 @@ export const update = mutation({
 export const toggleVisibility = mutation({
   args: { id: v.id("promotions") },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const row = await ctx.db.get(args.id);
     if (!row) throw new Error("Promotion not found.");
     await ctx.db.patch(args.id, {
@@ -139,6 +150,7 @@ export const toggleVisibility = mutation({
 export const remove = mutation({
   args: { id: v.id("promotions") },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Promotion not found.");
     // Clean up storage
@@ -154,6 +166,7 @@ export const remove = mutation({
 export const removeImage = mutation({
   args: { id: v.id("promotions") },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Promotion not found.");
     if (existing.imageStorageId) {

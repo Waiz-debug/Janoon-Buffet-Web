@@ -2,6 +2,7 @@ import {
   fetchAddOnCategories,
   fetchAddOns,
   fetchCategories,
+  fetchDeliveryOrder,
   fetchDeliveryOrders,
   fetchDishes,
   fetchPreorders,
@@ -14,7 +15,6 @@ import {
   fetchReservations,
   fetchSiteContent,
   fetchSiteMedia,
-  fetchVisibleDeliveryOrders,
   fetchPublicPreOrderItems,
   fetchAllPreOrderItems,
   type AddOnCategoryRow,
@@ -168,13 +168,61 @@ export function useDeliveryOrders(): DeliveryOrder[] | undefined {
   );
 }
 
-/** Guest tracker: delivered orders hidden 30 minutes after delivery. */
-export function useVisibleDeliveryOrders(): DeliveryOrder[] | undefined {
-  return useLiveTable<DeliveryOrder>(
-    TABLES.deliveryOrders,
-    fetchVisibleDeliveryOrders,
-    "visible",
+/**
+ * One row of a table, re-read whenever that table changes.
+ *
+ * `undefined` means "still looking", `null` means "no such row" — the two
+ * states a confirmation panel has to tell apart. Shared by the reservation and
+ * delivery lookups so both ride the same channel and cache.
+ */
+function useRowLookup<T>(
+  table: string,
+  /** The lookup key, or null when the caller has not supplied one yet. */
+  wanted: string | null,
+  load: () => Promise<T[]>,
+): T | null | undefined {
+  const cacheKey = liveCacheKey(table, `lookup:${wanted ?? "none"}`);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      wanted ? subscribeLive<T>(cacheKey, table, load, onChange) : () => {},
+    [cacheKey, load, table, wanted],
   );
+  const getSnapshot = useCallback(
+    () => getLiveRows<T>(cacheKey),
+    [cacheKey],
+  );
+  const rows = useSyncExternalStore(subscribe, getSnapshot, () => undefined);
+
+  if (!wanted) return null;
+  if (rows === undefined) return undefined;
+  return rows[0] ?? null;
+}
+
+/**
+ * A single delivery order, verified against the phone it was placed with.
+ *
+ * Deliberately not a feed: the guest's tracker must only ever see their own
+ * order, and the check happens in the query rather than in the browser.
+ */
+export function useDeliveryOrderLookup(
+  reference: string | null,
+  phone: string,
+): DeliveryOrder | null | undefined {
+  const wanted = reference
+    ? `${reference.trim().toUpperCase()}|${phone}`
+    : null;
+
+  const load = useCallback(async () => {
+    if (!wanted) return [] as DeliveryOrder[];
+    const separator = wanted.indexOf("|");
+    const found = await fetchDeliveryOrder(
+      wanted.slice(0, separator),
+      wanted.slice(separator + 1),
+    );
+    return found ? [found] : [];
+  }, [wanted]);
+
+  return useRowLookup<DeliveryOrder>(TABLES.deliveryOrders, wanted, load);
 }
 
 /* ------------------------------------------------------ reservations ----- */
@@ -211,24 +259,7 @@ export function useReservationLookup(
     return found ? [found] : [];
   }, [wanted]);
 
-  const cacheKey = liveCacheKey(TABLES.reservations, `lookup:${wanted ?? "none"}`);
-  const subscribe = useCallback(
-    (onChange: () => void) =>
-      wanted
-        ? subscribeLive<Reservation>(cacheKey, TABLES.reservations, load, onChange)
-        : () => {},
-    [cacheKey, load, wanted],
-  );
-  const getSnapshot = useCallback(
-    () => getLiveRows<Reservation>(cacheKey),
-    [cacheKey],
-  );
-  const rows = useSyncExternalStore(subscribe, getSnapshot, () => undefined);
-
-  // No reference means there is nothing to look up — never a loading state.
-  if (!wanted) return null;
-  if (rows === undefined) return undefined;
-  return rows[0] ?? null;
+  return useRowLookup<Reservation>(TABLES.reservations, wanted, load);
 }
 
 /* ----------------------------------------------- pre_order_items ------- */

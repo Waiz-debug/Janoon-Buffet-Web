@@ -2,6 +2,18 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { deliveryStatusValidator } from "./schema";
 import type { Doc } from "./_generated/dataModel";
+import { requireStaff } from "./reservations";
+
+/**
+ * Delivery orders. `placeOrder` is the guest-facing endpoint and stays open;
+ * everything else is the staff desk and calls `requireStaff`.
+ *
+ * These handlers used to rely on the PIN-gated `/staff` route for protection,
+ * which is not an authorization boundary: `<deployment>.convex.cloud/api/query`
+ * is reachable straight from the internet, with no PIN and no session. Anyone
+ * could read every customer's name, phone number and home address, and move any
+ * order through its lifecycle.
+ */
 
 type DeliveryOrder = Doc<"deliveryOrders">;
 
@@ -152,23 +164,31 @@ export const placeOrder = mutation({
   },
 });
 
-/** Delivery desk feed (staff), newest first. Shows every order including
- *  delivered ones — access is enforced by the PIN-gated routes. */
+/** Delivery desk feed (staff), newest first — every order including delivered
+ *  ones, which the desk needs for the day's takings. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("deliveryOrders").collect();
     return rows.sort((a, b) => b.createdAt - a.createdAt) as DeliveryOrder[];
   },
 });
 
-/** Public-facing feed: delivered orders are automatically hidden 30 minutes
- *  after delivery so the user's live tracking view stays clean. */
+/**
+ * Staff feed trimmed for the desk: delivered orders drop off 30 minutes after
+ * delivery so the live board stays readable.
+ *
+ * This used to be served to guests as their "order tracker". It is not one —
+ * tracking belongs to a single order, looked up by reference and the phone it
+ * was placed with. A feed of every order is a list of strangers' addresses.
+ */
 const HIDE_DELIVERED_AFTER_MS = 30 * 60 * 1000;
 
 export const listVisible = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("deliveryOrders").collect();
     const now = Date.now();
     const visible = rows.filter((o) => {
@@ -184,6 +204,7 @@ export const listVisible = query({
 export const stats = query({
   args: {},
   handler: async (ctx) => {
+    await requireStaff(ctx);
     const rows = await ctx.db.query("deliveryOrders").collect();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -208,13 +229,14 @@ export const stats = query({
 /** Advance an order through the simplified 2-step delivery lifecycle.
  *  placed → confirmed (staff acknowledges the order)
  *  confirmed → delivered (order completed, timestamped and archived)
- *  Invoked from the PIN-gated staff portal. */
+ *  Staff only — a status change is a write to a customer's order. */
 export const advanceStatus = mutation({
   args: {
     id: v.id("deliveryOrders"),
     status: deliveryStatusValidator,
   },
   handler: async (ctx, args) => {
+    await requireStaff(ctx);
     const order = await ctx.db.get(args.id);
     if (!order) throw new Error("That order no longer exists.");
     if (order.status === "delivered") {

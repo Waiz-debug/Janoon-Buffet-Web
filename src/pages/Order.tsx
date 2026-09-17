@@ -113,7 +113,7 @@ export default function Order() {
               <Link to="/manage">Manage a reservation</Link>
             </Button>
           </div>
-          <OrderTracker customerPhone={phone} />
+          <OrderTracker reference={placed.reference} phone={phone} />
         </main>
         <ContactFooter />
       </div>
