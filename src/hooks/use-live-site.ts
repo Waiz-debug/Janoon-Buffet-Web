@@ -18,7 +18,7 @@ import {
   type MenuCategory,
 } from "@/lib/menu";
 import type { MenuCategoryRow, MenuDishRow } from "@/lib/db";
-import { GALLERY, SITE_CONTENT_DEFAULTS } from "@/lib/restaurant";
+import { GALLERY, HERO_MEDIA, SITE_CONTENT_DEFAULTS } from "@/lib/restaurant";
 import { mediaUrl } from "@/lib/supabase";
 import { useMemo } from "react";
 
@@ -235,7 +235,7 @@ export function useLiveSite() {
   return {
     ...data,
     media,
-    heroImage: media["hero"]?.url,
+    heroImage: media[HERO_MEDIA.slot]?.url,
     mediaOr,
     addons,
     content,

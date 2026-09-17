@@ -86,6 +86,18 @@ export const GALLERY = [
 ] as const;
 
 /**
+ * The backdrop behind the hero at the top of the public site. The admin panel
+ * uploads over this slot; the URL below is the out-of-the-box default so the
+ * hero is never empty before the first upload.
+ */
+export const HERO_MEDIA = {
+  slot: "hero",
+  label: "Hero backdrop",
+  hint: "The photo behind the headline at the very top of the site.",
+  url: RESTAURANT.heroImage,
+} as const;
+
+/**
  * The two showcase photos in "The Experience" section. The admin panel
  * uploads over these slots; the URLs below are the out-of-the-box defaults so
  * the section is never empty before the first upload.

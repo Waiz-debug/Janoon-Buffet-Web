@@ -49,9 +49,12 @@ const emptyDraft = (category: AddOnGroupId, nextSort: number): Draft => ({
 
 /**
  * Full CRUD for the Traditional Add-ons board — breads and naan, sides and
- * salads, drinks and lassi, and cold drinks. Names are held in English and
- * Urdu, prices in rupees, and every item can carry its own photo uploaded to
- * Supabase Storage. All of it goes live on the public board on save.
+ * salads, drinks and lassi, and cold drinks.
+ *
+ * Deliberately small: pick a category, type the English and Urdu names, set a
+ * price, optionally attach a photo. The item id and its position in the
+ * category are derived on save, so there is nothing else to fill in. All of it
+ * goes live on the public board the moment it saves.
  */
 export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -175,23 +178,6 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-id">Short id (URL-safe)</Label>
-              <Input
-                id="addon-id"
-                value={editing.id ?? ""}
-                disabled={editing.id !== null}
-                placeholder="generated from the name"
-                onChange={(e) =>
-                  setEditing({ ...editing, id: e.target.value || null })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                {editing.id
-                  ? "The id is permanent once created."
-                  : "Leave blank to generate one from the name."}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
               <Label>Category</Label>
               <Select
                 value={editing.category}
@@ -250,21 +236,6 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
                 }
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addon-sort">Sort order within the category</Label>
-              <Input
-                id="addon-sort"
-                type="number"
-                value={editing.sortOrder}
-                onChange={(e) =>
-                  setEditing({
-                    ...editing,
-                    sortOrder: Number(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
             <ImageField
               label="Item photo (optional)"
               value={editing.image}
@@ -390,9 +361,6 @@ export function AddOnManager({ addons }: { addons: AddOnRow[] }) {
                             <span className="min-w-0">
                               <span className="block truncate font-medium">
                                 {addon.name}
-                              </span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {addon.id}
                               </span>
                             </span>
                           </div>

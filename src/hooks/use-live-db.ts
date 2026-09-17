@@ -64,6 +64,13 @@ export function useLiveTable<T>(
     refresh();
     // Convex-style reactivity: every insert/update/delete on the table pushes
     // a fresh snapshot, so both portals and the public site stay live.
+    //
+    // A websocket can drop (locked laptop, flaky network) and the changes made
+    // during that gap are gone for good, so a reconnect pulls a fresh snapshot
+    // instead of waiting for the next event. Returning to the tab does the same,
+    // which is what keeps an admin demo in one window updating the guest view in
+    // the other without a hard reload.
+    let resubscribed = false;
     const channel = supabase
       .channel(`tribe-${table}-${Math.random().toString(36).slice(2)}`)
       .on(
@@ -71,10 +78,22 @@ export function useLiveTable<T>(
         { event: "*", schema: "public", table },
         () => refresh(),
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        if (status !== "SUBSCRIBED") return;
+        if (resubscribed) refresh();
+        resubscribed = true;
+      });
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", refresh);
 
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", refresh);
       void supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

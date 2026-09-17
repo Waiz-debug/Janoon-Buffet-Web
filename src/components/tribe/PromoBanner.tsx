@@ -107,6 +107,15 @@ export function PromoBanner() {
   // the guest is browsing has not been dismissed yet, so it must show.
   const [dismissed, setDismissed] = useState<Set<string>>(readDismissedIds);
 
+  // The expiry check has to run on the guest's clock, not only when the feed
+  // next refetches — otherwise an offer whose time has run out sits on screen
+  // until the page is reloaded. One ticker covers every banner.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const handleDismiss = (id: string) => {
     dismiss(id);
     setDismissed((prev) => {
@@ -116,7 +125,9 @@ export function PromoBanner() {
     });
   };
 
-  const visible = (activePromos ?? []).filter((p) => !dismissed.has(p._id));
+  const visible = (activePromos ?? []).filter(
+    (p) => !dismissed.has(p._id) && (!p.expiresAt || p.expiresAt > now),
+  );
 
   if (visible.length === 0) return null;
 

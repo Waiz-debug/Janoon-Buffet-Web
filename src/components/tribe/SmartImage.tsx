@@ -24,6 +24,14 @@ export function SmartImage({
   loading = "lazy",
 }: SmartImageProps) {
   const [failed, setFailed] = useState(false);
+  // A failed load must not be permanent. When the admin publishes a new photo
+  // the `src` changes, so drop the failure and try the fresh URL instead of
+  // sitting on the fallback tile until a hard reload.
+  const [loadedSrc, setLoadedSrc] = useState(src);
+  if (src !== loadedSrc) {
+    setLoadedSrc(src);
+    setFailed(false);
+  }
 
   if (failed) {
     return (

@@ -3,6 +3,7 @@ import { AddOnManager } from "@/components/admin/AddOnManager";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DishManager } from "@/components/admin/DishManager";
 import { ExperienceManager } from "@/components/admin/ExperienceManager";
+import { HeroPhotoManager } from "@/components/admin/HeroPhotoManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { PreOrderManager } from "@/components/admin/PreOrderManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
@@ -165,11 +166,12 @@ export default function AdminPortal() {
         </TabsContent>
 
         <TabsContent value="photos" className="flex flex-col gap-8">
+          <HeroPhotoManager />
+          <ExperienceManager />
           <SignaturePhotoManager
             dishes={dishes}
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           />
-          <ExperienceManager />
           <PhotoManager />
         </TabsContent>
 

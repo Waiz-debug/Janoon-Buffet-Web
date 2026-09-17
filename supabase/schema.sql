@@ -282,6 +282,7 @@ alter table public.delivery_orders  enable row level security;
 alter table public.reservations     enable row level security;
 alter table public.promotions       enable row level security;
 alter table public.preorders        enable row level security;
+alter table public.pre_order_items  enable row level security;
 
 do $$
 declare
@@ -593,3 +594,120 @@ on conflict (id) do nothing;
 
 --  Read back everything the owner has customised:
 --    select key, value from public.site_content order by key;
+
+-- ============================================================================
+--  Migration — referential integrity, read-only aliases & storage limits
+--  Everything in this section is idempotent: the whole file can be pasted and
+--  re-run against an existing database without changing any data.
+-- ============================================================================
+
+-- ---------------------------------------------------------- integrity ------
+--  A home for dishes whose counter was removed. `deleteCategory()` in
+--  src/lib/db.ts moves a counter's dishes here *before* deleting the counter,
+--  so the foreign key added next never blocks a delete or strands a dish. The
+--  row is inactive, so it never appears on the public menu.
+insert into public.menu_categories (id, name, urdu, blurb, icon, sort_order, active)
+values (
+  'uncategorized', 'Other', 'دیگر',
+  'Dishes whose counter was removed from the menu.', 'flame', 99, false
+)
+on conflict (id) do nothing;
+
+--  menu_dishes.category_id → menu_categories.id
+--  Added only when every existing row already points at a real counter, so it
+--  can never fail on a database carrying legacy rows. `on delete restrict`
+--  makes an orphaned dish impossible.
+do $$
+begin
+  if exists (
+    select 1
+      from pg_constraint
+     where conname = 'menu_dishes_category_fk'
+       and conrelid = 'public.menu_dishes'::regclass
+  ) then
+    return;
+  end if;
+
+  if exists (
+    select 1
+      from public.menu_dishes d
+     where not exists (
+       select 1 from public.menu_categories c where c.id = d.category_id
+     )
+  ) then
+    raise notice 'menu_dishes has rows pointing at a missing counter — foreign key skipped. Point them at a real counter and re-run.';
+    return;
+  end if;
+
+  alter table public.menu_dishes
+    add constraint menu_dishes_category_fk
+    foreign key (category_id) references public.menu_categories (id)
+    on update cascade on delete restrict;
+end $$;
+
+-- --------------------------------------------------- read-only aliases ------
+--  Exports, reporting tools and integrations expect the conventional names
+--  `image_url` and `is_active`. Renaming the live columns would break every
+--  query in the app, so these are stored GENERATED aliases instead: selectable
+--  and indexable, while writes keep going to `image`/`image_path` and `active`.
+--  (`promotions` already owns a real `image_url` column, and `site_media`
+--  carries its own `url`/`image_path` pair, so neither needs an alias; the
+--  bilingual `name`/`urdu` columns already exist on every catalogue table.)
+alter table public.menu_addons
+  add column if not exists image_url text
+  generated always as (coalesce(image_path, image)) stored;
+alter table public.menu_addons
+  add column if not exists is_active boolean
+  generated always as (active) stored;
+
+alter table public.menu_dishes
+  add column if not exists image_url text
+  generated always as (coalesce(image_path, image)) stored;
+alter table public.menu_dishes
+  add column if not exists is_active boolean
+  generated always as (active) stored;
+
+alter table public.pre_order_items
+  add column if not exists image_url text
+  generated always as (coalesce(image_path, image)) stored;
+alter table public.pre_order_items
+  add column if not exists is_active boolean
+  generated always as (active) stored;
+
+-- ------------------------------------------------------ storage limits -----
+--  Hold the public bucket to the same rules the uploader enforces in
+--  src/lib/db.ts — 5 MB, image types only — so a direct API call cannot push
+--  anything else into it.
+do $$
+begin
+  update storage.buckets
+     set file_size_limit    = 5242880,
+         allowed_mime_types = array[
+           'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'
+         ]
+   where id = 'tribe-media';
+exception
+  when undefined_column then
+    raise notice 'This project''s storage schema has no limit columns — bucket left unchanged.';
+end $$;
+
+-- ============================================================================
+--  Verifying real-time sync
+--  Every table the admin, staff and public portals subscribe to must appear in
+--  the realtime publication, or edits will only show up after a hard reload.
+-- ============================================================================
+--
+--  Confirm the publication is complete (expect all ten tables):
+--    select tablename from pg_publication_tables
+--     where pubname = 'supabase_realtime' order by tablename;
+--
+--  Confirm every table has RLS active and an anon policy:
+--    select c.relname as table_name, c.relrowsecurity as rls_enabled,
+--           count(p.policy_name) as policies
+--      from pg_class c
+--      left join pg_policies p on p.tablename = c.relname
+--     where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+--     group by 1, 2 order by 1;
+--
+--  Re-add a single table whose changes stopped arriving:
+--    alter publication supabase_realtime add table public.site_media;
