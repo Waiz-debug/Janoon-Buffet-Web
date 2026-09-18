@@ -1,7 +1,42 @@
 import { usePromotions } from "@/hooks/use-live-db";
 import { AnimatePresence, motion } from "framer-motion";
 import { Clock, Flame, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link } from "react-router";
+
+/**
+ * A promotion's action link.
+ *
+ * An in-app path (`/#reserve`) is routed, so a guest keeps their scroll
+ * position and the page never reloads; anything else — a full URL, `mailto:`,
+ * `tel:` — opens as a normal anchor in a new tab. Renders nothing when the
+ * owner left the field empty, which is why callers pair it with a fallback.
+ */
+export function PromoAction({
+  href,
+  className,
+  children,
+}: {
+  href?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const target = href?.trim();
+  if (!target) return null;
+
+  if (target.startsWith("/") || target.startsWith("#")) {
+    return (
+      <Link to={target} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <a href={target} target="_blank" rel="noreferrer" className={className}>
+      {children}
+    </a>
+  );
+}
 
 const DISMISSED_PREFIX = "tribe-of-taste:promo-dismissed:";
 
@@ -169,14 +204,22 @@ export function PromoBanner() {
                       ) : null}
                       <PromoCountdown expiresAt={promo.expiresAt} />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDismiss(promo._id)}
-                      aria-label="Dismiss promotion"
-                      className="shrink-0 rounded-lg border border-border/70 bg-background/70 p-1.5 text-muted-foreground backdrop-blur transition-colors hover:border-gold/40 hover:text-foreground"
-                    >
-                      <X className="size-4" aria-hidden />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <PromoAction
+                        href={promo.linkUrl}
+                        className="hidden rounded-lg border border-gold/40 bg-background/70 px-3 py-1.5 text-xs font-medium text-gold backdrop-blur transition-colors hover:border-gold/70 sm:inline-flex"
+                      >
+                        View offer
+                      </PromoAction>
+                      <button
+                        type="button"
+                        onClick={() => handleDismiss(promo._id)}
+                        aria-label="Dismiss promotion"
+                        className="shrink-0 rounded-lg border border-border/70 bg-background/70 p-1.5 text-muted-foreground backdrop-blur transition-colors hover:border-gold/40 hover:text-foreground"
+                      >
+                        <X className="size-4" aria-hidden />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -202,14 +245,22 @@ export function PromoBanner() {
                   >
                     <Sparkles className="size-8" />
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => handleDismiss(promo._id)}
-                    aria-label="Dismiss promotion"
-                    className="shrink-0 rounded-lg border border-border/70 bg-background/60 p-1.5 text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
-                  >
-                    <X className="size-4" aria-hidden />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <PromoAction
+                      href={promo.linkUrl}
+                      className="hidden rounded-lg border border-gold/40 bg-background/60 px-3 py-1.5 text-xs font-medium text-gold transition-colors hover:border-gold/70 sm:inline-flex"
+                    >
+                      View offer
+                    </PromoAction>
+                    <button
+                      type="button"
+                      onClick={() => handleDismiss(promo._id)}
+                      aria-label="Dismiss promotion"
+                      className="shrink-0 rounded-lg border border-border/70 bg-background/60 p-1.5 text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
+                    >
+                      <X className="size-4" aria-hidden />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

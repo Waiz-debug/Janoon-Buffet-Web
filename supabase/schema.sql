@@ -169,6 +169,12 @@ create table if not exists public.promotions (
   visible     boolean not null default true,
   image_url   text,
   image_path  text,
+  -- Optional action for the offer's button on the public banner and offers
+  -- board: an in-app path such as `/#reserve`, or a full URL.
+  link_url    text,
+  -- Position on the offers board — lower first. Existing rows default to the
+  -- end, so a new promotion never displaces one the owner has arranged.
+  sort_order  integer not null default 100,
   expires_at  bigint,
   -- True for the sample banner the app seeds, so a lapsed demo can be
   -- refreshed without ever touching a promotion the team wrote themselves.
@@ -178,6 +184,7 @@ create table if not exists public.promotions (
 );
 
 create index if not exists promotions_visible_idx on public.promotions (visible);
+create index if not exists promotions_sort_idx on public.promotions (sort_order);
 
 -- ------------------------------------------------- pre_order_items ------
 -- Admin-managed catalogue of items available for pre-order (Dumpukht, Sajji,
@@ -762,6 +769,16 @@ grant execute on function public.admin_set_staff_role(uuid, text) to authenticat
 grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
 grant execute on function public.tribe_active_admins() to authenticated;
+
+-- ------------------------------------------------ storage bucket ----------
+--  Created here — before its policies, and ahead of every later section — so
+--  that a failure further down the file can never leave the four policies
+--  pointing at a bucket that does not exist. That mismatch is what makes every
+--  admin upload fail with "Bucket not found", and it is silent from the app's
+--  side, so the order matters.
+insert into storage.buckets (id, name, public)
+values ('tribe-media', 'tribe-media', true)
+on conflict (id) do update set public = true;
 
 -- ------------------------------------------- 0. storage writes = staff ----
 --  The bucket was open to `anon` for insert, update and delete, which meant
@@ -1436,13 +1453,13 @@ revoke all on function public.tribe_client_ip() from public, anon, authenticated
 -- ============================================================================
 --  Storage — public bucket that holds dish photos and promo banner graphics.
 -- ============================================================================
-insert into storage.buckets (id, name, public)
-values ('tribe-media', 'tribe-media', true)
-on conflict (id) do update set public = true;
-
+--  The bucket itself is created in the row level security section above, right
+--  before its four policies, so the two can never drift apart. Repeating the
+--  insert here would be a no-op; one home for it is easier to trace.
+--
 --  Reads are public: the bucket holds the dish photos, the gallery and the
 --  banner graphics, all of which the guest site displays. Writes are not — they
---  need `is_staff()` — so the four bucket policies are created in the row level
+--  need `is_staff()` — so the four bucket policies live in the row level
 --  security section above, alongside the table policies.
 
 -- ============================================================================
@@ -1454,6 +1471,19 @@ on conflict (id) do update set public = true;
 alter table public.site_media  add column if not exists demo boolean not null default false;
 alter table public.menu_dishes add column if not exists demo boolean not null default false;
 alter table public.promotions  add column if not exists demo boolean not null default false;
+
+-- ============================================================================
+--  Migration — promotion action link & board position
+--  `link_url` is an offer's optional action: an in-app path (`/#reserve`) or a
+--  full URL, opened by the button on the public banner and offers board.
+--  `sort_order` is where the offer sits on that board — lower first, 100 by
+--  default so new entries land after anything the owner has arranged. Added
+--  here because `create table if not exists` never touches a table that
+--  already exists, and safe to re-run. (The index over `sort_order` is created
+--  with the table above, where a fresh database first gets it.)
+-- ============================================================================
+alter table public.promotions add column if not exists link_url text;
+alter table public.promotions add column if not exists sort_order integer not null default 100;
 
 -- ============================================================================
 --  Demo promotional banner

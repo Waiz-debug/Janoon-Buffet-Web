@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { usePromotions } from "@/hooks/use-live-db";
 import {
+  PROMO_DEFAULT_ORDER,
   deletePromotion,
   removePromotionImage,
   savePromotion,
@@ -16,10 +17,12 @@ import {
   Clock,
   Flame,
   ImagePlus,
+  Link2,
   Loader2,
   Megaphone,
   Pencil,
   Plus,
+  Rows3,
   Trash2,
   Upload,
   X,
@@ -33,6 +36,10 @@ type PromotionDraft = {
   body: string;
   visible: boolean;
   expiresAtInput: string;
+  /** The offer's button target — an in-app path or a full URL. */
+  linkUrl: string;
+  /** Board position, held as text so the field can be emptied while editing. */
+  sortOrder: string;
   pendingStorageId: string | null;
   pendingPreviewUrl: string | null;
   imageRemoved: boolean;
@@ -44,6 +51,8 @@ const emptyDraft: PromotionDraft = {
   body: "",
   visible: true,
   expiresAtInput: "",
+  linkUrl: "",
+  sortOrder: String(PROMO_DEFAULT_ORDER),
   pendingStorageId: null,
   pendingPreviewUrl: null,
   imageRemoved: false,
@@ -93,6 +102,8 @@ export function PromotionsManager() {
     visible: boolean;
     imageUrl?: string;
     imagePath?: string;
+    linkUrl?: string;
+    sortOrder: number;
     expiresAt?: number;
   }) => {
     setDraft({
@@ -101,6 +112,8 @@ export function PromotionsManager() {
       body: promo.body ?? "",
       visible: promo.visible,
       expiresAtInput: promo.expiresAt ? toDatetimeLocal(promo.expiresAt) : "",
+      linkUrl: promo.linkUrl ?? "",
+      sortOrder: String(promo.sortOrder),
       pendingStorageId: null,
       pendingPreviewUrl: null,
       imageRemoved: false,
@@ -163,6 +176,16 @@ export function PromotionsManager() {
     setIsSaving(true);
     try {
       const expiresAt = parseExpiry(draft.expiresAtInput);
+
+      // Send the link and the board position only when they actually carry a
+      // value to write. A promotion with neither still saves on a database that
+      // has not run the migration adding those two columns yet, so publishing a
+      // banner never depends on it.
+      const parsedOrder = Number.parseInt(draft.sortOrder, 10);
+      const order = Number.isFinite(parsedOrder) ? parsedOrder : PROMO_DEFAULT_ORDER;
+      const link = draft.linkUrl.trim();
+      const current = editingId ? all.find((p) => p._id === editingId) : undefined;
+
       await savePromotion({
         id: editingId ?? undefined,
         title: draft.title,
@@ -170,6 +193,13 @@ export function PromotionsManager() {
         body: draft.body || undefined,
         visible: draft.visible,
         imagePath: draft.pendingStorageId ?? undefined,
+        // An empty field clears a link that used to be set, and is left out of
+        // the write entirely when there was never one.
+        linkUrl: link ? link : current?.linkUrl ? "" : undefined,
+        sortOrder:
+          order === (current?.sortOrder ?? PROMO_DEFAULT_ORDER)
+            ? undefined
+            : order,
         expiresAt,
       });
       toast.success(
@@ -237,7 +267,7 @@ export function PromotionsManager() {
         </p>
         <Button onClick={startCreate} className="gap-2">
           <Plus className="size-4" aria-hidden />
-          New promotion
+          Add promotion
         </Button>
       </div>
 
@@ -332,6 +362,56 @@ export function PromotionsManager() {
                     placeholder="e.g. Valid Friday–Sunday, dine-in only."
                     onChange={(e) => setDraft({ ...draft, body: e.target.value })}
                   />
+                </div>
+
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <Label htmlFor="promo-link">
+                    Action link{" "}
+                    <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <div className="relative">
+                    <Link2
+                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      id="promo-link"
+                      value={draft.linkUrl}
+                      placeholder="e.g. /#reserve or https://instagram.com/p/..."
+                      onChange={(e) => setDraft({ ...draft, linkUrl: e.target.value })}
+                      className="pl-9"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Where the offer&apos;s button goes on the offers board and the
+                    top banner. Leave empty to send customers to the buffet
+                    booking form.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <Label htmlFor="promo-order">
+                    Board position{" "}
+                    <span className="text-muted-foreground">(lower shows first)</span>
+                  </Label>
+                  <div className="relative">
+                    <Rows3
+                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      id="promo-order"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={draft.sortOrder}
+                      placeholder={String(PROMO_DEFAULT_ORDER)}
+                      onChange={(e) =>
+                        setDraft({ ...draft, sortOrder: e.target.value })
+                      }
+                      className="pl-9"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2 sm:col-span-2">
@@ -514,6 +594,15 @@ export function PromotionsManager() {
                       Expired
                     </span>
                   )}
+                  <span className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[0.6rem] text-muted-foreground">
+                    #{promo.sortOrder}
+                  </span>
+                  {promo.linkUrl ? (
+                    <Link2
+                      className="size-3 shrink-0 text-gold/70"
+                      aria-label={`Links to ${promo.linkUrl}`}
+                    />
+                  ) : null}
                 </div>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {promo.headline}

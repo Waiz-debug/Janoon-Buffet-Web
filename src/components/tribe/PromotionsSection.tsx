@@ -1,4 +1,4 @@
-import { OfferBadge, PromoCountdown } from "@/components/tribe/PromoBanner";
+import { OfferBadge, PromoAction, PromoCountdown } from "@/components/tribe/PromoBanner";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { Button } from "@/components/ui/button";
@@ -182,17 +182,33 @@ export function PromotionsSection() {
                         )}`
                       : "No end date"}
                   </span>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1.5 text-gold hover:text-gold"
-                  >
-                    <a href="#reserve">
-                      Book buffet
-                      <Sparkles className="size-3.5" aria-hidden />
-                    </a>
-                  </Button>
+                  {/* The owner can point an offer anywhere; without a link the
+                      card still leads to the buffet booking form. */}
+                  {promo.linkUrl ? (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-gold hover:text-gold"
+                    >
+                      <PromoAction href={promo.linkUrl}>
+                        View offer
+                        <ArrowUpRight className="size-3.5" aria-hidden />
+                      </PromoAction>
+                    </Button>
+                  ) : (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-gold hover:text-gold"
+                    >
+                      <a href="#reserve">
+                        Book buffet
+                        <Sparkles className="size-3.5" aria-hidden />
+                      </a>
+                    </Button>
+                  )}
                 </div>
               </div>
             </motion.article>

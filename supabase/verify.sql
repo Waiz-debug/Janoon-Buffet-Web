@@ -33,6 +33,11 @@ rpc (name) as (values
 bucket_policies (name) as (values
   ('tribe media read'), ('tribe media write'),
   ('tribe media update'), ('tribe media delete')
+),
+-- Columns the promotions manager reads and writes by name. A missing one makes
+-- saving an offer fail, so it is called out separately from the table itself.
+promo_columns (name) as (values
+  ('image_path'), ('link_url'), ('sort_order')
 )
 select '1. table' as check, t.name as object,
        case when exists (
@@ -103,6 +108,15 @@ select '6. storage policy', p.name,
        ) then 'ok' else 'MISSING' end,
        'guards writes to the media bucket'
   from bucket_policies p
+union all
+select '7. promotion column', c.name,
+       case when exists (
+         select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'promotions'
+            and column_name = c.name
+       ) then 'ok' else 'MISSING' end,
+       'read and written by the promotions manager'
+  from promo_columns c
 order by 1, 2;
 
 -- ---------------------------------------------------------------------------

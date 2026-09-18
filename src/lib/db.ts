@@ -90,6 +90,10 @@ export type Promotion = {
   visible: boolean;
   imageUrl?: string;
   imagePath?: string;
+  /** Optional action for the offer's button — an in-app path or a full URL. */
+  linkUrl?: string;
+  /** Position on the offers board — lower first. */
+  sortOrder: number;
   expiresAt?: number;
   createdAt: number;
   updatedAt: number;
@@ -240,6 +244,8 @@ type PromotionDb = {
   visible: boolean;
   image_url: string | null;
   image_path: string | null;
+  link_url: string | null;
+  sort_order: number | null;
   expires_at: number | string | null;
   created_at: number | string;
   updated_at: number | string;
@@ -352,7 +358,7 @@ function fail(error: { message: string } | null, fallback: string): never {
     message.includes("Could not find the table")
   ) {
     throw new Error(
-      "The Supabase tables are missing. Run supabase/schema.sql in the Supabase SQL editor, then try again.",
+      "A Supabase table or column is missing. Run supabase/schema.sql in the Supabase SQL editor, then try again.",
     );
   }
   throw new Error(message || fallback);
@@ -1512,11 +1518,16 @@ function toPromotion(row: PromotionDb): Promotion {
     visible: row.visible,
     imageUrl: row.image_url || mediaUrl(row.image_path) || undefined,
     imagePath: row.image_path ?? undefined,
+    linkUrl: row.link_url ?? undefined,
+    sortOrder: row.sort_order ?? PROMO_DEFAULT_ORDER,
     expiresAt: ms(row.expires_at),
     createdAt: ms(row.created_at) ?? 0,
     updatedAt: ms(row.updated_at) ?? 0,
   };
 }
+
+/** Where a promotion sits on the offers board when the owner has not chosen. */
+export const PROMO_DEFAULT_ORDER = 100;
 
 export async function fetchPromotions(
   options: { activeOnly?: boolean } = {},
@@ -1525,12 +1536,20 @@ export async function fetchPromotions(
     q.order("created_at", { ascending: false }),
   );
   const now = Date.now();
-  return rows
+  const promos = rows
     .map(toPromotion)
     // Expired banners disable and remove themselves the moment the clock runs
     // out — no cleanup job required.
     .filter((promo) => !promo.expiresAt || promo.expiresAt > now)
     .filter((promo) => (options.activeOnly ? promo.visible : true));
+
+  // Board position is applied here rather than in the query: ordering by
+  // `sort_order` server-side would fail — and so hide every promotion — on a
+  // database that has not run the migration adding the column yet.
+  return promos.sort(
+    (a, b) =>
+      a.sortOrder - b.sortOrder || b.createdAt - a.createdAt,
+  );
 }
 
 export type PromotionInput = {
@@ -1541,6 +1560,9 @@ export type PromotionInput = {
   visible: boolean;
   imagePath?: string;
   imageUrl?: string;
+  /** Empty string clears the offer's action link. */
+  linkUrl?: string;
+  sortOrder?: number;
   expiresAt?: number;
 };
 
@@ -1558,12 +1580,37 @@ export async function savePromotion(input: PromotionInput): Promise<void> {
     row.image_path = input.imagePath;
     row.image_url = null;
   }
+  if (input.linkUrl !== undefined) {
+    const link = input.linkUrl.trim();
+    row.link_url = link ? link : null;
+  }
+  if (input.sortOrder !== undefined) {
+    row.sort_order = Number.isFinite(input.sortOrder)
+      ? input.sortOrder
+      : PROMO_DEFAULT_ORDER;
+  }
   if (input.id) {
+    // The file a replaced graphic used to point at is about to lose its only
+    // reference, so read it now and drop it from the bucket once the row is on
+    // the new one.
+    const previous = input.imagePath
+      ? await selectRows<{ image_path: string | null }>(
+          TABLES.promotions,
+          (q) => q.eq("id", input.id as string).limit(1),
+          "image_path",
+        )
+      : [];
+
     const { error } = await supabase
       .from(TABLES.promotions)
       .update(row)
       .eq("id", input.id);
     fail(error, "Could not save the promotion.");
+
+    const oldPath = previous[0]?.image_path;
+    if (oldPath && oldPath !== input.imagePath) {
+      await removeStoredObject(oldPath);
+    }
     return;
   }
   const { error } = await supabase
@@ -1589,6 +1636,16 @@ export async function togglePromotion(id: string): Promise<boolean> {
 }
 
 export async function removePromotionImage(id: string): Promise<void> {
+  // Read the stored path first: clearing the row is what drops the only
+  // reference to the file, so the object has to go in the same breath or it
+  // sits in the bucket forever.
+  const rows = await selectRows<{ image_path: string | null }>(
+    TABLES.promotions,
+    (q) => q.eq("id", id).limit(1),
+    "image_path",
+  );
+  await removeStoredObject(rows[0]?.image_path);
+
   const { error } = await supabase
     .from(TABLES.promotions)
     .update({ image_path: null, image_url: null, updated_at: Date.now() })
@@ -1597,8 +1654,17 @@ export async function removePromotionImage(id: string): Promise<void> {
 }
 
 export async function deletePromotion(id: string): Promise<void> {
+  const rows = await selectRows<{ image_path: string | null }>(
+    TABLES.promotions,
+    (q) => q.eq("id", id).limit(1),
+    "image_path",
+  );
   const { error } = await supabase.from(TABLES.promotions).delete().eq("id", id);
   fail(error, "Could not delete the promotion.");
+
+  // The row is gone; its uploaded graphic should not be left behind in the
+  // public bucket with nothing pointing at it.
+  await removeStoredObject(rows[0]?.image_path);
 }
 
 /**
@@ -1713,6 +1779,25 @@ export async function uploadImage(
     mimeType: file.type,
     bytes: file.size,
   };
+}
+
+/**
+ * Best-effort removal of an uploaded file.
+ *
+ * Called when a graphic is replaced, removed or its promotion deleted. A
+ * missing object (already gone, or a legacy row holding a plain URL rather than
+ * a bucket path) must never fail the row write that prompted the cleanup, so
+ * the outcome is logged and nothing is thrown.
+ */
+async function removeStoredObject(
+  path: string | null | undefined,
+): Promise<void> {
+  if (!path) return;
+  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) return;
+  const { error } = await supabase.storage.from(MEDIA_BUCKET).remove([path]);
+  if (error) {
+    console.warn(`[tribe] could not delete "${path}": ${error.message}`);
+  }
 }
 
 
