@@ -109,14 +109,15 @@ export function SetupNotice() {
         <div className="rounded-xl border-2 border-amber-500/40 bg-background/40 p-4">
           <p className="flex items-center gap-2 text-xs tracking-[0.14em] text-muted-foreground uppercase">
             <Database className="size-3.5" aria-hidden />
-            {status.missingFunctions.length} write function
+            {status.missingFunctions.length} database function
             {status.missingFunctions.length === 1 ? "" : "s"} missing
           </p>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Every table is in place, but the database functions that the
-            booking, pre-order and delivery forms write through are not. That is
-            what running an older copy of the schema looks like, and it means
-            those three forms would be rejected. Re-run this repository&apos;s{" "}
+            The tables are all in place, but the functions this site calls are
+            not — the booking, pre-order and delivery forms write through some
+            of them, and the one-time owner setup needs another. That is what
+            running an older copy of the schema looks like, and it means those
+            three forms would be rejected. Re-run this repository&apos;s{" "}
             <span className="font-mono text-xs text-foreground">
               supabase/schema.sql
             </span>{" "}

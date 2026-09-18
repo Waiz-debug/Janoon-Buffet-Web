@@ -7,11 +7,14 @@ import {
   ChevronDown,
   Clock,
   Flame,
+  Loader2,
   Lock,
+  Mail,
   MapPin,
   Phone,
   ShieldCheck,
   Star,
+  UserPlus,
   UtensilsCrossed,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -19,14 +22,17 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
 import {
+  CLAIMED_MESSAGE,
   NOT_STAFF_MESSAGE,
   UNCONFIGURED_MESSAGE,
   portalPathFor,
   useStaffAuth,
+  type OwnerSetupResult,
   type StaffRole,
 } from "@/hooks/use-staff-auth";
 import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
+import { cn } from "@/lib/utils";
 
 const HIGHLIGHTS = [
   {
@@ -46,9 +52,35 @@ const HIGHLIGHTS = [
   },
 ] as const;
 
+/** Plain language for every way the one-time owner setup can stop short. */
+function ownerSetupMessage(
+  result: Extract<OwnerSetupResult, { ok: false }>,
+): string {
+  switch (result.reason) {
+    case "claimed":
+      return CLAIMED_MESSAGE;
+    case "unconfigured":
+      return UNCONFIGURED_MESSAGE;
+    case "weak-password":
+      return "Choose a password with at least six characters.";
+    case "invalid-email":
+      return "That email address was not accepted. Check it and try again.";
+    case "unreachable":
+      return "Could not reach the sign-up service. Check your connection and try again.";
+    case "credentials":
+      return "An account already exists for that email, and that password does not match it.";
+    default:
+      return (
+        result.message ??
+        "Could not create the owner account. Please try again."
+      );
+  }
+}
+
 export default function AuthLanding() {
   const navigate = useNavigate();
-  const { session, isLoaded, signIn } = useStaffAuth();
+  const { session, isLoaded, signIn, setupOwner, canClaimOwner } =
+    useStaffAuth();
   const { heroImage } = useLiveSite();
   const backdrop = heroImage ?? RESTAURANT.heroImage;
 
@@ -59,6 +91,14 @@ export default function AuthLanding() {
   const [attempts, setAttempts] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
+  // The one-time owner setup, reachable only from the admin door and only while
+  // the database still reports that no staff row exists at all.
+  const [ownerMode, setOwnerMode] = useState<"signin" | "setup">("signin");
+  const [claim, setClaim] = useState<"unknown" | "open" | "closed">("unknown");
+  const [setupPhase, setSetupPhase] = useState<"form" | "confirm">("form");
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
+
   // A live session goes straight to its portal — no re-entry.
   useEffect(() => {
     if (isLoaded && session) {
@@ -66,14 +106,43 @@ export default function AuthLanding() {
     }
   }, [isLoaded, session, navigate]);
 
+  /**
+   * Asked of the database each time the admin door opens. A signed-out visitor
+   * cannot read `staff_members` at all, so the answer arrives as one boolean —
+   * and it is the database, not this page, that decides whether setup is still
+   * available.
+   */
+  useEffect(() => {
+    if (modalRole !== "admin") return;
+    let active = true;
+    void canClaimOwner().then((open) => {
+      if (active) setClaim(open ? "open" : "closed");
+    });
+    return () => {
+      active = false;
+    };
+  }, [modalRole, canClaimOwner]);
+
+  const resetOwnerFlow = () => {
+    setOwnerMode("signin");
+    setSetupPhase("form");
+    setSetupError(null);
+  };
+
   const openModal = (role: StaffRole) => {
     setError(null);
+    resetOwnerFlow();
+    // Back to "unknown" here rather than in the check below: an effect that sets
+    // state on its way to an async read is the cascading render React warns
+    // about. This is an event, so the reset belongs with it.
+    setClaim("unknown");
     setSearchParams({ unlock: role }, { replace: true });
   };
 
   const closeModal = () => {
     setSearchParams({}, { replace: true });
     setError(null);
+    resetOwnerFlow();
   };
 
   const handleSignIn = async (email: string, password: string) => {
@@ -89,7 +158,11 @@ export default function AuthLanding() {
     setAttempts((count) => count + 1);
     setError(
       result.reason === "not-staff"
-        ? NOT_STAFF_MESSAGE
+        ? // While the owner claim is still open, the person most likely to hit
+          // this is the owner themselves — signed up, but not yet recorded.
+          claim === "open"
+          ? "That account is not on the team yet. If it is yours, open First-time setup above to claim it."
+          : NOT_STAFF_MESSAGE
         : result.reason === "unconfigured"
           ? UNCONFIGURED_MESSAGE
           : result.reason === "unreachable"
@@ -97,6 +170,28 @@ export default function AuthLanding() {
             : "That email or password is not correct.",
     );
     setSubmitting(false);
+  };
+
+  /**
+   * Create the owner account. Auth user first, role second — and both from the
+   * website, so there is no dashboard step and no service key in the bundle.
+   */
+  const handleOwnerSetup = async (email: string, password: string) => {
+    setSetupSubmitting(true);
+    setSetupError(null);
+    const result = await setupOwner(email, password);
+    if (result.ok) {
+      navigate("/admin", { replace: true });
+      return;
+    }
+    setSetupSubmitting(false);
+    if (result.reason === "confirm-email") {
+      // Not a failure — this project asks new accounts to confirm their address
+      // first. The credentials are still on screen, so Continue finishes it.
+      setSetupPhase("confirm");
+      return;
+    }
+    setSetupError(ownerSetupMessage(result));
   };
 
   return (
@@ -108,8 +203,25 @@ export default function AuthLanding() {
           shake={attempts}
           submitting={submitting}
           onSignIn={(email, password) => void handleSignIn(email, password)}
-          onClearError={() => setError(null)}
+          onClearError={() => {
+            setError(null);
+            setSetupError(null);
+          }}
           onClose={closeModal}
+          owner={{
+            claim,
+            mode: ownerMode,
+            phase: setupPhase,
+            error: setupError,
+            submitting: setupSubmitting,
+            onSelect: (mode) => {
+              setOwnerMode(mode);
+              setSetupPhase("form");
+              setSetupError(null);
+            },
+            onSubmit: (email, password) =>
+              void handleOwnerSetup(email, password),
+          }}
         />
       ) : null}
 
@@ -352,8 +464,9 @@ export default function AuthLanding() {
               </button>
             </div>
             <p className="max-w-xs text-center text-[0.68rem] leading-relaxed text-muted-foreground/55">
-              Staff sign-in. Accounts are issued by the owner, and every read or
-              write is verified by the database rather than by this page.
+              Staff sign-in for the owner and the floor team. The first account
+              set up here becomes the owner; every read and write is verified by
+              the database rather than by this page.
             </p>
           </div>
 
@@ -382,6 +495,7 @@ function SignInModal({
   onSignIn,
   onClearError,
   onClose,
+  owner,
 }: {
   role: StaffRole;
   error: string | null;
@@ -391,16 +505,36 @@ function SignInModal({
   onSignIn: (email: string, password: string) => void;
   onClearError: () => void;
   onClose: () => void;
+  /** The one-time owner setup, driven by the page that owns the auth state. */
+  owner: {
+    /**
+     * `open` only while the database holds no staff row at all; `unknown`
+     * until it has answered. The setup tab appears for `open` alone.
+     */
+    claim: "unknown" | "open" | "closed";
+    mode: "signin" | "setup";
+    phase: "form" | "confirm";
+    error: string | null;
+    submitting: boolean;
+    onSelect: (mode: "signin" | "setup") => void;
+    onSubmit: (email: string, password: string) => void;
+  };
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const emailRef = useRef<HTMLInputElement | null>(null);
+  const settingUp = owner.mode === "setup";
+  const confirming = settingUp && owner.phase === "confirm";
+  const busy = submitting || (settingUp && owner.submitting);
+  const shownError = settingUp ? owner.error : error;
 
-  // Ready to type the moment the card opens.
+  // Ready to type the moment the card opens, and again when the setup tab is
+  // chosen.
   useEffect(() => {
     const timer = window.setTimeout(() => emailRef.current?.focus(), 60);
     return () => window.clearTimeout(timer);
-  }, [role]);
+  }, [role, owner.mode]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -410,8 +544,14 @@ function SignInModal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  const copy =
-    role === "staff"
+  const copy = settingUp
+    ? {
+        icon: UserPlus,
+        label: "Owner setup",
+        blurb:
+          "One-time setup. The account created here becomes the restaurant's admin — through Supabase Auth, with nothing to configure in the dashboard.",
+      }
+    : role === "staff"
       ? {
           icon: ChefHat,
           label: "Staff Portal",
@@ -424,7 +564,10 @@ function SignInModal({
             "Menu and pricing control, restaurant photography and every reservation.",
         };
   const RoleIcon = copy.icon;
-  const complete = email.trim().length > 3 && password.length > 0;
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
+  const complete = settingUp
+    ? email.trim().length > 3 && password.length >= 6 && passwordsMatch
+    : email.trim().length > 3 && password.length > 0;
   const inputClass =
     "h-11 w-full rounded-xl border border-input bg-background/60 px-3.5 text-sm text-foreground caret-gold transition-all duration-200 placeholder:text-muted-foreground/40 hover:border-gold/30 focus:border-gold/60 focus:bg-background focus:ring-2 focus:ring-gold/25 focus:outline-none";
 
@@ -436,7 +579,7 @@ function SignInModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`${copy.label} staff sign-in`}
+      aria-label={`${copy.label} sign-in`}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -470,11 +613,98 @@ function SignInModal({
           </p>
         </div>
 
+        {/*
+          Two ways in, but only ever one of them on offer: sign in with an
+          account that already exists, or — while the database says no staff
+          row exists yet — create the owner account. Once it has been claimed,
+          the second tab disappears for everyone, permanently.
+        */}
+        {role === "admin" && owner.claim === "open" ? (
+          <div className="relative mt-6 grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-background/40 p-1">
+            {(
+              [
+                { id: "signin", label: "Sign in" },
+                { id: "setup", label: "First-time setup" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={owner.mode === tab.id}
+                onClick={() => owner.onSelect(tab.id)}
+                className={cn(
+                  "rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+                  owner.mode === tab.id
+                    ? "bg-gold/15 text-gold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {confirming ? (
+          <div className="relative mt-7 flex flex-col gap-4 text-center">
+            <p className="inline-flex items-center justify-center gap-2 text-sm font-medium text-gold">
+              <Mail className="size-4" aria-hidden />
+              Confirm your email
+            </p>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Supabase sent a confirmation link to{" "}
+              <span className="text-foreground">{email.trim()}</span>. Open it,
+              then press Continue — the owner account is recorded the moment the
+              address is confirmed.
+            </p>
+
+            {owner.error ? (
+              <motion.p
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300"
+                role="alert"
+              >
+                <AlertCircle className="size-4 shrink-0" aria-hidden />
+                {owner.error}
+              </motion.p>
+            ) : null}
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => owner.onSelect("setup")}
+              >
+                Use a different email
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 gap-2 bg-gradient-to-r from-gold to-ember font-semibold text-primary-foreground"
+                disabled={owner.submitting}
+                onClick={() => owner.onSubmit(email, password)}
+              >
+                {owner.submitting ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : null}
+                Continue
+              </Button>
+            </div>
+
+            <p className="text-xs leading-relaxed text-muted-foreground/70">
+              Nothing in your inbox? Check the spam folder. The setup stays open
+              until the first account claims it.
+            </p>
+          </div>
+        ) : (
         <form
           className="relative mt-7 flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (complete) onSignIn(email, password);
+            if (!complete) return;
+            if (settingUp) owner.onSubmit(email, password);
+            else onSignIn(email, password);
           }}
         >
           <div className="flex flex-col gap-2 text-left">
@@ -482,7 +712,7 @@ function SignInModal({
               htmlFor="portal-email"
               className="text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
             >
-              Staff email
+              {settingUp ? "Owner email" : "Staff email"}
             </label>
             <input
               id="portal-email"
@@ -525,7 +755,36 @@ function SignInModal({
             />
           </div>
 
-          {error ? (
+          {settingUp ? (
+            <div className="flex flex-col gap-2 text-left">
+              <label
+                htmlFor="portal-password-confirm"
+                className="text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
+              >
+                Confirm password
+              </label>
+              <input
+                id="portal-password-confirm"
+                type="password"
+                name="password-confirm"
+                value={confirmPassword}
+                autoComplete="new-password"
+                onChange={(event) => {
+                  onClearError();
+                  setConfirmPassword(event.target.value);
+                }}
+                className={inputClass}
+                placeholder="Repeat the password"
+              />
+              {password.length > 0 && !passwordsMatch ? (
+                <p className="text-xs text-muted-foreground">
+                  Both passwords have to match.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {shownError ? (
             <motion.p
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -533,7 +792,7 @@ function SignInModal({
               role="alert"
             >
               <AlertCircle className="size-4 shrink-0" aria-hidden />
-              {error}
+              {shownError}
             </motion.p>
           ) : null}
 
@@ -548,17 +807,22 @@ function SignInModal({
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-gradient-to-r from-gold to-ember font-semibold text-primary-foreground"
-              disabled={!complete || submitting}
+              className="flex-1 gap-2 bg-gradient-to-r from-gold to-ember font-semibold text-primary-foreground"
+              disabled={!complete || busy}
             >
-              Unlock
+              {busy ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : null}
+              {settingUp ? "Create owner account" : "Unlock"}
             </Button>
           </div>
         </form>
+        )}
 
         <p className="relative mt-6 text-center text-xs text-muted-foreground/80">
-          Accounts are issued in Supabase. You stay signed in on this device
-          until you sign out.
+          {settingUp
+            ? "The account is created by Supabase Auth on this device, and you are signed in as the owner straight afterwards."
+            : "Accounts are issued by the owner. You stay signed in on this device until you sign out."}
         </p>
       </motion.div>
     </motion.div>

@@ -1735,15 +1735,20 @@ function looksMissing(message: string): boolean {
 }
 
 /**
- * The `security definer` functions every guest form now writes through.
+ * The `security definer` functions the site calls, probed for existence.
  *
- * Called with deliberately invalid arguments, so each one raises on its first
- * validation check — before the throttle is consulted and long before any row
- * is written. What is being read is which *kind* of error comes back: PostgREST
- * answers a function it cannot find with PGRST202, while our own validation
- * raises an ordinary message. Nothing is created either way.
+ * The write probes are called with deliberately invalid arguments, so each one
+ * raises on its first validation check — before the throttle is consulted and
+ * long before any row is written. `staff_bootstrap_state` takes no arguments
+ * and writes nothing: it answers a boolean, and is here because a project whose
+ * schema predates the one-time owner setup would otherwise look completely
+ * ready while quietly hiding the setup form.
+ *
+ * What is being read is which *kind* of error comes back: PostgREST answers a
+ * function it cannot find with PGRST202, while our own validation raises an
+ * ordinary message. Nothing is created either way.
  */
-async function probeGuestWriteFunctions(): Promise<string[]> {
+async function probeExpectedFunctions(): Promise<string[]> {
   const probes: { name: string; args: Record<string, unknown> }[] = [
     {
       name: "create_reservation",
@@ -1780,6 +1785,9 @@ async function probeGuestWriteFunctions(): Promise<string[]> {
         p_notes: null,
       },
     },
+    // Safe to call for real: a read-only count of `staff_members`, returned as
+    // a boolean. It is what the Admin Portal uses to offer owner setup.
+    { name: "staff_bootstrap_state", args: {} },
   ];
 
   const absent: string[] = [];
@@ -1814,7 +1822,7 @@ export async function checkSupabaseSchema(): Promise<SchemaStatus> {
         else unreachable = true;
       }),
     ),
-    probeGuestWriteFunctions(),
+    probeExpectedFunctions(),
   ]);
 
   let storageReady = true;

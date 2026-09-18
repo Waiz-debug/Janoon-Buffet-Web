@@ -24,7 +24,8 @@ rpc (name) as (values
   ('lookup_reservation'), ('lookup_delivery_order'), ('cancel_reservation'),
   ('create_reservation'), ('create_preorder'), ('place_delivery_order'),
   ('tribe_throttle_guest'), ('tribe_rate_limit'), ('tribe_client_ip'),
-  ('tribe_reference'), ('tribe_limit_signature_dishes')
+  ('tribe_reference'), ('tribe_limit_signature_dishes'),
+  ('staff_bootstrap_state'), ('claim_admin')
 ),
 bucket_policies (name) as (values
   ('tribe media read'), ('tribe media write'),
@@ -122,5 +123,11 @@ order by 1, 2;
 --    select count(*) from public.delivery_orders;    -- expect: permission denied
 --    select count(*) from public.reservations;       -- expect: permission denied
 --    select count(*) from public.staff_members;      -- expect: 0 rows, not an error
+--
+--  And the owner bootstrap, which is how the first admin account gets made:
+--
+--    select public.staff_bootstrap_state();
+--      -- {"claimable": true} while staff_members is empty, then false forever
+--      -- after the owner signs up on the site and claims it.
 --    reset role;
 -- ============================================================================

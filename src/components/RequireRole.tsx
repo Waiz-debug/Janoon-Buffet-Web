@@ -12,8 +12,11 @@ import { Navigate } from "react-router";
  * the session in devtools, gets you a portal that renders and then fails on
  * every query, because the policies ask Postgres, not the browser.
  *
- * Both roles open both doors, exactly as the shared PIN did; `role` is here for
- * the day a screen needs to be admin-only.
+ * The two doors are not the same door: `/admin` opens only for a row whose
+ * `role` is exactly `admin`, while `/staff` is the floor team's desk and stays
+ * open to admins as well. A staff account that reaches `/admin` is handed to
+ * `/staff` rather than bounced back through the sign-in card it has already
+ * passed, which would only ask it to sign in again.
  */
 export function RequireRole({
   role,
@@ -37,6 +40,12 @@ export function RequireRole({
   if (!session) {
     // Back to the gateway with the sign-in dialog pre-opened for this door.
     return <Navigate to={`/?unlock=${role}`} replace />;
+  }
+
+  // The row in `staff_members` decides, and `/admin` asks it for `admin` — not
+  // merely for "someone who works here".
+  if (role === "admin" && session.role !== "admin") {
+    return <Navigate to="/staff" replace />;
   }
 
   return <>{children}</>;

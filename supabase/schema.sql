@@ -402,6 +402,85 @@ create policy staff_members_select on public.staff_members
   for select to authenticated
   using (user_id = auth.uid() or public.is_staff());
 
+-- -------------------------------------- staff bootstrap (the owner) -------
+--  The owner account is created from the website, not from this dashboard.
+--
+--  `supabase.auth.signUp()` runs with the ordinary publishable key and creates
+--  the auth user; `claim_admin()` is then handed the UUID Supabase issued and
+--  records it here with `role = 'admin'`. No service-role key exists anywhere in
+--  the application, and none is needed: the browser can only ever *ask*, and the
+--  answer is decided here.
+--
+--  What makes this safe is that the door closes for good. A row is granted only
+--  while `staff_members` is completely empty, so the first account to claim it
+--  becomes the owner and every later attempt is refused — which leaves the table
+--  writable only from the SQL editor or the service role, exactly as before.
+--  Two simultaneous claims cannot both win either: the table is locked for the
+--  transaction before the emptiness check runs, so the second one re-reads a
+--  table that already holds a row.
+--
+--  Once an owner exists, additional staff are still added the same way they
+--  always were — from the SQL editor, which is the one place that can hold a
+--  credential powerful enough to grant a role.
+create or replace function public.staff_bootstrap_state()
+returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select jsonb_build_object(
+    'claimable', not exists (select 1 from public.staff_members)
+  );
+$$;
+
+create or replace function public.claim_admin()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_email text;
+begin
+  -- Verified by Supabase Auth, not by anything the page sent up.
+  if v_uid is null then
+    raise exception 'Sign in before claiming owner access.'
+      using errcode = '42501';
+  end if;
+
+  lock table public.staff_members in exclusive mode;
+
+  if exists (select 1 from public.staff_members) then
+    raise exception 'Owner access has already been claimed.'
+      using errcode = '23505';
+  end if;
+
+  select email into v_email from auth.users where id = v_uid;
+
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, 'Owner', 'admin', true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set role = 'admin', active = true, email = excluded.email;
+
+  return jsonb_build_object('ok', true, 'role', 'admin', 'email', v_email);
+end $$;
+
+--  `anon` is deliberately not granted execute: claiming needs a verified
+--  session, and PostgREST would only reject it one call later anyway. Reading
+--  the bootstrap flag, on the other hand, is open — the sign-in card uses it to
+--  decide whether to offer the owner setup, and it reveals nothing beyond
+--  whether any staff row exists yet.
+revoke all on function public.claim_admin() from public;
+grant execute on function public.claim_admin() to authenticated;
+
+grant execute on function public.staff_bootstrap_state() to anon, authenticated;
+
 -- ------------------------------------------- 0. storage writes = staff ----
 --  The bucket was open to `anon` for insert, update and delete, which meant
 --  anyone holding the publishable key could fill or empty it. Reading stays

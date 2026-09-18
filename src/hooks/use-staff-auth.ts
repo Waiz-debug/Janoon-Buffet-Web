@@ -16,7 +16,10 @@ export const NOT_STAFF_MESSAGE =
   "That account is not a staff member. Ask the owner to add it under staff_members.";
 
 export const UNCONFIGURED_MESSAGE =
-  "The staff table is not set up on this project yet. Run supabase/schema.sql once, add your account to staff_members, then sign in again.";
+  "The staff table is not set up on this project yet. Run supabase/schema.sql once, then create the owner account from the Admin Portal sign-in card.";
+
+export const CLAIMED_MESSAGE =
+  "Owner access has already been claimed on this project. Sign in with the account that claimed it, or ask the owner to add you to the team.";
 
 /** Staff and admin land on their own dashboards after the same check. */
 export function portalPathFor(role: StaffRole): string {
@@ -60,6 +63,50 @@ export type SignInResult =
       ok: false;
       reason: "credentials" | "not-staff" | "unreachable" | "unconfigured";
     };
+
+/**
+ * Why creating the owner account stopped short.
+ *
+ * `confirm-email` is not a failure — it is the state the site is in when the
+ * Supabase project asks new accounts to confirm their address first. The form
+ * shows "open the link, then continue" and the same call finishes the job.
+ */
+export type OwnerSetupResult =
+  | { ok: true; role: StaffRole }
+  | {
+      ok: false;
+      reason:
+        | "confirm-email"
+        | "claimed"
+        | "credentials"
+        | "weak-password"
+        | "invalid-email"
+        | "unreachable"
+        | "unconfigured"
+        | "unknown";
+      message?: string;
+    };
+
+/** Turn a Supabase Auth complaint into something the form can act on. */
+function classifyAuthError(
+  message: string,
+): Extract<OwnerSetupResult, { ok: false }> {
+  const text = message.toLowerCase();
+  if (text.includes("password")) return { ok: false, reason: "weak-password" };
+  if (text.includes("email")) return { ok: false, reason: "invalid-email" };
+  if (text.includes("fetch") || text.includes("network")) {
+    return { ok: false, reason: "unreachable" };
+  }
+  return { ok: false, reason: "unknown", message };
+}
+
+/** PostgREST answers a function it cannot find with this code. */
+function isMissingFunction(error: { code?: string; message?: string } | null) {
+  return (
+    error?.code === "PGRST202" ||
+    /Could not find the function/i.test(error?.message ?? "")
+  );
+}
 
 /**
  * The portals' identity layer, on Supabase Auth.
@@ -154,5 +201,118 @@ export function useStaffAuth() {
     setSession(null);
   }, []);
 
-  return { session, isLoaded, signIn, signOut };
+  /**
+   * Is the one-time owner claim still open?
+   *
+   * Asked through a database function because a signed-out visitor cannot read
+   * `staff_members` at all — the answer is a boolean and nothing else. Once the
+   * owner has claimed it, the setup form is never offered again.
+   */
+  const canClaimOwner = useCallback(async (): Promise<boolean> => {
+    const { data, error } = await supabase.rpc("staff_bootstrap_state");
+    if (error) return false;
+    return (data as { claimable?: boolean } | null)?.claimable === true;
+  }, []);
+
+  /**
+   * Create the owner account from the website — no dashboard step.
+   *
+   * Three things happen, in order:
+   *   1. Supabase Auth creates the user with the ordinary publishable key.
+   *   2. We hold the auth UUID it hands back.
+   *   3. `claim_admin()` records that UUID in `staff_members` as an admin.
+   *
+   * Step 3 is decided in Postgres, and only while the table is empty, so this
+   * is a one-time door: whoever claims it first is the owner, and nothing on the
+   * client can grant a role afterwards. No service-role key is involved, and none
+   * could be, since it would have to ship in the bundle.
+   *
+   * Calling this twice with the same details is safe — the second time round
+   * `signUp` reports the account already exists, we sign in instead, and the
+   * claim answers `claimed` if someone else got there first.
+   */
+  const setupOwner = useCallback(
+    async (email: string, password: string): Promise<OwnerSetupResult> => {
+      const address = email.trim();
+      const emailRedirectTo =
+        typeof window === "undefined" ? undefined : window.location.origin;
+
+      const { data, error } = await supabase.auth.signUp({
+        email: address,
+        password,
+        options: { emailRedirectTo },
+      });
+
+      // An address that already has an account is not a failure: the owner may
+      // have signed up on an earlier attempt and never finished. The password
+      // check below is the one that matters.
+      if (error && !/already registered|already exists/i.test(error.message)) {
+        return classifyAuthError(error.message);
+      }
+
+      let user = data.user;
+      if (!data.session) {
+        // Either the project requires a confirmed address before it
+        // will issue a session, or the account already existed and this is a
+        // plain sign-in. Both are answered by trying.
+        const attempt = await supabase.auth.signInWithPassword({
+          email: address,
+          password,
+        });
+        if (attempt.error) {
+          const message = attempt.error.message.toLowerCase();
+          if (message.includes("confirm")) {
+            // Ask Supabase to send the link again, so the "we emailed you" the
+            // form shows is one that was actually just sent. A refusal here
+            // (rate limit, or delivery not configured) is not worth surfacing —
+            // the same message still tells them what to look for.
+            await supabase.auth.resend({ type: "signup", email: address });
+            return { ok: false, reason: "confirm-email" };
+          }
+          if (message.includes("fetch") || message.includes("network")) {
+            return { ok: false, reason: "unreachable" };
+          }
+          return { ok: false, reason: "credentials" };
+        }
+        user = attempt.data.user;
+      }
+      if (!user) return { ok: false, reason: "unknown" };
+
+      const claim = await supabase.rpc("claim_admin");
+      if (!claim.error) {
+        const next: StaffSession = {
+          userId: user.id,
+          email: user.email ?? address,
+          role: "admin",
+        };
+        setSession(next);
+        setIsLoaded(true);
+        return { ok: true, role: next.role };
+      }
+
+      // The claim was refused. Either the site is already set up, or this person
+      // is on the team already — signing in as themselves is the right ending,
+      // so ask the table before treating it as a failure.
+      const lookup = await staffLookup(user.id);
+      if (lookup.ok && lookup.role) {
+        const next: StaffSession = {
+          userId: user.id,
+          email: user.email ?? address,
+          role: lookup.role,
+        };
+        setSession(next);
+        setIsLoaded(true);
+        return { ok: true, role: next.role };
+      }
+
+      await supabase.auth.signOut();
+      if (isMissingFunction(claim.error)) {
+        return { ok: false, reason: "unconfigured" };
+      }
+      return { ok: false, reason: "claimed", message: claim.error.message };
+    },
+    [],
+  );
+
+  return { session, isLoaded, signIn, signOut, setupOwner, canClaimOwner };
 }
