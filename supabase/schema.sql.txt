@@ -1,0 +1,1548 @@
+-- ============================================================================
+--  Tribe of Taste — Supabase schema
+--  Paste this whole file into the Supabase SQL editor and run it once.
+--  It is idempotent: re-running it will not drop or duplicate anything.
+--
+--  Timestamps are stored as milliseconds since the epoch (bigint) so the
+--  frontend can compare them directly with `Date.now()`.
+-- ============================================================================
+
+-- ---------------------------------------------------------------- menu ------ 
+create table if not exists public.menu_categories (
+  id          text primary key,
+  name        text not null,
+  urdu        text,
+  blurb       text,
+  icon        text not null default 'flame',
+  sort_order  integer not null default 0,
+  active      boolean not null default true
+);
+
+create table if not exists public.menu_dishes (
+  id              uuid primary key default gen_random_uuid(),
+  slug            text not null unique,
+  name            text not null,
+  urdu            text,
+  category_id     text not null default 'bbq',
+  summary         text,
+  description     text,
+  notes           jsonb,
+  pairings        jsonb,
+  image           text,
+  image_path      text,
+  price_per_plate integer,
+  active          boolean not null default true,
+  featured        boolean not null default false,
+  -- True while the photo is still the seeded placeholder, so the admin panel
+  -- can flag it as a demo asset worth replacing. Cleared on first upload.
+  demo            boolean not null default false,
+  sort_order      integer not null default 0,
+  updated_at      bigint
+);
+
+create index if not exists menu_dishes_category_idx on public.menu_dishes (category_id);
+create index if not exists menu_dishes_sort_idx     on public.menu_dishes (sort_order);
+
+-- Public site imagery: one row per slot (gallery-1 … gallery-6).
+create table if not exists public.site_media (
+  slot        text primary key,
+  caption     text,
+  -- `url` holds an external demo photo; `image_path` holds an uploaded object
+  -- inside the tribe-media bucket. An upload always clears the other one.
+  url         text,
+  image_path  text,
+  demo        boolean not null default false,
+  updated_at  bigint not null default 0
+);
+
+-- Editable copy that is not a photo — the seating counter under "The
+-- Experience", and room for any future headline or note the owner wants to
+-- change without a redeploy. One row per key; `key` is the stable identifier
+-- the frontend reads (see SITE_CONTENT_DEFAULTS in src/lib/restaurant.ts).
+create table if not exists public.site_content (
+  key         text primary key,
+  value       text not null,
+  updated_at  bigint not null default 0
+);
+
+-- -------------------------------------------------------------- add-ons ----
+-- The "Traditional Add-ons" board on the public site: breads and naan, sides
+-- and salads, drinks and lassi, and cold drinks. Fully admin-managed.
+--
+-- The headings are ROWS, not a fixed list, so the owner can invent new ones
+-- ("Tandoor Breads", "Ice Cream") from the admin panel and they appear on the
+-- public board at once. The four built-ins are seeded so a fresh project still
+-- looks exactly like the designed site; the matching fallback list lives in
+-- ADDON_GROUPS (src/lib/menu.ts) for the moment before the seed has run.
+create table if not exists public.addon_categories (
+  id          text primary key,
+  name        text not null,
+  urdu        text,
+  icon        text not null default '🍽',
+  sort_order  integer not null default 0,
+  active      boolean not null default true,
+  updated_at  bigint not null default 0
+);
+
+create index if not exists addon_categories_sort_idx
+  on public.addon_categories (sort_order);
+
+insert into public.addon_categories (id, name, urdu, icon, sort_order, active)
+values
+  ('bread', 'Breads & Naan',  'روٹی و نان',   '🫓', 1, true),
+  ('side',  'Sides & Salads', 'سالن و سلاد',  '🥗', 2, true),
+  ('drink', 'Drinks & Lassi', 'مشروبات و لسی', '🥤', 3, true),
+  ('cold',  'Cold Drinks',    'کولڈ ڈرنک',    '🧊', 4, true)
+on conflict (id) do nothing;
+
+create table if not exists public.menu_addons (
+  id          text primary key,
+  name        text not null,
+  urdu        text,
+  price       integer not null default 0,
+  -- References addon_categories(id). Deliberately no CHECK constraint: the
+  -- owner creates categories at runtime, so a fixed list would block them.
+  -- The foreign key is added in the migration section below, once any rows
+  -- written before this table existed have been given a home.
+  category    text not null default 'bread',
+  -- `image` holds an external URL; `image_path` holds an uploaded object inside
+  -- the tribe-media bucket. An upload always clears the other one.
+  image       text,
+  image_path  text,
+  demo        boolean not null default false,
+  active      boolean not null default true,
+  sort_order  integer not null default 0,
+  updated_at  bigint not null default 0
+);
+
+create index if not exists menu_addons_category_idx on public.menu_addons (category);
+create index if not exists menu_addons_sort_idx     on public.menu_addons (sort_order);
+
+-- -------------------------------------------------------------- orders ------
+create table if not exists public.delivery_orders (
+  id            uuid primary key default gen_random_uuid(),
+  reference     text not null,
+  customer_name text not null,
+  phone         text not null,
+  address       text not null,
+  area          text not null,
+  notes         text,
+  items         jsonb not null default '[]'::jsonb,
+  items_total   integer not null default 0,
+  delivery_fee  integer not null default 0,
+  total         integer not null default 0,
+  status        text not null default 'placed'
+                check (status in ('placed', 'confirmed', 'delivered')),
+  created_at    bigint not null,
+  delivered_at  bigint
+);
+
+create index if not exists delivery_orders_created_idx on public.delivery_orders (created_at desc);
+create index if not exists delivery_orders_status_idx  on public.delivery_orders (status);
+
+-- -------------------------------------------------------- reservations ------
+create table if not exists public.reservations (
+  id          uuid primary key default gen_random_uuid(),
+  reference   text not null unique,
+  name        text not null,
+  phone       text not null,
+  party_size  integer not null default 2,
+  date        text not null,
+  time        text not null,
+  seating     text not null default 'outdoor'
+              check (seating in ('outdoor', 'indoor')),
+  notes       text,
+  status      text not null default 'pending'
+              check (status in ('pending', 'confirmed', 'seated', 'cancelled')),
+  created_at  bigint not null
+);
+
+create index if not exists reservations_date_idx   on public.reservations (date);
+create index if not exists reservations_status_idx on public.reservations (status);
+
+-- ---------------------------------------------------------- promotions ------
+create table if not exists public.promotions (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null,
+  headline    text not null,
+  body        text,
+  visible     boolean not null default true,
+  image_url   text,
+  image_path  text,
+  expires_at  bigint,
+  -- True for the sample banner the app seeds, so a lapsed demo can be
+  -- refreshed without ever touching a promotion the team wrote themselves.
+  demo        boolean not null default false,
+  created_at  bigint not null,
+  updated_at  bigint not null
+);
+
+create index if not exists promotions_visible_idx on public.promotions (visible);
+
+-- ------------------------------------------------- pre_order_items ------
+-- Admin-managed catalogue of items available for pre-order (Dumpukht, Sajji,
+-- party platters, etc.).  No limit on how many items the admin can add.
+create table if not exists public.pre_order_items (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  urdu          text,
+  description   text,
+  price         integer not null default 0,   -- PKR
+  -- Which heading the item is filed under on the public pre-order form.
+  -- The labels live in PREORDER_CATEGORIES (src/lib/menu.ts) so the admin
+  -- form and the public form can never disagree about them.
+  category      text not null default 'slow-cooked'
+                check (category in ('slow-cooked', 'grills', 'platters', 'sweets')),
+  serves        text,                          -- e.g. '2-4 guests'
+  image         text,                          -- external URL
+  image_path    text,                          -- uploaded storage object
+  active        boolean not null default true,
+  sort_order    integer not null default 0,
+  demo          boolean not null default false,
+  created_at    bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  updated_at    bigint
+);
+
+create index if not exists pre_order_items_sort_idx     on public.pre_order_items (sort_order);
+create index if not exists pre_order_items_category_idx on public.pre_order_items (category);
+
+-- Migration: databases created before the category column existed.
+-- Safe to re-run.
+alter table public.pre_order_items
+  add column if not exists category text not null default 'slow-cooked';
+
+-- Seed the 3 default dishes so the public site renders immediately.
+-- Idempotent: it only fills an empty table, so re-running this script never
+-- duplicates the demo items. The admin panel can add, edit or remove as many
+-- pre-order items as the kitchen takes on — there is no cap.
+insert into public.pre_order_items
+  (name, urdu, description, price, category, serves, sort_order, demo)
+select v.name, v.urdu, v.description, v.price, v.category, v.serves, v.sort_order, v.demo
+from (values
+  ('Mutton Dumpukht', '\u\u6225\u\u67e\u\u62e\u\u62a', 'Slow-cooked for 6+ hours in a sealed handi with whole spices and bone marrow. Available on 24-hour pre-order only.', 3500, 'slow-cooked', '2-4 guests', 1, true),
+  ('Whole Roasted Sajji', '\u\u633\u\u62c\u\u6cc', 'Marinated whole chicken roasted over open coals for hours. Pre-order by noon for evening collection.', 2800, 'grills', '3-5 guests', 2, true),
+  ('Seekh Kebab Platter (Party)', '\u\u633\u\u6cc\u\u62e \u\u6a9\u\u628\u\u627\u\u628 \u\u6777\u\u6cc\u\u6778\u\u631', 'A 50-piece mixed platter of our charcoal seekh kebabs for large family gatherings.', 8000, 'platters', '10-15 guests', 3, true)
+) as v(name, urdu, description, price, category, serves, sort_order, demo)
+where not exists (select 1 from public.pre_order_items);
+
+--  The public pre-order form: only the live items, in category then sort order.
+--    select name, urdu, price, category, serves, image, image_path
+--      from public.pre_order_items
+--     where active
+--     order by category, sort_order;
+--
+--  The admin panel: everything, hidden items included.
+--    select * from public.pre_order_items order by sort_order;
+--
+--  Reprice one item:
+--    update public.pre_order_items set price = 3800, updated_at = 0
+--     where name = 'Mutton Dumpukht';
+--
+--  Which items are still on a demo photo (or no photo at all)?
+--    select id, name, category, demo,
+--           case when image_path is null then 'demo url' else 'uploaded' end as source
+--      from public.pre_order_items order by category, sort_order;
+
+-- ------------------------------------------------------------ preorders ----
+-- Takeaway / slow-cooked pre-orders (Dumpukht, Sajji, party platters) placed
+-- from the public site. These are the "takeaway orders" that must land on the
+-- staff desk alongside table reservations and online delivery orders.
+create table if not exists public.preorders (
+  id            uuid primary key default gen_random_uuid(),
+  reference     text not null unique,
+  customer_name text not null,
+  phone         text not null,
+  dish          text not null,
+  quantity      integer not null default 1,
+  pickup_date   text not null,          -- YYYY-MM-DD
+  pickup_time   text not null,          -- HH:MM
+  notes         text,
+  status        text not null default 'pending'
+                check (status in ('pending', 'confirmed', 'ready', 'collected', 'cancelled')),
+  created_at    bigint not null,
+  updated_at    bigint
+);
+
+create index if not exists preorders_pickup_idx on public.preorders (pickup_date);
+create index if not exists preorders_status_idx on public.preorders (status);
+create index if not exists preorders_created_idx on public.preorders (created_at desc);
+
+-- ============================================================================
+--  Realtime — the staff portal, the guest tracker and the public banner all
+--  subscribe to these tables, so they must be part of the publication.
+-- ============================================================================
+do $$
+declare
+  tbl text;
+begin
+  foreach tbl in array array[
+    'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
+    'site_media', 'site_content', 'delivery_orders', 'reservations',
+    'promotions', 'preorders', 'pre_order_items'
+  ]
+  loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', tbl);
+    exception when duplicate_object then
+      null; -- already published
+    end;
+  end loop;
+end $$;
+
+-- ============================================================================
+--  Row level security — the authorization boundary
+--
+--  Staff sign in through Supabase Auth (GoTrue) and their role is recorded in
+--  `staff_members`. Every policy below answers to that, which is what makes the
+--  join between "signed in" and "allowed" real: the check runs in Postgres, so
+--  it cannot be bypassed by calling the REST API directly. The publishable key
+--  shipping in the browser bundle is fine once the policies are correct — it
+--  grants only what the policies grant.
+--
+--  Three tiers, and nothing else:
+--
+--    1. Public catalogue — readable by anyone, readable live. The menu, the
+--       photos, the editable copy and the banners. Nothing here is a secret:
+--       the same content ships inside the JavaScript bundle as the built-in
+--       fallback, and hidden rows are filtered by the app.
+--    2. Guest writes — the three things a visitor may create and nothing more:
+--       a booking, a pre-order and a delivery order, each pinned to its opening
+--       status so a guest cannot insert an already-confirmed row.
+--    3. Customer records — bookings, pre-orders and delivery orders. Not
+--       readable by guests at all. A guest reaches their own record through the
+--       `security definer` functions at the bottom of this file, which require
+--       the reference *and* the phone number.
+--
+--  Staff get the full table for everything. "Signed in but not staff" (an
+--  ordinary customer account) is treated as a guest, not as staff.
+-- ============================================================================
+
+alter table public.site_content      enable row level security;
+alter table public.menu_categories  enable row level security;
+alter table public.menu_dishes      enable row level security;
+alter table public.menu_addons      enable row level security;
+alter table public.addon_categories enable row level security;
+alter table public.site_media       enable row level security;
+alter table public.delivery_orders  enable row level security;
+alter table public.reservations     enable row level security;
+alter table public.promotions       enable row level security;
+alter table public.preorders        enable row level security;
+alter table public.pre_order_items  enable row level security;
+
+-- ------------------------------------------------------------- staff -------
+--  One row per person who may work the portals. `role` is what future
+--  admin-only screens key off; today both roles open both doors, exactly as the
+--  shared PIN did.
+create table if not exists public.staff_members (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  email       text,
+  display_name text,
+  role        text not null default 'staff'
+              check (role in ('staff', 'admin')),
+  active      boolean not null default true,
+  created_at  bigint not null default 0
+);
+
+alter table public.staff_members enable row level security;
+
+--  The policy that lets a member read their own row lives in the identity
+--  helpers section below, because it calls `is_staff()` — see the note there.
+
+-- --------------------------------------------------- identity helpers ------
+--  SECURITY DEFINER, so the policy that reads `staff_members` does not recurse
+--  back into its own policies. `search_path` is pinned so the function cannot
+--  be redirected at a table an attacker controls.
+create or replace function public.is_staff()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.staff_members
+     where user_id = auth.uid() and active
+  );
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.staff_members
+     where user_id = auth.uid() and active and role = 'admin'
+  );
+$$;
+
+grant execute on function public.is_staff() to anon, authenticated;
+grant execute on function public.is_admin() to anon, authenticated;
+
+--  staff_members policy — created HERE, after both helpers exist.
+--
+--  A policy's USING expression is resolved when the policy is created, so a
+--  policy calling `public.is_staff()` must come after `create function
+--  public.is_staff()`. This policy used to sit directly under the `staff_members`
+--  table above, which failed on a fresh database with:
+--
+--    ERROR: 42883: function public.is_staff() does not exist
+--
+--  Every other caller of these two helpers already came later in the file; this
+--  was the only one ahead of them.
+--
+--  Readable by the signed-in member themselves (the portal needs to know its
+--  own role) and by other staff, so the owner can see the team. Writable only
+--  from the SQL editor or the service role — there is deliberately no client
+--  path to grant yourself access.
+drop policy if exists staff_members_select on public.staff_members;
+create policy staff_members_select on public.staff_members
+  for select to authenticated
+  using (user_id = auth.uid() or public.is_staff());
+
+-- ------------------------------------------- 0. storage writes = staff ----
+--  The bucket was open to `anon` for insert, update and delete, which meant
+--  anyone holding the publishable key could fill or empty it. Reading stays
+--  public; changing anything now requires a staff session.
+drop policy if exists "tribe media read"   on storage.objects;
+drop policy if exists "tribe media write"  on storage.objects;
+drop policy if exists "tribe media update" on storage.objects;
+drop policy if exists "tribe media delete" on storage.objects;
+
+create policy "tribe media read" on storage.objects
+  for select to anon, authenticated using (bucket_id = 'tribe-media');
+
+create policy "tribe media write" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'tribe-media' and public.is_staff());
+
+create policy "tribe media update" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'tribe-media' and public.is_staff())
+  with check (bucket_id = 'tribe-media' and public.is_staff());
+
+create policy "tribe media delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'tribe-media' and public.is_staff());
+
+-- --------------------------------------------- 1. public catalogue --------
+--  One readable policy per table plus a staff policy that adds writes. Guests
+--  keep receiving realtime changes for these tables, which is what makes an
+--  admin edit appear on the diner's screen without a reload.
+do $$
+declare
+  tbl text;
+begin
+  foreach tbl in array array[
+    'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
+    'site_media', 'site_content', 'promotions', 'pre_order_items'
+  ]
+  loop
+    -- The old permissive policy from the PIN-era schema must go, or a re-run
+    -- would leave a `using (true)` policy sitting alongside the new ones.
+    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_public_read', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_write', tbl);
+    -- Readable by everyone, including signed-out visitors.
+    execute format(
+      'create policy %I on public.%I for select to anon, authenticated using (true)',
+      tbl || '_public_read', tbl
+    );
+    -- Changed only by staff. `for all` would also cover SELECT, so the write
+    -- policies are split out explicitly.
+    execute format(
+      'create policy %I on public.%I for insert to authenticated with check (public.is_staff())',
+      tbl || '_staff_insert', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())',
+      tbl || '_staff_update', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for delete to authenticated using (public.is_staff())',
+      tbl || '_staff_delete', tbl
+    );
+  end loop;
+end $$;
+
+-- ------------------------------------------------- 2. guest writes --------
+--  A guest may create exactly three things: a booking, a pre-order and a
+--  delivery order. None of them is written directly any more.
+--
+--  These three policies used to allow a direct INSERT with the status pinned
+--  by `with check`. That stopped a guest inserting an already-confirmed row,
+--  but it could not check the two things that actually matter: the *money* on a
+--  delivery order, and how often the form is used. A direct insert let the
+--  browser choose its own `total` (the row was only required to be >= 0), and
+--  there was no limit at all on how many rows one caller could create.
+--
+--  Both are now decided in Postgres by `create_reservation`, `create_preorder`
+--  and `place_delivery_order` in section 4 below, which re-price every line
+--  from the menu tables and throttle each caller. With no INSERT policy on the
+--  three tables, those functions are the only door for `anon`.
+--
+--  The drops stay so that re-running this file removes the older, more
+--  permissive policies from a database that already has them.
+drop policy if exists reservations_guest_insert on public.reservations;
+drop policy if exists preorders_guest_insert on public.preorders;
+drop policy if exists delivery_orders_guest_insert on public.delivery_orders;
+drop policy if exists delivery_orders_guest_priced on public.delivery_orders;
+
+--  Staff own these tables outright: read, confirm, advance, delete.
+--  Guests have no SELECT policy on any of the three, so the whole book of
+--  customers is invisible over the REST API.
+do $$
+declare
+  tbl text;
+begin
+  foreach tbl in array array['reservations', 'preorders', 'delivery_orders']
+  loop
+    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_read', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
+    execute format(
+      'create policy %I on public.%I for select to authenticated using (public.is_staff())',
+      tbl || '_staff_read', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())',
+      tbl || '_staff_update', tbl
+    );
+    execute format(
+      'create policy %I on public.%I for delete to authenticated using (public.is_staff())',
+      tbl || '_staff_delete', tbl
+    );
+  end loop;
+end $$;
+
+-- ------------------------------------- 3. customer records by secret ------
+--  The only way a guest reaches their own record. Both the reference and the
+--  phone number on the booking are required, and the comparison happens here in
+--  Postgres, so a wrong phone returns nothing rather than being filtered by the
+--  browser after the whole table has already been downloaded.
+--
+--  `security definer` is what lets these see past the policies above; they are
+--  deliberately narrow — one row in, one row out.
+create or replace function public.lookup_reservation(p_reference text, p_phone text)
+returns setof public.reservations
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select *
+    from public.reservations
+   where upper(trim(reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+$$;
+
+create or replace function public.lookup_delivery_order(p_reference text, p_phone text)
+returns setof public.delivery_orders
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select *
+    from public.delivery_orders
+   where upper(trim(reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+$$;
+
+--  A guest cancelling their own booking, checked the same way. Raises rather
+--  than silently doing nothing so the form can show a real message.
+create or replace function public.cancel_reservation(p_reference text, p_phone text)
+returns public.reservations
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target public.reservations;
+begin
+  select * into target
+    from public.reservations r
+   where upper(trim(r.reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(r.phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+
+  if not found then
+    raise exception 'We could not find that booking.';
+  end if;
+  if target.status = 'cancelled' then
+    raise exception 'That reservation is already cancelled.';
+  end if;
+
+  update public.reservations
+     set status = 'cancelled'
+   where id = target.id
+  returning * into target;
+
+  return target;
+end $$;
+
+grant execute on function public.lookup_reservation(text, text) to anon, authenticated;
+grant execute on function public.lookup_delivery_order(text, text) to anon, authenticated;
+grant execute on function public.cancel_reservation(text, text) to anon, authenticated;
+
+-- --------------------------------- 4. guest writes, priced and throttled --
+--  The three things a visitor may create are created here and nowhere else.
+--  Two problems are solved by moving them off the client:
+--
+--    * Money. A delivery total computed in the browser is a number the browser
+--      chooses. `place_delivery_order` re-prices every line from
+--      `menu_dishes.price_per_plate` and `menu_addons.price` inside Postgres
+--      and writes the total itself, so a doctored cart cannot underpay. The
+--      delivery fee and the free-delivery threshold are applied here too.
+--    * Spam. Each function is throttled per phone number and per caller
+--      address, so these forms cannot be used to flood the desks.
+--
+--  All three are `security definer`, so they write past the policies as the
+--  table owner. There is deliberately no INSERT policy on the three tables, so
+--  this is the only door for `anon`.
+
+--  One row per accepted guest write. Read over the API by nobody: RLS is on
+--  and no policy is created, so only the functions below can touch it.
+create table if not exists public.guest_write_log (
+  id          bigserial primary key,
+  bucket      text not null,
+  key         text not null,
+  created_at  bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+
+create index if not exists guest_write_log_lookup_idx
+  on public.guest_write_log (bucket, key, created_at desc);
+
+alter table public.guest_write_log enable row level security;
+
+--  Delivery references are the customer's only handle on an order, so they
+--  should be unique. Skipped rather than forced when an existing database
+--  already holds duplicates, so this file stays safe to re-run.
+do $$
+begin
+  if exists (
+    select 1 from public.delivery_orders group by reference having count(*) > 1
+  ) then
+    raise notice 'delivery_orders holds duplicate references — uniqueness index skipped.';
+    return;
+  end if;
+
+  create unique index if not exists delivery_orders_reference_key
+    on public.delivery_orders (reference);
+end $$;
+
+--  The caller's address as PostgREST saw it, so a throttle still holds when a
+--  script changes the phone number on every request. Falls back to one shared
+--  'unknown' bucket when the header is absent.
+--
+--  Written as plpgsql rather than a one-line `sql` function on purpose: casting
+--  the header setting to json raises if the setting is present but empty, and
+--  this function is on the path of every guest write, so a raised error here
+--  would stop guests from booking at all rather than merely throttling them.
+create or replace function public.tribe_client_ip()
+returns text
+language plpgsql
+stable
+as $$
+declare
+  headers json;
+begin
+  begin
+    headers := nullif(current_setting('request.headers', true), '')::json;
+  exception when others then
+    return 'unknown';
+  end;
+
+  if headers is null then
+    return 'unknown';
+  end if;
+
+  return coalesce(
+    nullif(split_part(coalesce(headers ->> 'x-forwarded-for', ''), ',', 1), ''),
+    'unknown'
+  );
+end $$;
+
+--  Count one write against a bucket and raise once the window is full. Rows
+--  older than the window are pruned first, so the table stays small without a
+--  scheduled cleanup job.
+create or replace function public.tribe_rate_limit(
+  p_bucket text,
+  p_key text,
+  p_limit integer,
+  p_window_seconds integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  since bigint;
+  hits  integer;
+begin
+  since := (extract(epoch from now()) * 1000)::bigint
+           - (p_window_seconds::bigint * 1000);
+
+  delete from public.guest_write_log
+   where bucket = p_bucket and key = p_key and created_at < since;
+
+  select count(*) into hits
+    from public.guest_write_log
+   where bucket = p_bucket and key = p_key and created_at >= since;
+
+  if hits >= p_limit then
+    raise exception
+      'Too many requests from this number just now. Please wait a few minutes and try again.'
+      using errcode = 'P0001';
+  end if;
+
+  insert into public.guest_write_log (bucket, key) values (p_bucket, p_key);
+end $$;
+
+--  Both throttles at once: a per-number limit so one guest cannot hammer the
+--  form, and a looser per-caller limit so a script that keeps changing the
+--  number still cannot flood the desk.
+create or replace function public.tribe_throttle_guest(
+  p_bucket text,
+  p_phone text,
+  p_per_phone integer,
+  p_per_caller integer,
+  p_window_seconds integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  digits text;
+begin
+  digits := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+
+  if length(digits) >= 6 then
+    perform public.tribe_rate_limit(
+      p_bucket || ':phone', digits, p_per_phone, p_window_seconds
+    );
+  end if;
+
+  perform public.tribe_rate_limit(
+    p_bucket || ':caller', public.tribe_client_ip(), p_per_caller, p_window_seconds
+  );
+end $$;
+
+--  A booking reference short enough to read down the phone and not guessable.
+--  The `1`/`I`/`O`/`0` look-alikes are left out of the alphabet on purpose.
+create or replace function public.tribe_reference(p_prefix text, p_length integer)
+returns text
+language plpgsql
+as $$
+declare
+  alphabet  text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  candidate text := p_prefix || '-';
+begin
+  for _i in 1..p_length loop
+    candidate := candidate
+      || substr(alphabet, 1 + floor(random() * length(alphabet))::integer, 1);
+  end loop;
+  return candidate;
+end $$;
+
+--  Book a table. Returns the reference the guest keeps.
+create or replace function public.create_reservation(
+  p_name text,
+  p_phone text,
+  p_party_size integer,
+  p_date text,
+  p_time text,
+  p_seating text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name      text := trim(coalesce(p_name, ''));
+  v_digits    text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_notes     text := nullif(trim(coalesce(p_notes, '')), '');
+  v_reference text;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the booking.';
+  end if;
+  -- Any local or international formatting is accepted, as long as there are
+  -- enough digits to call back on.
+  if length(v_digits) < 10 or length(v_digits) > 15 then
+    raise exception 'Enter a valid phone number we can reach you on.';
+  end if;
+  if coalesce(p_date, '') !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'Please choose the date you are coming.';
+  end if;
+  if coalesce(p_time, '') !~ '^\d{2}:\d{2}$' then
+    raise exception 'Please choose the time you are coming.';
+  end if;
+  if coalesce(p_seating, '') not in ('outdoor', 'indoor') then
+    raise exception 'Please choose outdoor or indoor seating.';
+  end if;
+  if p_party_size is null or p_party_size < 1 or p_party_size > 40 then
+    raise exception 'Please choose how many guests are coming (1 to 40).';
+  end if;
+
+  perform public.tribe_throttle_guest('reservation', v_digits, 5, 25, 600);
+
+  -- Draw a reference and keep drawing until it is free. plpgsql has no
+  -- REPEAT/UNTIL, so this is the plain LOOP with the exit test at the foot.
+  loop
+    v_reference := public.tribe_reference('TT', 4);
+    exit when not exists (
+      select 1 from public.reservations where reference = v_reference
+    );
+  end loop;
+
+  insert into public.reservations
+    (reference, name, phone, party_size, date, time, seating, notes,
+     status, created_at)
+  values
+    (v_reference, v_name, v_digits, p_party_size, p_date, p_time, p_seating,
+     left(v_notes, 400), 'pending', (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object('reference', v_reference);
+end $$;
+
+--  Pre-order a slow-cooked specialty for collection.
+create or replace function public.create_preorder(
+  p_customer_name text,
+  p_phone text,
+  p_dish text,
+  p_quantity integer,
+  p_pickup_date text,
+  p_pickup_time text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name      text := trim(coalesce(p_customer_name, ''));
+  v_digits    text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_dish      text := trim(coalesce(p_dish, ''));
+  v_notes     text := nullif(trim(coalesce(p_notes, '')), '');
+  v_quantity  integer := coalesce(p_quantity, 1);
+  v_reference text;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the pre-order.';
+  end if;
+  if length(v_digits) < 10 or length(v_digits) > 15 then
+    raise exception 'Enter a valid phone number we can reach you on.';
+  end if;
+  if length(v_dish) = 0 then
+    raise exception 'Please choose a dish to pre-order.';
+  end if;
+  if coalesce(p_pickup_date, '') !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'Please choose a pickup date.';
+  end if;
+  if coalesce(p_pickup_time, '') !~ '^\d{2}:\d{2}$' then
+    raise exception 'Please choose a pickup time.';
+  end if;
+
+  -- Clamped rather than rejected, exactly as the form does it.
+  v_quantity := least(greatest(v_quantity, 1), 20);
+
+  perform public.tribe_throttle_guest('preorder', v_digits, 5, 25, 600);
+
+  loop
+    v_reference := public.tribe_reference('PRE', 5);
+    exit when not exists (
+      select 1 from public.preorders where reference = v_reference
+    );
+  end loop;
+
+  insert into public.preorders
+    (reference, customer_name, phone, dish, quantity, pickup_date, pickup_time,
+     notes, status, created_at, updated_at)
+  values
+    (v_reference, v_name, v_digits, v_dish, v_quantity, p_pickup_date,
+     p_pickup_time, left(v_notes, 300), 'pending',
+     (extract(epoch from now()) * 1000)::bigint,
+     (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object('reference', v_reference);
+end $$;
+
+--  Place a delivery order.
+--
+--  The client sends what it wants to buy, never what it costs: `p_items` is a
+--  list of `{slug, name, count}` and every unit price is looked up here. An
+--  item is priced from the dish it names, falling back to the add-on it names
+--  (a naan, a raita or a cold drink has no row in `menu_dishes`), and to the
+--  house default per plate when neither carries a managed price.
+create or replace function public.place_delivery_order(
+  p_customer_name text,
+  p_phone text,
+  p_address text,
+  p_area text,
+  p_items jsonb,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  -- Must match DELIVERY_FEE / FREE_DELIVERY_THRESHOLD in src/lib/menu.ts, and
+  -- the default plate price `deliveryUnitPrice` falls back to.
+  c_delivery_fee     constant integer := 150;
+  c_free_from        constant integer := 2500;
+  c_default_price    constant integer := 600;
+  c_max_lines        constant integer := 40;
+
+  v_name        text := trim(coalesce(p_customer_name, ''));
+  v_digits      text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_address     text := trim(coalesce(p_address, ''));
+  v_area        text := trim(coalesce(p_area, ''));
+  v_notes       text := nullif(trim(coalesce(p_notes, '')), '');
+  v_reference   text;
+  v_lines       jsonb := '[]'::jsonb;
+  v_item        jsonb;
+  v_slug        text;
+  v_label       text;
+  v_count       integer;
+  v_price       integer;
+  v_items_total integer := 0;
+  v_fee         integer;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the order.';
+  end if;
+  if length(v_digits) < 10 or length(v_digits) > 12 then
+    raise exception 'Please enter a valid phone number.';
+  end if;
+  if length(v_address) < 8 then
+    raise exception 'Please enter a full delivery address in Lahore.';
+  end if;
+  if length(v_area) = 0 then
+    raise exception 'Please choose your area in Lahore.';
+  end if;
+  if jsonb_typeof(coalesce(p_items, 'null'::jsonb)) <> 'array' then
+    raise exception 'Your cart is empty — add a dish before ordering.';
+  end if;
+
+  perform public.tribe_throttle_guest('delivery', v_digits, 6, 30, 600);
+
+  for v_item in select value from jsonb_array_elements(p_items)
+  loop
+    exit when jsonb_array_length(v_lines) >= c_max_lines;
+
+    v_slug := trim(coalesce(v_item ->> 'slug', ''));
+    v_label := left(coalesce(nullif(trim(v_item ->> 'name'), ''), v_slug), 80);
+
+    -- `count` arrives as JSON: accept whole numbers only and skip anything
+    -- else rather than letting a bad cast abort the whole order.
+    if v_slug = '' or coalesce(v_item ->> 'count', '') !~ '^\d+$' then
+      continue;
+    end if;
+    v_count := (v_item ->> 'count')::integer;
+    if v_count < 1 then
+      continue;
+    end if;
+    v_count := least(v_count, 20);
+
+    select coalesce(
+      (select d.price_per_plate from public.menu_dishes d
+        where d.slug = v_slug and d.price_per_plate > 0 limit 1),
+      (select a.price from public.menu_addons a
+        where a.id = v_slug and a.price > 0 limit 1),
+      c_default_price
+    ) into v_price;
+
+    v_lines := v_lines || jsonb_build_object(
+      'slug', v_slug,
+      'name', v_label,
+      'count', v_count,
+      'unitPrice', v_price
+    );
+  end loop;
+
+  if jsonb_array_length(v_lines) = 0 then
+    raise exception 'Your cart is empty — add a dish before ordering.';
+  end if;
+
+  -- `as lines(line)` names the set-returning function's single `value` column,
+  -- so `line` below is the jsonb object itself. Naming only the function would
+  -- leave `line` a one-field composite row, which has no `->>` operator.
+  select coalesce(sum((line ->> 'count')::integer * (line ->> 'unitPrice')::integer), 0)
+    into v_items_total
+    from jsonb_array_elements(v_lines) as lines(line);
+
+  v_fee := case when v_items_total >= c_free_from then 0 else c_delivery_fee end;
+
+  loop
+    v_reference := public.tribe_reference('DLV', 6);
+    exit when not exists (
+      select 1 from public.delivery_orders where reference = v_reference
+    );
+  end loop;
+
+  insert into public.delivery_orders
+    (reference, customer_name, phone, address, area, notes, items,
+     items_total, delivery_fee, total, status, created_at)
+  values
+    (v_reference, v_name, v_digits, v_address, v_area, left(v_notes, 300),
+     v_lines, v_items_total, v_fee, v_items_total + v_fee, 'placed',
+     (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object(
+    'reference', v_reference,
+    'total', v_items_total + v_fee,
+    'deliveryFee', v_fee
+  );
+end $$;
+
+grant execute on function public.tribe_client_ip() to anon, authenticated;
+grant execute on function public.create_reservation(text, text, integer, text, text, text, text) to anon, authenticated;
+grant execute on function public.create_preorder(text, text, text, integer, text, text, text) to anon, authenticated;
+grant execute on function public.place_delivery_order(text, text, text, text, jsonb, text) to anon, authenticated;
+
+--  The throttle helpers are internal: the create functions above call them as
+--  the owner. Nothing on the public API should reach them directly.
+revoke all on function public.tribe_rate_limit(text, text, integer, integer) from public, anon, authenticated;
+revoke all on function public.tribe_throttle_guest(text, text, integer, integer, integer) from public, anon, authenticated;
+revoke all on function public.tribe_reference(text, integer) from public, anon, authenticated;
+revoke all on function public.tribe_client_ip() from public, anon, authenticated;
+
+-- ============================================================================
+--  Verifying the guest-write functions
+--  A booking, a pre-order and a delivery order are created by these functions
+--  and by nothing else, so confirm they exist and that the direct-insert path
+--  really is closed before handing the site over.
+-- ============================================================================
+--
+--  The three guest-write functions, with their arguments (expect three rows):
+--    select proname, pg_get_function_arguments(oid) as args
+--      from pg_proc
+--     where pronamespace = 'public'::regnamespace
+--       and proname in ('create_reservation', 'create_preorder',
+--                       'place_delivery_order')
+--     order by proname;
+--
+--  Every guest-reachable function at once (expect six):
+--    select proname from pg_proc
+--     where pronamespace = 'public'::regnamespace
+--       and proname in ('create_reservation', 'create_preorder',
+--                       'place_delivery_order', 'lookup_reservation',
+--                       'lookup_delivery_order', 'cancel_reservation')
+--     order by proname;
+--
+--  No INSERT policy may remain on the customer tables (expect ZERO rows — any
+--  row here is a direct write path around the server-side pricing):
+--    select tablename, policyname from pg_policies
+--     where schemaname = 'public' and cmd = 'INSERT'
+--       and tablename in ('reservations', 'preorders', 'delivery_orders');
+--
+--  What the database would charge for a plate, with no browser involved:
+--    select d.slug,
+--           coalesce(d.price_per_plate,
+--             (select a.price from public.menu_addons a where a.id = d.slug),
+--             600) as charged
+--      from public.menu_dishes d order by d.slug limit 10;
+--
+--  Accepted guest writes in the last ten minutes, per throttle bucket:
+--    select bucket, count(*) from public.guest_write_log
+--     where created_at > (extract(epoch from now()) * 1000)::bigint - 600000
+--     group by bucket order by 2 desc;
+
+-- ------------------------------------------------------ sign-in helper ----
+--  Add the first staff member after creating the user in Authentication →
+--  Users (or `supabase auth signup`). Run this with the new user's id:
+--
+--    insert into public.staff_members (user_id, email, display_name, role)
+--    select id, email, 'Owner', 'admin' from auth.users where email = 'owner@tribeoftaste.pk'
+--    on conflict (user_id) do update set role = 'admin', active = true;
+--
+--  Confirm who can reach the portals:
+--    select sm.email, sm.role, sm.active from public.staff_members sm order by sm.role;
+--
+--  Confirm a guest can read nothing from the customer records:
+--    set role anon;
+--    select count(*) from public.reservations;   -- expect: permission denied
+--    reset role;
+
+-- ============================================================================
+--  Storage — public bucket that holds dish photos and promo banner graphics.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('tribe-media', 'tribe-media', true)
+on conflict (id) do update set public = true;
+
+--  Reads are public: the bucket holds the dish photos, the gallery and the
+--  banner graphics, all of which the guest site displays. Writes are not — they
+--  need `is_staff()` — so the four bucket policies are created in the row level
+--  security section above, alongside the table policies.
+
+-- ============================================================================
+--  Migration — demo media flags
+--  `create table if not exists` never adds columns to an existing table, so
+--  these run separately for databases created before the demo flags existed.
+--  Both are safe to re-run.
+-- ============================================================================
+alter table public.site_media  add column if not exists demo boolean not null default false;
+alter table public.menu_dishes add column if not exists demo boolean not null default false;
+alter table public.promotions  add column if not exists demo boolean not null default false;
+
+-- ============================================================================
+--  Demo promotional banner
+--  Seeds one live sample banner so the public site has something to broadcast
+--  out of the box. Idempotent: only inserts when no promotion exists yet.
+--  Expires 7 days from the moment this script runs, after which the `active`
+--  query filter hides it from the public site automatically.
+-- ============================================================================
+insert into public.promotions (title, headline, body, visible, demo, expires_at, created_at, updated_at)
+select
+  'Weekend Live BBQ Nights',
+  'Live BBQ Nights — family of four dines for Rs 7,500',
+  'Valid Friday to Sunday, 7 PM onwards. Dine-in only.',
+  true,
+  true,
+  (extract(epoch from now()) * 1000)::bigint + (7 * 24 * 60 * 60 * 1000),
+  (extract(epoch from now()) * 1000)::bigint,
+  (extract(epoch from now()) * 1000)::bigint
+where not exists (select 1 from public.promotions where not demo);
+
+-- ============================================================================
+--  Demo gallery imagery
+--  The six gallery slots (gallery-1 … gallery-6) are seeded from the app itself
+--  by `seedDemoGallery()` in src/lib/db.ts, which reads the GALLERY array in
+--  src/lib/restaurant.ts. Seeding from code keeps the public site's fallback
+--  photos and the admin panel's demo rows pointing at the same URLs — no
+--  duplicated image list to drift out of sync.
+--
+--  The seed runs the first time the admin portal opens and only fills slots
+--  that do not already have a row, so it never overwrites a real upload.
+--
+--  Equivalent SQL, if you would rather seed by hand:
+--
+--    insert into public.site_media (slot, caption, url, demo, updated_at)
+--    values
+--      ('gallery-1', 'Live seekh kebab counter', 'https://…', true, 0),
+--      ('gallery-2', 'Malai boti off the coals', 'https://…', true, 0)
+--    on conflict (slot) do nothing;
+--
+--  Inspect what is currently published versus still on the demo photo:
+--
+--    select slot, caption, demo,
+--           case when image_path is null then 'demo url' else 'uploaded' end as source
+--      from public.site_media
+--     order by slot;
+--
+-- ============================================================================
+--  History views — Today vs History, searchable by year / month / date
+--  These examples show the exact filter shape the portal runs through
+--  PostgREST. `pickup_date`, `date` and the epoch timestamps are all indexed
+--  above, so the range scans stay cheap as history grows.
+-- ============================================================================
+--
+--  Today's reservations:
+--    select * from public.reservations
+--     where date = to_char(now(), 'YYYY-MM-DD')
+--     order by time;
+--
+--  Reservation history for a chosen month (e.g. September 2026):
+--    select * from public.reservations
+--     where date >= '2026-09-01' and date < '2026-10-01'
+--     order by date desc, time desc;
+--
+--  Reservation history for a single day:
+--    select * from public.reservations where date = '2026-09-12';
+--
+--  Pre-orders for today's pickup:
+--    select * from public.preorders
+--     where pickup_date = to_char(now(), 'YYYY-MM-DD')
+--     order by pickup_time;
+--
+--  Delivery orders created in a chosen month (created_at is epoch ms):
+--    select * from public.delivery_orders
+--     where to_timestamp(created_at / 1000.0) >= '2026-09-01'
+--       and to_timestamp(created_at / 1000.0) <  '2026-10-01'
+--     order by created_at desc;
+--
+--  Free-text history search across a phone, name or reference:
+--    select * from public.delivery_orders
+--     where customer_name ilike '%khan%'
+--        or phone ilike '%322%'
+--        or reference ilike '%DLV%';
+--
+--  Distinct years present in the history (for the filter sidebar):
+--    select distinct extract(year from to_timestamp(created_at / 1000.0))
+--      from public.delivery_orders order by 1 desc;
+
+-- ============================================================================
+--  Signature dishes — exactly four, enforced in the database
+--  The public "Signatures" strip shows four dishes and nothing else; those
+--  same four are hidden from the category counters so a dish never appears
+--  twice on the page. The admin panel caps its toggle at four, and this
+--  trigger is the backstop: no code path — including the seed — can publish a
+--  fifth signature dish.
+--
+--  Unfinished records are unaffected: the check only fires when `featured`
+--  actually turns on, so re-running the seed or editing any other column of an
+--  already-featured dish is free.
+-- ============================================================================
+create or replace function public.tribe_limit_signature_dishes()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if not new.featured then
+      return new;
+    end if;
+  else
+    if not new.featured or old.featured then
+      return new;
+    end if;
+  end if;
+
+  if (select count(*) from public.menu_dishes
+       where featured and slug <> new.slug) >= 4 then
+    raise exception
+      'Only four signature dishes are allowed. Clear one before featuring another.';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists menu_dishes_signature_limit on public.menu_dishes;
+create trigger menu_dishes_signature_limit
+  before insert or update of featured on public.menu_dishes
+  for each row execute function public.tribe_limit_signature_dishes();
+
+-- ============================================================================
+--  `orders` — every guest request in one searchable view
+--  Reservations, online deliveries and takeaway pre-orders live in three
+--  tables because they carry different fields. This view unions them into a
+--  single read model so "all orders" can be queried, exported or reported on
+--  without the app joining three shapes. Read-only: writes still go to the
+--  individual tables.
+--
+--  `service_day` is always a `YYYY-MM-DD` string — the reservation date, the
+--  pre-order pickup date, or the calendar day a delivery was placed — so one
+--  filter works across all three kinds.
+-- ============================================================================
+create or replace view public.orders as
+  select
+    'delivery'::text            as kind,
+    d.id::text                  as id,
+    d.reference                 as reference,
+    d.customer_name             as customer_name,
+    d.phone                     as phone,
+    d.status                    as status,
+    d.total                     as total,
+    d.items                     as items,
+    d.notes                     as detail,
+    d.created_at                as created_at,
+    d.delivered_at              as closed_at,
+    to_char(to_timestamp(d.created_at / 1000.0), 'YYYY-MM-DD') as service_day
+  from public.delivery_orders d
+  union all
+  select
+    'preorder'::text,
+    p.id::text,
+    p.reference,
+    p.customer_name,
+    p.phone,
+    p.status,
+    null::integer,
+    null::jsonb,
+    p.dish || ' · pickup ' || p.pickup_date || ' ' || p.pickup_time,
+    p.created_at,
+    null::bigint,
+    p.pickup_date
+  from public.preorders p
+  union all
+  select
+    'reservation'::text,
+    r.id::text,
+    r.reference,
+    r.name,
+    r.phone,
+    r.status,
+    null::integer,
+    null::jsonb,
+    r.party_size::text || ' guests · ' || r.time || ' · ' || r.seating,
+    r.created_at,
+    null::bigint,
+    r.date
+  from public.reservations r;
+
+--  Exposed to the publishable key the same way the tables are.
+grant select on public.orders to anon, authenticated;
+
+--  All orders for one day, newest first:
+--    select * from public.orders where service_day = to_char(now(), 'YYYY-MM-DD');
+--
+--  Everything still open across all three kinds:
+--    select * from public.orders
+--     where status not in ('delivered', 'collected', 'cancelled', 'seated')
+--     order by created_at desc;
+--
+--  One month of history, grouped by kind:
+--    select kind, count(*) from public.orders
+--     where service_day >= '2026-09-01' and service_day < '2026-10-01'
+--     group by kind;
+
+-- ============================================================================
+--  Editable copy defaults
+--  Seeds the "The Experience" seating counter so the section renders the same
+--  numbers before the owner has changed anything. Idempotent: existing values
+--  are never overwritten.
+-- ============================================================================
+insert into public.site_content (key, value, updated_at)
+select v.key, v.value, (extract(epoch from now()) * 1000)::bigint
+from (values
+  ('experience-seats',       '4–20'),
+  ('experience-seats-label', 'seats per family table')
+) as v(key, value)  where not exists (select 1 from public.site_content c where c.key = v.key);
+
+-- ============================================================================
+--  Traditional add-ons — seed
+--  The twelve items that ship with the site, including the four cold drinks.
+--  Idempotent: `on conflict do nothing`, so re-running never overwrites a price
+--  or photo the team has already changed. The admin panel runs the same seed
+--  from `seedAddOns()` in src/lib/db.ts; either path is enough.
+-- ============================================================================
+insert into public.menu_addons
+  (id, name, urdu, price, category, active, demo, sort_order, updated_at)
+values
+  ('afghani-naan',   'Afghani Naan',   'افغانی نان',    80, 'bread', true, true, 1, 0),
+  ('tandoori-naan',  'Tandoori Naan',  'تندوری نان',    60, 'bread', true, true, 2, 0),
+  ('sheermal',       'Sheermal',       'شیرمال',        70, 'bread', true, true, 3, 0),
+  ('raita',          'Raita',          'رائتہ',         50, 'side',  true, true, 1, 0),
+  ('green-salad',    'Green Salad',    'سلاد',          60, 'side',  true, true, 2, 0),
+  ('pickles',        'Mixed Pickles',  'اچار',          40, 'side',  true, true, 3, 0),
+  ('mint-lassi',     'Mint Lassi',     'پودینہ لسی',   120, 'drink', true, true, 1, 0),
+  ('kashmiri-chai',  'Kashmiri Chai',  'کشمیری چائے',  150, 'drink', true, true, 2, 0),
+  ('cola',           'Cola',           'کولا',         100, 'cold',  true, true, 1, 0),
+  ('sprite',         'Sprite',         'اسپرائٹ',      100, 'cold',  true, true, 2, 0),
+  ('fanta',          'Fanta',          'فانٹا',        100, 'cold',  true, true, 3, 0),
+  ('water-bottle',   'Mineral Water',  'منرل واٹر',     60, 'cold',  true, true, 4, 0)
+on conflict (id) do nothing;
+
+--  The public board: only the live items, grouped and ordered.
+--    select category, name, urdu, price, image, image_path
+--      from public.menu_addons
+--     where active
+--     order by category, sort_order;
+--
+--  The admin board: everything, hidden items included.
+--    select * from public.menu_addons order by category, sort_order;
+--
+--  Reprice one cold drink:
+--    update public.menu_addons set price = 120, updated_at = 0
+--     where id = 'cola';
+--
+--  Which add-ons are still on a demo photo?
+--    select id, name, category, demo,
+--           case when image_path is null then 'demo url' else 'uploaded' end as source
+--      from public.menu_addons order by category, sort_order;
+
+--  Read back everything the owner has customised:
+--    select key, value from public.site_content order by key;
+
+-- ============================================================================
+--  Migration — referential integrity, read-only aliases & storage limits
+--  Everything in this section is idempotent: the whole file can be pasted and
+--  re-run against an existing database without changing any data.
+-- ============================================================================
+
+-- ---------------------------------------------------------- integrity ------
+--  A home for dishes whose counter was removed. `deleteCategory()` in
+--  src/lib/db.ts moves a counter's dishes here *before* deleting the counter,
+--  so the foreign key added next never blocks a delete or strands a dish. The
+--  row is inactive, so it never appears on the public menu.
+insert into public.menu_categories (id, name, urdu, blurb, icon, sort_order, active)
+values (
+  'uncategorized', 'Other', 'دیگر',
+  'Dishes whose counter was removed from the menu.', 'flame', 99, false
+)
+on conflict (id) do nothing;
+
+--  menu_dishes.category_id → menu_categories.id
+--  Added only when every existing row already points at a real counter, so it
+--  can never fail on a database carrying legacy rows. `on delete restrict`
+--  makes an orphaned dish impossible.
+do $$
+begin
+  if exists (
+    select 1
+      from pg_constraint
+     where conname = 'menu_dishes_category_fk'
+       and conrelid = 'public.menu_dishes'::regclass
+  ) then
+    return;
+  end if;
+
+  if exists (
+    select 1
+      from public.menu_dishes d
+     where not exists (
+       select 1 from public.menu_categories c where c.id = d.category_id
+     )
+  ) then
+    raise notice 'menu_dishes has rows pointing at a missing counter — foreign key skipped. Point them at a real counter and re-run.';
+    return;
+  end if;
+
+  alter table public.menu_dishes
+    add constraint menu_dishes_category_fk
+    foreign key (category_id) references public.menu_categories (id)
+    on update cascade on delete restrict;
+end $$;
+
+-- --------------------------------------------------- add-on categories -----
+--  `menu_addons.category` used to be pinned to the four built-in headings by a
+--  CHECK constraint, which is exactly what stops the owner inventing a new
+--  one. It is dropped here so the column can reference `addon_categories`
+--  instead. Anything sitting on a heading that no longer exists is moved to
+--  Breads & Naan first, so the foreign key always applies.
+alter table public.menu_addons
+  drop constraint if exists menu_addons_category_check;
+
+do $$
+declare
+  moved integer;
+begin
+  update public.menu_addons a
+     set category = 'bread'
+   where not exists (
+     select 1 from public.addon_categories c where c.id = a.category
+   );
+  get diagnostics moved = row_count;
+  if moved > 0 then
+    raise notice '% add-on(s) pointed at a deleted category and were moved to Breads & Naan.', moved;
+  end if;
+
+  if exists (
+    select 1 from pg_constraint
+     where conname = 'menu_addons_category_fk'
+       and conrelid = 'public.menu_addons'::regclass
+  ) then
+    return;
+  end if;
+
+  alter table public.menu_addons
+    add constraint menu_addons_category_fk
+    foreign key (category) references public.addon_categories (id)
+    on update cascade on delete restrict;
+end $$;
+
+-- --------------------------------------------------- category → items ------
+--  Two independent parent/child links, both created above:
+--
+--    menu_categories  (id) ← menu_dishes.category_id   [menu_dishes_category_fk]
+--    addon_categories (id) ← menu_addons.category      [menu_addons_category_fk]
+--
+--  Both are `on update cascade on delete restrict`: renaming a category keeps
+--  its items, and deleting one is refused while items still point at it. The
+--  admin panel therefore reassigns an item to `uncategorized` before deleting
+--  its category (see deleteCategory() in src/lib/db.ts) rather than relying on
+--  a cascade.
+--
+--  Confirm both links are in place:
+--    select conname, conrelid::regclass as child, confrelid::regclass as parent
+--      from pg_constraint
+--     where contype = 'f' and connamespace = 'public'::regnamespace
+--     order by child;
+--
+--  Every category with the number of items inside it:
+--    select c.id, c.name, c.sort_order, c.active, count(d.id) as items
+--      from public.menu_categories c
+--      left join public.menu_dishes d on d.category_id = c.id
+--     group by 1, 2, 3, 4 order by c.sort_order;
+
+-- --------------------------------------------------- read-only aliases ------
+--  Exports, reporting tools and integrations expect the conventional names
+--  `image_url` and `is_active`. Renaming the live columns would break every
+--  query in the app, so these are stored GENERATED aliases instead: selectable
+--  and indexable, while writes keep going to `image`/`image_path` and `active`.
+--  (`promotions` already owns a real `image_url` column, and `site_media`
+--  carries its own `url`/`image_path` pair, so neither needs an alias; the
+--  bilingual `name`/`urdu` columns already exist on every catalogue table.)
+alter table public.menu_addons
+  add column if not exists image_url text
+  generated always as (coalesce(image_path, image)) stored;
+alter table public.menu_addons
+  add column if not exists is_active boolean
+  generated always as (active) stored;
+
+alter table public.menu_dishes
+  add column if not exists image_url text
+  generated always as (coalesce(image_path, image)) stored;
+alter table public.menu_dishes
+  add column if not exists is_active boolean
+  generated always as (active) stored;
+
+alter table public.pre_order_items
+  add column if not exists image_url text
+  generated always as (coalesce(image_path, image)) stored;
+alter table public.pre_order_items
+  add column if not exists is_active boolean
+  generated always as (active) stored;
+
+-- ------------------------------------------------------ storage limits -----
+--  Hold the public bucket to the same rules the uploader enforces in
+--  src/lib/db.ts — 5 MB, image types only — so a direct API call cannot push
+--  anything else into it.
+do $$
+begin
+  update storage.buckets
+     set file_size_limit    = 5242880,
+         allowed_mime_types = array[
+           'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'
+         ]
+   where id = 'tribe-media';
+exception
+  when undefined_column then
+    raise notice 'This project''s storage schema has no limit columns — bucket left unchanged.';
+end $$;
+
+-- ============================================================================
+--  Verifying real-time sync
+--  Every table the admin, staff and public portals subscribe to must appear in
+--  the realtime publication, or edits will only show up after a hard reload.
+-- ============================================================================
+--
+--  Confirm the publication is complete (expect all eleven tables):
+--    select tablename from pg_publication_tables
+--     where pubname = 'supabase_realtime' order by tablename;
+--
+--  Confirm every table has RLS active and an anon policy:
+--    select c.relname as table_name, c.relrowsecurity as rls_enabled,
+--           count(p.policy_name) as policies
+--      from pg_class c
+--      left join pg_policies p on p.tablename = c.relname
+--     where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+--     group by 1, 2 order by 1;
+--
+--  Re-add a single table whose changes stopped arriving:
+--    alter publication supabase_realtime add table public.site_media;
+--
+--  Confirm every heading the owner has created, with its item count:
+--    select c.id, c.name, c.sort_order, c.active, count(a.id) as items
+--      from public.addon_categories c
+--      left join public.menu_addons a on a.category = c.id
+--     group by c.id, c.name, c.sort_order, c.active
+--     order by c.sort_order;
