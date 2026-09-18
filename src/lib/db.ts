@@ -1613,16 +1613,42 @@ export async function deletePromotion(id: string): Promise<void> {
  */
 export async function seedDemoPromotion(): Promise<boolean> {
   const existing = await selectRows<{
+    id: string;
     visible: boolean;
     demo: boolean | null;
     expires_at: number | string | null;
-  }>(TABLES.promotions, undefined, "visible, demo, expires_at");
+    created_at: number | string | null;
+  }>(TABLES.promotions, undefined, "id, visible, demo, expires_at, created_at");
 
   const now = Date.now();
-  const live = existing.some(
+  const liveRows = existing.filter(
     (row) => row.visible && (ms(row.expires_at) ?? now + 1) > now,
   );
+  const live = liveRows.length > 0;
   const onlyOurDemos = existing.every((row) => row.demo ?? false);
+
+  // An earlier version of this seeder could add its sample more than once, and
+  // two identical banners show up twice on the offers board. When the only live
+  // rows are our own samples, keep the newest and clear the rest. A promotion
+  // the team wrote is never touched — `onlyOurDemos` has to be true first.
+  const liveDemos = liveRows.filter((row) => row.demo ?? false);
+  if (onlyOurDemos && liveDemos.length > 1) {
+    const sorted = [...liveDemos].sort(
+      (a, b) => (ms(b.created_at) ?? 0) - (ms(a.created_at) ?? 0),
+    );
+    const duplicates = sorted
+      .slice(1)
+      .map((row) => row.id)
+      .filter(Boolean);
+    if (duplicates.length > 0) {
+      const { error } = await supabase
+        .from(TABLES.promotions)
+        .delete()
+        .in("id", duplicates);
+      if (!error) return false;
+    }
+  }
+
   if (live || !onlyOurDemos) return false;
   const { error } = await supabase.from(TABLES.promotions).insert({
     title: "Weekend Live BBQ Nights",

@@ -33,7 +33,10 @@ export function SmartImage({
     setFailed(false);
   }
 
-  if (failed) {
+  // No source at all is not a failed load: show the tile immediately rather
+  // than an <img> with an empty src, which some browsers treat as a fresh page
+  // request. The admin panel clears a photo this way.
+  if (!src || failed) {
     return (
       <div
         role="img"

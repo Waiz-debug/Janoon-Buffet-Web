@@ -5,6 +5,7 @@ import { LocationMap } from "@/components/tribe/LocationMap";
 import { MenuSection } from "@/components/tribe/MenuSection";
 import { PreOrderSection } from "@/components/tribe/PreOrderSection";
 import { PromoBanner } from "@/components/tribe/PromoBanner";
+import { PromotionsSection } from "@/components/tribe/PromotionsSection";
 import { ReservationSection } from "@/components/tribe/ReservationSection";
 import { SiteHeader } from "@/components/tribe/SiteHeader";
 import { SocialProof } from "@/components/tribe/SocialProof";
@@ -29,6 +30,12 @@ export default function Landing() {
         <AddOnsStrip />
         <PreOrderSection />
         <SocialProof />
+
+        {/* Offers live below the main run of the page — the part a guest
+            reaches by scrolling, fed by the same promotions the strip at the
+            top reads. It renders nothing when the owner has none published. */}
+        <PromotionsSection />
+
         <div className="py-16 sm:py-20">
           <LocationMap />
         </div>

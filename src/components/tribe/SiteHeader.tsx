@@ -12,6 +12,7 @@ import { Link } from "react-router";
 const NAV_LINKS = [
   { label: "The Experience", id: "vibe" },
   { label: "Menu & Pricing", id: "menu" },
+  { label: "Offers", id: "offers" },
   { label: "Reviews", id: "reviews" },
   { label: "Visit Us", id: "visit" },
 ];

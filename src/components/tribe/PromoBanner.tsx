@@ -69,8 +69,9 @@ function useCountdown(expiresAt: number | undefined): string | null {
   return label;
 }
 
-/** Bold, always-visible countdown pill — part of the offer, not a footnote. */
-function PromoCountdown({ expiresAt }: { expiresAt?: number }) {
+/** Bold, always-visible countdown pill — part of the offer, not a footnote.
+ *  Shared with the offers section further down the page. */
+export function PromoCountdown({ expiresAt }: { expiresAt?: number }) {
   const label = useCountdown(expiresAt);
   if (!label) return null;
   return (
@@ -81,8 +82,8 @@ function PromoCountdown({ expiresAt }: { expiresAt?: number }) {
   );
 }
 
-/** Small eyebrow chip that flags the strip as an offer. */
-function OfferBadge() {
+/** Small eyebrow chip that flags the strip as an offer. Shared too. */
+export function OfferBadge() {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/15 px-3 py-1 text-[0.65rem] font-bold tracking-[0.2em] text-gold uppercase">
       <Flame className="size-3" aria-hidden />

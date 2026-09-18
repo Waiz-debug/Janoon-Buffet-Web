@@ -29,7 +29,20 @@ import {
 } from "@/lib/db";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { useSearchParams } from "react-router";
 import { toast } from "sonner";
+
+/** Tabs the promotions section links straight into: /admin?tab=promos. */
+const TAB_VALUES = new Set([
+  "overview",
+  "counters",
+  "addons",
+  "preorders",
+  "photos",
+  "promos",
+  "records",
+  "team",
+]);
 
 export default function AdminPortal() {
   const { categories, dishes, loaded, isEmpty } = useAdminMenu();
@@ -37,6 +50,11 @@ export default function AdminPortal() {
   const addonCategories = useAdminAddOnCategories();
   const preOrderItems = useAdminPreOrderItems();
   const seeding = useRef(false);
+  const [searchParams] = useSearchParams();
+  // `?tab=promos` opens the panel the public offers board links to. Anything
+  // unrecognised falls back to the overview rather than an empty tab.
+  const requestedTab = searchParams.get("tab") ?? "overview";
+  const tab = TAB_VALUES.has(requestedTab) ? requestedTab : "overview";
 
   // First run against a fresh Supabase project: copy the built-in catalogue
   // and gallery photos across so the admin panel lists exactly the assets the
@@ -121,7 +139,7 @@ export default function AdminPortal() {
         </Button>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue={tab}>
         <TabsList className="mb-6 flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="counters">Menu categories</TabsTrigger>
