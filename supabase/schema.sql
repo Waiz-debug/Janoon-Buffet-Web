@@ -521,8 +521,14 @@ begin
   loop
     -- The old permissive policy from the PIN-era schema must go, or a re-run
     -- would leave a `using (true)` policy sitting alongside the new ones.
+    -- Every name we are about to create is also dropped here, so the statement
+    -- is safe to re-run against a database that already has them.
     execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
     execute format('drop policy if exists %I on public.%I', tbl || '_public_read', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_insert', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
+    -- backward compat: older copies used this name for a single write policy
     execute format('drop policy if exists %I on public.%I', tbl || '_staff_write', tbl);
     -- Readable by everyone, including signed-out visitors.
     execute format(
