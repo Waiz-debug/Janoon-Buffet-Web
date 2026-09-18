@@ -1788,6 +1788,11 @@ async function probeExpectedFunctions(): Promise<string[]> {
     // Safe to call for real: a read-only count of `staff_members`, returned as
     // a boolean. It is what the Admin Portal uses to offer owner setup.
     { name: "staff_bootstrap_state", args: {} },
+    // Both refuse an anonymous caller with our own 42501, which is exactly the
+    // answer that proves they exist — a missing one reads PGRST202 instead.
+    // Neither writes anything on the way to that refusal.
+    { name: "staff_sync_email", args: {} },
+    { name: "admin_list_staff", args: {} },
   ];
 
   const absent: string[] = [];

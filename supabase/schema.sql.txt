@@ -450,6 +450,21 @@ begin
       using errcode = '42501';
   end if;
 
+  -- Only the very first account created on this project may claim. A staff or
+  -- customer account made later can therefore never take ownership, even in the
+  -- corner case where the team table has been emptied and the one-time door
+  -- would otherwise look open again.
+  if exists (
+    select 1
+      from auth.users u
+     where u.id <> v_uid
+       and u.created_at < (select created_at from auth.users where id = v_uid)
+  ) then
+    raise exception
+      'Owner access can only be claimed by the first account created on this project.'
+      using errcode = '42501';
+  end if;
+
   lock table public.staff_members in exclusive mode;
 
   if exists (select 1 from public.staff_members) then
@@ -480,6 +495,273 @@ revoke all on function public.claim_admin() from public;
 grant execute on function public.claim_admin() to authenticated;
 
 grant execute on function public.staff_bootstrap_state() to anon, authenticated;
+
+-- ------------------------------------- staff self-service & team admin ----
+--  Two things live here, and they are deliberately different in who they ask:
+--
+--    * self-service — `staff_sync_email` acts on `auth.uid()` alone, so it can
+--      only ever touch the caller's own row, and only its email column.
+--    * team management — the `admin_*` functions refuse anyone whose
+--      `staff_members` row is not `role = 'admin'`. That check runs here, in
+--      Postgres, so the Team screen being hidden from a staff account is a
+--      convenience, not the boundary.
+--
+--  No password is stored, returned or readable anywhere in this section:
+--  Supabase Auth keeps a bcrypt hash in `auth.users`, and no function below
+--  selects from it except to look up an id by email.
+
+--  Keep `staff_members.email` in step after someone changes their sign-in
+--  address. Note what is missing: the role is never mentioned, so a credential
+--  change cannot change what the account is allowed to do.
+create or replace function public.staff_sync_email()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_email text;
+begin
+  if v_uid is null then
+    raise exception 'Sign in first.' using errcode = '42501';
+  end if;
+
+  select email into v_email from auth.users where id = v_uid;
+
+  -- An UPDATE, never an INSERT: a signed-in customer who is not on the team
+  -- updates zero rows and gains nothing.
+  update public.staff_members
+     set email = v_email
+   where user_id = v_uid;
+
+  return jsonb_build_object('ok', true, 'email', v_email);
+end $$;
+
+--  The team list, for the admin panel. Emails, roles, active flags — there is
+--  no password column to leak.
+create or replace function public.admin_list_staff()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_rows jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select coalesce(
+           jsonb_agg(
+             jsonb_build_object(
+               'userId',      sm.user_id,
+               'email',       sm.email,
+               'displayName', sm.display_name,
+               'role',        sm.role,
+               'active',      sm.active,
+               'createdAt',   sm.created_at
+             )
+             order by case when sm.role = 'admin' then 0 else 1 end, sm.email
+           ),
+           '[]'::jsonb
+         )
+    into v_rows
+    from public.staff_members sm;
+
+  return v_rows;
+end $$;
+
+--  The count of admins who can still open the panel — used to refuse the last
+--  admin being demoted, deactivated or deleted, which would lock the owner out
+--  of their own restaurant.
+create or replace function public.tribe_active_admins()
+returns integer
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select count(*)::integer
+    from public.staff_members
+   where role = 'admin' and active;
+$$;
+
+--  Grant a role to an account that already exists in Supabase Auth. The account
+--  itself is created by the browser (see src/lib/staff.ts); the role is decided
+--  here, by an admin, and nowhere else. A staff caller is refused outright, so
+--  this is not a door to promotion.
+create or replace function public.admin_add_staff(
+  p_email text,
+  p_role  text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := lower(trim(coalesce(p_email, '')));
+  v_role  text := case when p_role = 'admin' then 'admin' else 'staff' end;
+  v_uid   uuid;
+  v_name  text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  select u.id,
+         coalesce(nullif(split_part(coalesce(u.email, v_email), '@', 1), ''), 'Team')
+    into v_uid, v_name
+    from auth.users u
+   where lower(u.email) = v_email
+   limit 1;
+
+  if v_uid is null then
+    raise exception
+      'No Sign-in account exists for %. Create the account first, then add the role.',
+      v_email;
+  end if;
+
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, v_name, v_role, true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set role  = excluded.role,
+        email = excluded.email,
+        active = true;
+
+  return jsonb_build_object('ok', true, 'userId', v_uid, 'email', v_email, 'role', v_role);
+end $$;
+
+--  Change a role. Refuses to remove the last admin.
+create or replace function public.admin_set_staff_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_current text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  select role into v_current from public.staff_members where user_id = p_user_id;
+  if v_current is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if v_current = 'admin'
+     and p_role = 'staff'
+     and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — make someone else an admin first.';
+  end if;
+
+  update public.staff_members
+     set role = p_role
+   where user_id = p_user_id;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'role', p_role);
+end $$;
+
+--  Turn portal access on or off without touching the role. Same last-admin rule.
+create or replace function public.admin_set_staff_active(
+  p_user_id uuid,
+  p_active  boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role   text;
+  v_active boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select role, active into v_role, v_active
+    from public.staff_members where user_id = p_user_id;
+  if v_role is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if not p_active and v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be deactivated.';
+  end if;
+
+  update public.staff_members
+     set active = coalesce(p_active, false)
+   where user_id = p_user_id;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'active', p_active);
+end $$;
+
+--  Remove someone from the team. Their Supabase Auth account is left alone —
+--  deleting that is an owner decision made in the dashboard, not something this
+--  panel can do with a publishable key.
+create or replace function public.admin_remove_staff(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select role into v_role from public.staff_members where user_id = p_user_id;
+  if v_role is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be removed.';
+  end if;
+
+  delete from public.staff_members where user_id = p_user_id;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id);
+end $$;
+
+revoke all on function public.staff_sync_email() from public;
+revoke all on function public.admin_list_staff() from public;
+revoke all on function public.admin_add_staff(text, text) from public;
+revoke all on function public.admin_set_staff_role(uuid, text) from public;
+revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
+revoke all on function public.admin_remove_staff(uuid) from public;
+revoke all on function public.tribe_active_admins() from public;
+
+grant execute on function public.staff_sync_email() to authenticated;
+grant execute on function public.admin_list_staff() to authenticated;
+grant execute on function public.admin_add_staff(text, text) to authenticated;
+grant execute on function public.admin_set_staff_role(uuid, text) to authenticated;
+grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
+grant execute on function public.admin_remove_staff(uuid) to authenticated;
+grant execute on function public.tribe_active_admins() to authenticated;
 
 -- ------------------------------------------- 0. storage writes = staff ----
 --  The bucket was open to `anon` for insert, update and delete, which meant

@@ -25,7 +25,10 @@ rpc (name) as (values
   ('create_reservation'), ('create_preorder'), ('place_delivery_order'),
   ('tribe_throttle_guest'), ('tribe_rate_limit'), ('tribe_client_ip'),
   ('tribe_reference'), ('tribe_limit_signature_dishes'),
-  ('staff_bootstrap_state'), ('claim_admin')
+  ('staff_bootstrap_state'), ('claim_admin'),
+  ('staff_sync_email'), ('admin_list_staff'), ('admin_add_staff'),
+  ('admin_set_staff_role'), ('admin_set_staff_active'), ('admin_remove_staff'),
+  ('tribe_active_admins')
 ),
 bucket_policies (name) as (values
   ('tribe media read'), ('tribe media write'),

@@ -1,4 +1,5 @@
 import { SetupNotice } from "@/components/admin/SetupNotice";
+import { AccountSettings } from "@/components/staff/AccountSettings";
 import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
@@ -438,6 +439,12 @@ export default function StaffPortal() {
           <RecordsDesk />
         </div>
       </section>
+
+      {/* Credentials, for the person signed in. It cannot touch a role — the
+          team list and every promotion live in the admin portal. */}
+      <div className="mt-10 border-t border-border/70 pt-10">
+        <AccountSettings />
+      </div>
     </PortalFrame>
   );
 }

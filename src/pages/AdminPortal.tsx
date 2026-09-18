@@ -8,6 +8,8 @@ import { PreOrderManager } from "@/components/admin/PreOrderManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { SetupNotice } from "@/components/admin/SetupNotice";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
+import { StaffManager } from "@/components/admin/StaffManager";
+import { AccountSettings } from "@/components/staff/AccountSettings";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
@@ -128,6 +130,7 @@ export default function AdminPortal() {
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="promos">Promotions</TabsTrigger>
           <TabsTrigger value="records">Records</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -209,6 +212,15 @@ export default function AdminPortal() {
             </p>
           </div>
           <RecordsDesk />
+        </TabsContent>
+
+        <TabsContent value="team" className="flex flex-col gap-10">
+          <StaffManager />
+
+          {/* The owner's own credentials, same panel the floor team gets. */}
+          <div className="border-t border-border/70 pt-10">
+            <AccountSettings />
+          </div>
         </TabsContent>
       </Tabs>
 
