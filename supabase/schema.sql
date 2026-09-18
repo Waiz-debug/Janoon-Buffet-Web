@@ -519,70 +519,27 @@ begin
     'site_media', 'site_content', 'promotions', 'pre_order_items'
   ]
   loop
-    -- Each policy is explicitly checked in pg_policies before being dropped,
-    -- then immediately recreated.  This eliminates every possible failure mode:
-    -- wrong table reference, quoting mismatch, or stale state from a prior run.
-
     -- Legacy catch-all (PIN era).
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_all') then
-      execute 'drop policy ' || quote_ident(tbl || '_all')
-           || ' on public.' || quote_ident(tbl);
-    end if;
+    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
 
     -- Backward-compat: older copies used a single write policy.
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_write') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_write')
-           || ' on public.' || quote_ident(tbl);
-    end if;
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_write', tbl);
 
     -- Public catalogue read.
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_public_read') then
-      execute 'drop policy ' || quote_ident(tbl || '_public_read')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_public_read')
-         || ' on public.' || quote_ident(tbl)
-         || ' for select to anon, authenticated using (true)';
+    execute format('drop policy if exists %I on public.%I', tbl || '_public_read', tbl);
+    execute format('create policy %I on public.%I for select to anon, authenticated using (true)', tbl || '_public_read', tbl);
 
     -- Staff insert.
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_insert') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_insert')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_staff_insert')
-         || ' on public.' || quote_ident(tbl)
-         || ' for insert to authenticated with check (public.is_staff())';
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_insert', tbl);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.is_staff())', tbl || '_staff_insert', tbl);
 
     -- Staff update.
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_update') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_update')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_staff_update')
-         || ' on public.' || quote_ident(tbl)
-         || ' for update to authenticated using (public.is_staff())'
-         || ' with check (public.is_staff())';
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
+    execute format('create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())', tbl || '_staff_update', tbl);
 
     -- Staff delete.
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_delete') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_delete')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_staff_delete')
-         || ' on public.' || quote_ident(tbl)
-         || ' for delete to authenticated using (public.is_staff())';
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
+    execute format('create policy %I on public.%I for delete to authenticated using (public.is_staff())', tbl || '_staff_delete', tbl);
   end loop;
 end $$;
 
@@ -618,44 +575,16 @@ declare
 begin
   foreach tbl in array array['reservations', 'preorders', 'delivery_orders']
   loop
-    -- Same explicit-check pattern as the catalogue block above.
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_all') then
-      execute 'drop policy ' || quote_ident(tbl || '_all')
-           || ' on public.' || quote_ident(tbl);
-    end if;
+    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
 
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_read') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_read')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_staff_read')
-         || ' on public.' || quote_ident(tbl)
-         || ' for select to authenticated using (public.is_staff())';
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_read', tbl);
+    execute format('create policy %I on public.%I for select to authenticated using (public.is_staff())', tbl || '_staff_read', tbl);
 
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_update') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_update')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_staff_update')
-         || ' on public.' || quote_ident(tbl)
-         || ' for update to authenticated using (public.is_staff())'
-         || ' with check (public.is_staff())';
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
+    execute format('create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())', tbl || '_staff_update', tbl);
 
-    if exists (select 1 from pg_policies
-               where schemaname = 'public' and tablename = tbl
-                 and policyname = tbl || '_staff_delete') then
-      execute 'drop policy ' || quote_ident(tbl || '_staff_delete')
-           || ' on public.' || quote_ident(tbl);
-    end if;
-    execute 'create policy ' || quote_ident(tbl || '_staff_delete')
-         || ' on public.' || quote_ident(tbl)
-         || ' for delete to authenticated using (public.is_staff())';
+    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
+    execute format('create policy %I on public.%I for delete to authenticated using (public.is_staff())', tbl || '_staff_delete', tbl);
   end loop;
 end $$;
 
