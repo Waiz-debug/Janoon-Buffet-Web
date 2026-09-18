@@ -513,42 +513,45 @@ create policy "tribe media delete" on storage.objects
 do $$
 declare
   tbl text;
+  pol text; -- fully qualified policy identifier: "public"."<table>_<suffix>"
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
     'site_media', 'site_content', 'promotions', 'pre_order_items'
   ]
   loop
-    -- The old permissive policy from the PIN-era schema must go, or a re-run
-    -- would leave a `using (true)` policy sitting alongside the new ones.
-    -- Every name we are about to create is also dropped here, so the statement
-    -- is safe to re-run against a database that already has them.
-    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_public_read', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_insert', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
+    -- Drop every policy name we might have created in any prior run, then
+    -- recreate each one immediately after. The per-policy pairing makes it
+    -- impossible for a stale policy to survive: the DROP always runs against
+    -- the exact same qualified name the CREATE will use.
+
+    -- legacy catch-all (PIN era)
+    pol := quote_ident('public') || '.' || quote_ident(tbl || '_all');
+    execute 'drop policy if exists ' || quote_ident(tbl || '_all') || ' on ' || pol;
+
+    -- public catalogue read
+    pol := quote_ident('public') || '.' || quote_ident(tbl);
+    execute 'drop policy if exists ' || quote_ident(tbl || '_public_read') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_public_read') || ' on ' || pol
+      || ' for select to anon, authenticated using (true)';
+
+    -- staff insert
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_insert') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_staff_insert') || ' on ' || pol
+      || ' for insert to authenticated with check (public.is_staff())';
+
+    -- staff update
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_update') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_staff_update') || ' on ' || pol
+      || ' for update to authenticated using (public.is_staff()) with check (public.is_staff())';
+
+    -- staff delete
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_delete') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_staff_delete') || ' on ' || pol
+      || ' for delete to authenticated using (public.is_staff())';
+
     -- backward compat: older copies used this name for a single write policy
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_write', tbl);
-    -- Readable by everyone, including signed-out visitors.
-    execute format(
-      'create policy %I on public.%I for select to anon, authenticated using (true)',
-      tbl || '_public_read', tbl
-    );
-    -- Changed only by staff. `for all` would also cover SELECT, so the write
-    -- policies are split out explicitly.
-    execute format(
-      'create policy %I on public.%I for insert to authenticated with check (public.is_staff())',
-      tbl || '_staff_insert', tbl
-    );
-    execute format(
-      'create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())',
-      tbl || '_staff_update', tbl
-    );
-    execute format(
-      'create policy %I on public.%I for delete to authenticated using (public.is_staff())',
-      tbl || '_staff_delete', tbl
-    );
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_write') || ' on ' || pol;
   end loop;
 end $$;
 
@@ -581,25 +584,25 @@ drop policy if exists delivery_orders_guest_priced on public.delivery_orders;
 do $$
 declare
   tbl text;
+  pol text;
 begin
   foreach tbl in array array['reservations', 'preorders', 'delivery_orders']
   loop
-    execute format('drop policy if exists %I on public.%I', tbl || '_all', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_read', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_update', tbl);
-    execute format('drop policy if exists %I on public.%I', tbl || '_staff_delete', tbl);
-    execute format(
-      'create policy %I on public.%I for select to authenticated using (public.is_staff())',
-      tbl || '_staff_read', tbl
-    );
-    execute format(
-      'create policy %I on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())',
-      tbl || '_staff_update', tbl
-    );
-    execute format(
-      'create policy %I on public.%I for delete to authenticated using (public.is_staff())',
-      tbl || '_staff_delete', tbl
-    );
+    pol := quote_ident('public') || '.' || quote_ident(tbl);
+
+    execute 'drop policy if exists ' || quote_ident(tbl || '_all') || ' on ' || pol;
+
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_read') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_staff_read') || ' on ' || pol
+      || ' for select to authenticated using (public.is_staff())';
+
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_update') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_staff_update') || ' on ' || pol
+      || ' for update to authenticated using (public.is_staff()) with check (public.is_staff())';
+
+    execute 'drop policy if exists ' || quote_ident(tbl || '_staff_delete') || ' on ' || pol;
+    execute 'create policy ' || quote_ident(tbl || '_staff_delete') || ' on ' || pol
+      || ' for delete to authenticated using (public.is_staff())';
   end loop;
 end $$;
 
