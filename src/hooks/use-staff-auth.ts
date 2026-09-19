@@ -310,6 +310,79 @@ export function useStaffAuth() {
   const setupOwner = useCallback(
     async (email: string, password: string): Promise<OwnerSetupResult> => {
       const address = email.trim();
+
+      // ------------------------------------------------------------------
+      // PHASE 1 — Try to grant admin to an EXISTING auth user.
+      //
+      // This must happen BEFORE signUp: if the email already exists in
+      // Supabase Auth, calling signUp would trigger "User already registered"
+      // and signInWithPassword would require the existing password. Instead,
+      // claim_admin_for_email handles everything server-side: it looks up the
+      // auth user by email, creates/grants the admin record, and returns — no
+      // password needed, no duplicate Auth user, no signUp call.
+      // ------------------------------------------------------------------
+      const { data: existingClaim, error: existingErr } = await supabase.rpc(
+        "claim_admin_for_email",
+        { p_email: address },
+      );
+
+      if (!existingErr && (existingClaim as { ok?: boolean } | null)?.ok) {
+        // The email existed in Supabase Auth. Admin has been granted to that
+        // existing identity server-side. The user must now sign in with their
+        // existing password to get a session — we cannot create one without it.
+        console.warn(
+          `[tribe] admin granted to existing auth user: ${address}`,
+        );
+        return {
+          ok: false,
+          reason: "existing-account",
+          message: address,
+        };
+      }
+
+      // If the function failed, figure out why and decide what to do next.
+      if (existingErr) {
+        const msg = (existingErr.message ?? "").toLowerCase();
+
+        // The function is not deployed yet — fall through to the normal
+        // signUp flow below. This handles the common case where the SQL
+        // migration has not been run.
+        if (isMissingFunction(existingErr)) {
+          // fall through
+        }
+        // The email does not exist in auth.users — this is a brand-new user.
+        // Fall through to signUp to create the Auth account.
+        else if (msg.includes("no account found")) {
+          // fall through
+        }
+        // Admin already exists — refuse immediately.
+        else if (msg.includes("admin account already exists")) {
+          return { ok: false, reason: "claimed", message: existingErr.message };
+        }
+        // Staff cannot self-promote.
+        else if (msg.includes("staff accounts cannot")) {
+          return {
+            ok: false,
+            reason: "claimed",
+            message: existingErr.message,
+          };
+        }
+        // Any other error from the function — log it and fall through.
+        else {
+          console.warn(
+            `[tribe] claim_admin_for_email failed: ${existingErr.message}`,
+          );
+        }
+      }
+
+      // ------------------------------------------------------------------
+      // PHASE 2 — Brand-new user: create the Auth account, then claim.
+      //
+      // This path is only reached when the email does NOT already exist in
+      // Supabase Auth (or when claim_admin_for_email is not deployed yet).
+      // signUp will create the Auth user; claim_admin will record the admin
+      // role in staff_members.
+      // ------------------------------------------------------------------
       const emailRedirectTo =
         typeof window === "undefined" ? undefined : window.location.origin;
 
@@ -319,18 +392,12 @@ export function useStaffAuth() {
         options: { emailRedirectTo },
       });
 
-      // An address that already has an account is not a failure: the owner may
-      // have signed up on an earlier attempt and never finished. The password
-      // check below is the one that matters.
       if (error && !/already registered|already exists/i.test(error.message)) {
         return classifyAuthError(error.message);
       }
 
       let user = data.user;
       if (!data.session) {
-        // Either the project requires a confirmed address before it
-        // will issue a session, or the account already existed and this is a
-        // plain sign-in. Both are answered by trying.
         const attempt = await supabase.auth.signInWithPassword({
           email: address,
           password,
@@ -338,39 +405,16 @@ export function useStaffAuth() {
         if (attempt.error) {
           const message = attempt.error.message.toLowerCase();
           if (message.includes("confirm")) {
-            // Ask Supabase to send the link again, so the "we emailed you" the
-            // form shows is one that was actually just sent. A refusal here
-            // (rate limit, or delivery not configured) is not worth surfacing —
-            // the same message still tells them what to look for.
             await supabase.auth.resend({ type: "signup", email: address });
             return { ok: false, reason: "confirm-email" };
           }
           if (message.includes("fetch") || message.includes("network")) {
             return { ok: false, reason: "unreachable" };
           }
-          // The email already exists in Supabase Auth but the password doesn't
-          // match. Instead of showing a confusing error, grant admin to the
-          // existing account via a server-side function. The user can then sign
-          // in with their existing password.
-          const { data: claimData, error: claimErr } = await supabase.rpc(
-            "claim_admin_for_email",
-            { p_email: address },
-          );
-          if (!claimErr && (claimData as { ok?: boolean } | null)?.ok) {
-            return {
-              ok: false,
-              reason: "existing-account",
-              message: address,
-            };
-          }
-          // claim_admin_for_email failed — the function may not be deployed
-          // yet, or an admin already exists. Either way, the email definitely
-          // exists in Supabase Auth (signUp confirmed it), so tell the user to
-          // sign in with their existing password instead of showing the
-          // confusing "password does not match" error.
-          console.warn(
-            `[tribe] existing-email claim failed: ${claimErr?.message ?? "unknown"}`,
-          );
+          // The email exists in Auth but the password doesn't match. This
+          // happens when claim_admin_for_email is not deployed yet (we
+          // couldn't handle it in Phase 1). Show the existing-account
+          // message so the user knows to sign in with their existing password.
           return {
             ok: false,
             reason: "existing-account",
@@ -394,11 +438,6 @@ export function useStaffAuth() {
         return { ok: true, role: next.role };
       }
 
-      // The claim was refused. Either the restaurant already has an
-      // administrator, or this person is on the team already — signing in as
-      // themselves is the right ending, so ask the table before treating it as a
-      // failure. The database's own wording is logged for debugging and never
-      // shown to the person using the card.
       console.warn(`[tribe] admin claim refused: ${claim.error.message}`);
       const lookup = await staffLookup(user.id);
       if (lookup.ok && lookup.roles.length > 0) {
