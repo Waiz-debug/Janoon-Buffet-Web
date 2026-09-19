@@ -1,4 +1,7 @@
+import { Link } from "react-router";
 import { motion } from "framer-motion";
+import { ArrowLeft, Flame } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
@@ -6,20 +9,34 @@ export default function NotFound() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="min-h-screen flex flex-col"
+      className="flex min-h-screen flex-col items-center justify-center bg-background px-4"
     >
+      {/* Subtle hearth glow */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_45%_at_50%_40%,rgba(227,179,65,0.06),transparent_70%)]"
+      />
 
-      
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="max-w-5xl mx-auto relative px-4">
-          <div className="flex items-center justify-center min-h-[200px]">
-            <div className="text-center">
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
-              <p className="text-lg text-gray-600">Page Not Found</p>
-            </div>
-          </div>
-        </div>
+      <div className="flex flex-col items-center text-center">
+        <span className="flex size-14 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10 text-gold">
+          <Flame className="size-6" aria-hidden />
+        </span>
+
+        <h1 className="mt-6 font-display text-6xl font-semibold tracking-tight text-foreground">
+          404
+        </h1>
+
+        <p className="mt-3 max-w-sm text-base leading-relaxed text-muted-foreground">
+          That page does not exist — it may have been moved or is not part of the
+          restaurant site.
+        </p>
+
+        <Button asChild size="lg" className="mt-8 gap-2">
+          <Link to="/restaurant">
+            <ArrowLeft className="size-4" aria-hidden />
+            Back to the restaurant
+          </Link>
+        </Button>
       </div>
     </motion.div>
   );

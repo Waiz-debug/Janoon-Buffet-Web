@@ -43,7 +43,7 @@ export default function MenuDetail() {
             what is being served this evening.
           </p>
           <Button asChild className="gap-2">
-            <Link to="/#menu">
+            <Link to="/restaurant#menu">
               <ArrowLeft className="size-4" aria-hidden />
               Back to the menu
             </Link>
@@ -73,11 +73,11 @@ export default function MenuDetail() {
           aria-label="Breadcrumb"
           className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 pt-8 text-xs text-muted-foreground sm:px-6"
         >
-          <Link to="/#menu" className="transition-colors hover:text-gold">
+          <Link to="/restaurant#menu" className="transition-colors hover:text-gold">
             Menu
           </Link>
           <span aria-hidden>/</span>
-          <Link to="/#menu" className="transition-colors hover:text-gold">
+          <Link to="/restaurant#menu" className="transition-colors hover:text-gold">
             {category?.name ?? "Buffet"}
           </Link>
           <span aria-hidden>/</span>
@@ -255,7 +255,7 @@ export default function MenuDetail() {
                 Also from {category?.name ?? "the buffet"}
               </h2>
               <Link
-                to="/#menu"
+                to="/restaurant#menu"
                 className="text-xs tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:text-gold"
               >
                 Full menu
@@ -289,7 +289,7 @@ export default function MenuDetail() {
 
         <section className="mx-auto w-full max-w-6xl px-4 pb-4 sm:px-6">
           <Link
-            to="/#menu"
+            to="/restaurant#menu"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-gold"
           >
             <ArrowLeft className="size-4" aria-hidden />
