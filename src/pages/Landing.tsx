@@ -20,7 +20,6 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background">
-      <PromoBanner />
       <SiteHeader />
 
       <main className="pb-20 sm:pb-0">
@@ -32,8 +31,10 @@ export default function Landing() {
         <SocialProof />
 
         {/* Offers live below the main run of the page — the part a guest
-            reaches by scrolling, fed by the same promotions the strip at the
-            top reads. It renders nothing when the owner has none published. */}
+            reaches only by scrolling. The banner strip and the board are fed
+            by the same promotions the admin publishes; each renders nothing
+            when the owner has none active. */}
+        <PromoBanner />
         <PromotionsSection />
 
         <div className="py-16 sm:py-20">

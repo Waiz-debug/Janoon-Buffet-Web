@@ -128,14 +128,15 @@ export function OfferBadge() {
 }
 
 /**
- * Live promotional banners at the top of the public site.
+ * Live promotional banners for the public site.
  *
- * Deliberately big: this is the first thing a guest sees, so it renders as a
- * full-width hero strip rather than a thin notice bar. Each active promotion
- * from the admin portal appears as its own dismissible banner, supporting an
- * uploaded banner image, a bold headline, a countdown to the expiry time, and
- * automatic removal once that time passes — the `usePromotions(true)` feed
- * never returns an expired banner in the first place.
+ * Renders as a full-width hero strip placed mid-page (between Social Proof
+ * and the offers board, inside Landing's main flow), so a guest reaches it
+ * only by scrolling. Each active promotion from the admin portal appears as
+ * its own dismissible banner, supporting an uploaded banner image, a bold
+ * headline, a countdown to the expiry time, and automatic removal once that
+ * time passes — the `usePromotions(true)` feed never returns an expired
+ * banner in the first place.
  */
 export function PromoBanner() {
   const activePromos = usePromotions(true);
@@ -168,7 +169,7 @@ export function PromoBanner() {
   if (visible.length === 0) return null;
 
   return (
-    <div className="relative z-[60] flex flex-col">
+    <div className="relative z-0 flex flex-col">
       <AnimatePresence>
         {visible.map((promo) => (
           <motion.div

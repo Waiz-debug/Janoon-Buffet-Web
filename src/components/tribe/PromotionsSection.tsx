@@ -15,11 +15,11 @@ const MANAGE_HREF = "/admin?tab=promos";
 /**
  * The offers board — every live promotion, in one place.
  *
- * The banner at the very top is for the offer that cannot be missed; this is
- * the part a guest reaches by scrolling, so it holds the whole collection rather
- * than only the newest one. Both read the same `promotions` table, so publishing
- * an entry in the admin panel puts it on the strip *and* on this board with no
- * redeploy and no refresh on the guest's side.
+ * The banner strip above it surfaces the newest offer mid-scroll; this is the
+ * part a guest reaches by scrolling further, so it holds the whole collection
+ * rather than only the newest one. Both read the same `promotions` table, so
+ * publishing an entry in the admin panel puts it on the strip *and* on this
+ * board with no redeploy and no refresh on the guest's side.
  *
  * Nothing here is an admin surface: the manage link only appears for an account
  * whose `staff_members` row says `role = 'admin'`, and the route behind it is
@@ -60,7 +60,7 @@ export function PromotionsSection() {
           <SectionHeading
             eyebrow="Offers & specials"
             title="No offers are running right now"
-            description="Promotions you publish appear on this board and on the banner at the top of the page. Each one can carry its own graphic and an expiry time that removes it automatically."
+            description="Promotions you publish appear on this board and on the offer strip further up the page. Each one can carry its own graphic and an expiry time that removes it automatically."
           />
           <div className="mt-8 flex flex-wrap items-center gap-4 rounded-2xl border border-dashed border-border/70 bg-card/40 p-6">
             <span className="flex size-11 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
