@@ -106,7 +106,7 @@ export default function AuthLanding() {
   // A live session goes straight to its portal — no re-entry.
   useEffect(() => {
     if (isLoaded && session) {
-      navigate(portalPathFor(session.role), { replace: true });
+      navigate(portalPathFor(session.role, session.roles), { replace: true });
     }
   }, [isLoaded, session, navigate]);
 
@@ -157,8 +157,14 @@ export default function AuthLanding() {
     setSubmitting(true);
     const result = await signIn(email, password);
     if (result.ok) {
-      // Straight to the right desk for the role this account actually holds.
-      navigate(portalPathFor(result.role), { replace: true });
+      // If the user entered through the staff door, always go to /staff.
+      // If they entered through the admin door, go to /admin (which is
+      // where portalPathFor sends admin+staff users).
+      if (modalRole === "staff") {
+        navigate("/staff", { replace: true });
+      } else {
+        navigate(portalPathFor(result.role, result.roles), { replace: true });
+      }
       return;
     }
     setAttempts((count) => count + 1);

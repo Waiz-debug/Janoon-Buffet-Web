@@ -352,6 +352,23 @@ create table if not exists public.staff_members (
 
 alter table public.staff_members enable row level security;
 
+--  Junction table for multi-role support: one row per (user, role).
+--  A user can hold both admin and staff roles simultaneously.
+create table if not exists public.staff_member_roles (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  role       text not null check (role in ('staff', 'admin')),
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (user_id, role)
+);
+
+alter table public.staff_member_roles enable row level security;
+
+--  Seed junction table from existing staff_members data.
+insert into public.staff_member_roles (user_id, role, created_at)
+select sm.user_id, sm.role, sm.created_at
+  from public.staff_members sm
+  on conflict (user_id, role) do nothing;
+
 --  The policy that lets a member read their own row lives in the identity
 --  helpers section below, because it calls `is_staff()` — see the note there.
 
@@ -369,6 +386,9 @@ as $$
   select exists (
     select 1 from public.staff_members
      where user_id = auth.uid() and active
+  ) or exists (
+    select 1 from public.staff_member_roles r
+     where r.user_id = auth.uid()
   );
 $$;
 
@@ -382,6 +402,9 @@ as $$
   select exists (
     select 1 from public.staff_members
      where user_id = auth.uid() and active and role = 'admin'
+  ) or exists (
+    select 1 from public.staff_member_roles r
+     where r.user_id = auth.uid() and r.role = 'admin'
   );
 $$;
 
@@ -406,6 +429,12 @@ grant execute on function public.is_admin() to anon, authenticated;
 --  path to grant yourself access.
 drop policy if exists staff_members_select on public.staff_members;
 create policy staff_members_select on public.staff_members
+  for select to authenticated
+  using (user_id = auth.uid() or public.is_staff());
+
+-- staff_member_roles policy — same rules as staff_members.
+drop policy if exists staff_member_roles_select on public.staff_member_roles;
+create policy staff_member_roles_select on public.staff_member_roles
   for select to authenticated
   using (user_id = auth.uid() or public.is_staff());
 
@@ -489,12 +518,14 @@ begin
 
   lock table public.staff_members in exclusive mode;
 
-  --  Re-read after the lock: only an active admin closes the door. This is the
-  --  same test `staff_bootstrap_state()` reports, so the button and the claim
-  --  can never disagree.
+  --  Re-read after the lock: only an active admin closes the door. Checks both
+  --  the legacy table and the junction table.
   if exists (
     select 1 from public.staff_members
      where role = 'admin' and active
+  ) or exists (
+    select 1 from public.staff_member_roles
+     where role = 'admin'
   ) then
     raise exception 'An admin account already exists for this restaurant.'
       using errcode = '23505';
@@ -510,6 +541,11 @@ begin
   )
   on conflict (user_id) do update
     set role = 'admin', active = true, email = excluded.email;
+
+  -- Also add to junction table.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, 'admin', (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
 
   return jsonb_build_object('ok', true, 'role', 'admin', 'email', v_email);
 end $$;
@@ -589,6 +625,7 @@ begin
                'email',       sm.email,
                'displayName', sm.display_name,
                'role',        sm.role,
+               'roles',       coalesce(r.roles, jsonb_build_array(sm.role)),
                'active',      sm.active,
                'createdAt',   sm.created_at
              )
@@ -597,7 +634,12 @@ begin
            '[]'::jsonb
          )
     into v_rows
-    from public.staff_members sm;
+    from public.staff_members sm
+    left join lateral (
+      select jsonb_agg(r2.role) as roles
+        from public.staff_member_roles r2
+       where r2.user_id = sm.user_id
+    ) r on true;
 
   return v_rows;
 end $$;
@@ -657,6 +699,12 @@ begin
       v_email;
   end if;
 
+  -- Add to the junction table (multi-role support).
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  -- Also ensure a row in staff_members (legacy table).
   insert into public.staff_members
     (user_id, email, display_name, role, active, created_at)
   values (
@@ -664,9 +712,7 @@ begin
     (extract(epoch from now()) * 1000)::bigint
   )
   on conflict (user_id) do update
-    set role  = excluded.role,
-        email = excluded.email,
-        active = true;
+    set email = excluded.email, active = true;
 
   return jsonb_build_object('ok', true, 'userId', v_uid, 'email', v_email, 'role', v_role);
 end $$;
@@ -770,15 +816,119 @@ begin
     raise exception 'This is the only admin account — it cannot be removed.';
   end if;
 
+  -- Clean up junction table first.
+  delete from public.staff_member_roles where user_id = p_user_id;
+
   delete from public.staff_members where user_id = p_user_id;
 
   return jsonb_build_object('ok', true, 'userId', p_user_id);
 end $$;
 
+-- --------------------------------------- multi-role management -----------
+--  Grant a specific role to an existing team member.
+--  The role is added to the junction table; the primary role in staff_members
+--  is promoted to admin if the new role is admin.
+create or replace function public.admin_grant_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  if not exists (select 1 from public.staff_members where user_id = p_user_id) then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role)
+  values (p_user_id, p_role)
+  on conflict (user_id, role) do nothing;
+
+  -- Promote the primary role if granting admin.
+  if p_role = 'admin' then
+    update public.staff_members set role = 'admin'
+     where user_id = p_user_id and role = 'staff';
+  end if;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'grantedRole', p_role);
+end $$;
+
+--  Remove a specific role from a team member.
+--  Cannot remove the last admin role.
+create or replace function public.admin_remove_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  if p_role = 'admin' then
+    select count(*) into v_count
+      from public.staff_member_roles
+     where role = 'admin';
+    if v_count <= 1 then
+      raise exception 'This is the only admin account — cannot remove admin role.';
+    end if;
+  end if;
+
+  delete from public.staff_member_roles
+   where user_id = p_user_id and role = p_role;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'removedRole', p_role);
+end $$;
+
+--  Get all roles for a user (used by frontend).
+create or replace function public.staff_get_roles(
+  p_user_id uuid
+)
+returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    jsonb_agg(r.role order by case when r.role = 'admin' then 0 else 1 end),
+    '[]'::jsonb
+  )
+  from public.staff_member_roles r
+  where r.user_id = p_user_id
+    and exists (
+      select 1 from public.staff_members sm
+       where sm.user_id = p_user_id and sm.active
+    );
+$$;
+
 revoke all on function public.staff_sync_email() from public;
 revoke all on function public.admin_list_staff() from public;
 revoke all on function public.admin_add_staff(text, text) from public;
 revoke all on function public.admin_set_staff_role(uuid, text) from public;
+revoke all on function public.admin_grant_role(uuid, text) from public;
+revoke all on function public.admin_remove_role(uuid, text) from public;
+revoke all on function public.staff_get_roles(uuid) from public;
 revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
 revoke all on function public.admin_remove_staff(uuid) from public;
 revoke all on function public.tribe_active_admins() from public;

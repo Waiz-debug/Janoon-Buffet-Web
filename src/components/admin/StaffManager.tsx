@@ -4,8 +4,10 @@ import { Label } from "@/components/ui/label";
 import type { StaffRole } from "@/hooks/use-staff-auth";
 import {
   addStaffAccount,
+  grantRole,
   isMissingFunction,
   listStaff,
+  removeRole,
   removeStaff,
   sendPasswordReset,
   setStaffActive,
@@ -99,7 +101,7 @@ export function StaffManager() {
       setInitialPassword("");
       setAddDone(
         !result.createdSignIn
-          ? "That account already existed, so it has simply been given the role."
+          ? "That account already existed — the role has been granted to it."
           : result.usedResetLink
             ? "Account created and a password-setup link emailed. Their role is live already."
             : "Account created. They sign in with the password you set, and can change it from Your account.",
@@ -365,15 +367,18 @@ export function StaffManager() {
                       {member.email ?? "—"}
                     </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span
-                        className={
-                          member.role === "admin"
-                            ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-gold"
-                            : "rounded-full border border-border/70 px-2 py-0.5"
-                        }
-                      >
-                        {member.role}
-                      </span>
+                      {(member.roles.length > 0 ? member.roles : [member.role]).map((r) => (
+                        <span
+                          key={r}
+                          className={
+                            r === "admin"
+                              ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-gold"
+                              : "rounded-full border border-border/70 px-2 py-0.5"
+                          }
+                        >
+                          {r}
+                        </span>
+                      ))}
                       <span
                         className={
                           member.active
@@ -389,28 +394,78 @@ export function StaffManager() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={busyId === member.userId}
-                    onClick={() =>
-                      void run(
-                        member.userId,
-                        member.role === "admin"
-                          ? "Moved to staff"
-                          : "Promoted to admin",
-                        () =>
-                          setStaffRole(
-                            member.userId,
-                            member.role === "admin" ? "staff" : "admin",
-                          ),
-                      )
-                    }
-                  >
-                    {member.role === "admin" ? "Make staff" : "Make admin"}
-                  </Button>
+                  {!member.roles.includes("admin") ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={busyId === member.userId}
+                      onClick={() =>
+                        void run(
+                          member.userId,
+                          "Admin role granted",
+                          () => grantRole(member.userId, "admin"),
+                        )
+                      }
+                    >
+                      Grant admin
+                    </Button>
+                  ) : null}
+                  {!member.roles.includes("staff") ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={busyId === member.userId}
+                      onClick={() =>
+                        void run(
+                          member.userId,
+                          "Staff role granted",
+                          () => grantRole(member.userId, "staff"),
+                        )
+                      }
+                    >
+                      Grant staff
+                    </Button>
+                  ) : null}
+                  {member.roles.length > 1 && member.roles.includes("staff") ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={busyId === member.userId}
+                      onClick={() =>
+                        void run(
+                          member.userId,
+                          "Staff role removed",
+                          () => removeRole(member.userId, "staff"),
+                        )
+                      }
+                    >
+                      Remove staff
+                    </Button>
+                  ) : null}
+                  {member.roles.length > 1 && member.roles.includes("admin") ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={busyId === member.userId}
+                      onClick={() =>
+                        void run(
+                          member.userId,
+                          "Admin role removed",
+                          () => removeRole(member.userId, "admin"),
+                        )
+                      }
+                    >
+                      Remove admin
+                    </Button>
+                  ) : null}
 
                   <Button
                     type="button"

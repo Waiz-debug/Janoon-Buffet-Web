@@ -124,7 +124,7 @@ export function AccountSettings() {
         </h2>
         <p className="text-sm text-muted-foreground">
           Change the email or password you sign in with. Your{" "}
-          <span className="text-gold">{session?.role ?? "team"}</span> access
+          <span className="text-gold">{(session?.roles ?? [session?.role ?? "team"]).join(", ")}</span> access
           stays exactly as it is — this page cannot change a role, and no one can
           read your password, including the owner.
         </p>

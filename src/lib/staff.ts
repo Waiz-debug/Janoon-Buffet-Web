@@ -21,6 +21,7 @@ export type StaffMember = {
   email: string | null;
   displayName: string | null;
   role: StaffRole;
+  roles: StaffRole[];
   active: boolean;
   createdAt: number;
 };
@@ -60,6 +61,7 @@ export async function listStaff(): Promise<StaffMember[]> {
     email: string | null;
     displayName: string | null;
     role: string;
+    roles?: string[];
     active: boolean;
     createdAt: number;
   }[];
@@ -68,6 +70,8 @@ export async function listStaff(): Promise<StaffMember[]> {
     email: row.email,
     displayName: row.displayName,
     role: row.role === "admin" ? "admin" : "staff",
+    roles: (row.roles ?? [row.role])
+      .filter((r): r is StaffRole => r === "admin" || r === "staff"),
     active: row.active === true,
     createdAt: row.createdAt ?? 0,
   }));
@@ -147,6 +151,14 @@ export async function setStaffActive(userId: string, active: boolean) {
 
 export async function removeStaff(userId: string) {
   await rpc("admin_remove_staff", { p_user_id: userId });
+}
+
+export async function grantRole(userId: string, role: StaffRole) {
+  await rpc("admin_grant_role", { p_user_id: userId, p_role: role });
+}
+
+export async function removeRole(userId: string, role: StaffRole) {
+  await rpc("admin_remove_role", { p_user_id: userId, p_role: role });
 }
 
 /** Send a member a link to set a new password. Their role is untouched. */

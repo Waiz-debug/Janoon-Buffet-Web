@@ -69,7 +69,7 @@ export function PortalFrame({
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
         <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
           <ShieldCheck className="size-3.5" aria-hidden />
-          {session ? `${session.email} · ${session.role}` : "Staff access"}
+          {session ? `${session.email} · ${session.roles.join(", ")}` : "Staff access"}
         </span>
         <h1 className="mt-4 font-display text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
           {title}

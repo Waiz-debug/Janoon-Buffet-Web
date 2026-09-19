@@ -6,7 +6,10 @@ export type StaffRole = "staff" | "admin";
 export type StaffSession = {
   userId: string;
   email: string;
+  /** The user's primary role (from staff_members.role). */
   role: StaffRole;
+  /** Every role this user holds (admin, staff, or both). */
+  roles: StaffRole[];
 };
 
 /**
@@ -30,8 +33,18 @@ export const UNCONFIGURED_MESSAGE =
   "Sign-in is not available right now. Please try again later.";
 
 /** Staff and admin land on their own dashboards after the same check. */
-export function portalPathFor(role: StaffRole): string {
-  return role === "staff" ? "/staff" : "/admin";
+/**
+ * Which portal this session can reach.
+ *
+ * Admin-only → /admin.
+ * Staff-only  → /staff.
+ * Both roles  → /admin (the higher door; the user can navigate
+ *                to /staff themselves if they prefer that view).
+ */
+export function portalPathFor(role: StaffRole, roles?: StaffRole[]): string {
+  const effective = roles ?? [role];
+  if (effective.includes("admin")) return "/admin";
+  return "/staff";
 }
 
 /**
@@ -43,12 +56,34 @@ export function portalPathFor(role: StaffRole): string {
  * customer, and is deliberately not staff.
  */
 type StaffLookup =
-  /** The query ran: `role` is null when the account is not on the team. */
-  | { ok: true; role: StaffRole | null }
+  /** The query ran: `roles` is empty when the account is not on the team. */
+  | { ok: true; roles: StaffRole[] }
   /** The query itself failed — nearly always a missing schema. */
   | { ok: false; message: string };
 
-async function staffLookup(userId: string): Promise<StaffLookup> {
+/**
+ * Look up a user's roles from the database.
+ *
+ * First checks staff_member_roles for all roles, then falls back to
+ * staff_members.role for backwards compatibility.
+ */
+async function staffLookup(
+  userId: string,
+): Promise<{ ok: true; roles: StaffRole[] } | { ok: false; message: string }> {
+  // Try the junction table first (multi-role support).
+  const { data: roleRows, error: roleErr } = await supabase
+    .from("staff_member_roles")
+    .select("role")
+    .eq("user_id", userId);
+
+  if (!roleErr && roleRows && roleRows.length > 0) {
+    const roles = roleRows
+      .map((r) => (r as { role?: string }).role)
+      .filter((r): r is StaffRole => r === "admin" || r === "staff");
+    if (roles.length > 0) return { ok: true, roles };
+  }
+
+  // Fallback: legacy single-role row in staff_members.
   const { data, error } = await supabase
     .from(STAFF_TABLE)
     .select("role")
@@ -59,14 +94,14 @@ async function staffLookup(userId: string): Promise<StaffLookup> {
     return { ok: false, message: error.message };
   }
   const role = (data as { role?: string } | null)?.role;
-  return {
-    ok: true,
-    role: role === "admin" || role === "staff" ? role : null,
-  };
+  if (role === "admin" || role === "staff") {
+    return { ok: true, roles: [role] };
+  }
+  return { ok: true, roles: [] };
 }
 
 export type SignInResult =
-  | { ok: true; role: StaffRole }
+  | { ok: true; role: StaffRole; roles: StaffRole[] }
   | {
       ok: false;
       reason: "credentials" | "not-staff" | "unreachable" | "unconfigured";
@@ -144,9 +179,11 @@ export function useStaffAuth() {
       }
       const lookup = await staffLookup(user.id);
       if (!active) return;
-      const role = lookup.ok ? lookup.role : null;
+      const roles = lookup.ok ? lookup.roles : [];
       setSession(
-        role ? { userId: user.id, email: user.email ?? "", role } : null,
+        roles.length > 0
+          ? { userId: user.id, email: user.email ?? "", role: roles[0], roles }
+          : null,
       );
       setIsLoaded(true);
     };
@@ -186,7 +223,7 @@ export function useStaffAuth() {
         await supabase.auth.signOut();
         return { ok: false, reason: "unconfigured" };
       }
-      if (!lookup.role) {
+      if (lookup.roles.length === 0) {
         // Signed in, but not a member of staff: never leave that session open.
         await supabase.auth.signOut();
         return { ok: false, reason: "not-staff" };
@@ -195,11 +232,12 @@ export function useStaffAuth() {
       const next: StaffSession = {
         userId: data.user.id,
         email: data.user.email ?? "",
-        role: lookup.role,
+        role: lookup.roles[0],
+        roles: lookup.roles,
       };
       setSession(next);
       setIsLoaded(true);
-      return { ok: true, role: next.role };
+      return { ok: true, role: next.role, roles: next.roles };
     },
     [],
   );
@@ -321,6 +359,7 @@ export function useStaffAuth() {
           userId: user.id,
           email: user.email ?? address,
           role: "admin",
+          roles: ["admin"],
         };
         setSession(next);
         setIsLoaded(true);
@@ -334,11 +373,12 @@ export function useStaffAuth() {
       // shown to the person using the card.
       console.warn(`[tribe] admin claim refused: ${claim.error.message}`);
       const lookup = await staffLookup(user.id);
-      if (lookup.ok && lookup.role) {
+      if (lookup.ok && lookup.roles.length > 0) {
         const next: StaffSession = {
           userId: user.id,
           email: user.email ?? address,
-          role: lookup.role,
+          role: lookup.roles[0],
+          roles: lookup.roles,
         };
         setSession(next);
         setIsLoaded(true);

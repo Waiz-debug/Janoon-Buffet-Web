@@ -43,8 +43,9 @@ export function RequireRole({
   }
 
   // The row in `staff_members` decides, and `/admin` asks it for `admin` — not
-  // merely for "someone who works here".
-  if (role === "admin" && session.role !== "admin") {
+  // merely for "someone who works here". With multi-role support, we check
+  // the roles array to see if the user holds the required role.
+  if (role === "admin" && !session.roles.includes("admin")) {
     return <Navigate to="/staff" replace />;
   }
 
