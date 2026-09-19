@@ -1928,3 +1928,47 @@ end $$;
 --      left join public.menu_addons a on a.category = c.id
 --     group by c.id, c.name, c.sort_order, c.active
 --     order by c.sort_order;
+
+-- ============================================================================
+--  Factory reset -- staff & admin accounts
+--  Removes every row from staff_members and deletes every Supabase Auth user.
+--  After this, staff_bootstrap_state() returns {claimable: true} and
+--  claim_admin() is open to the very next account that signs up.
+--
+--  THIS IS A ONE-TIME DESTRUCTIVE OPERATION.  Run it from the Supabase
+--  SQL Editor only -- it is deliberately NOT exposed as an RPC so it can
+--  never be called from the frontend.
+--
+--    select public.factory_reset_staff();
+-- ============================================================================
+create or replace function public.factory_reset_staff()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_staff integer := 0;
+  v_auth  integer := 0;
+begin
+  -- 1. Count and wipe staff_members (RLS-free because security definer)
+  select count(*) into v_staff from public.staff_members;
+  delete from public.staff_members;
+
+  -- 2. Count and wipe every Supabase Auth user.  This is required because
+  --    claim_admin() gates on "the caller must be the very first auth user
+  --    by created_at" -- leaving old users in auth.users would block the new
+  --    owner from ever claiming.  Deleting from auth.users cascades to
+  --    auth.refresh_tokens, auth.sessions, auth.instances, etc.
+  select count(*) into v_auth from auth.users;
+  delete from auth.users;
+
+  return jsonb_build_object(
+    'ok',                    true,
+    'staff_members_cleared', v_staff,
+    'auth_users_deleted',    v_auth
+  );
+end $$;
+
+-- Only callable from the SQL Editor -- never grant to anon or authenticated.
+revoke all on function public.factory_reset_staff() from public;
