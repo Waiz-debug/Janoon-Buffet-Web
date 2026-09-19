@@ -158,7 +158,7 @@ export function AccountSettings() {
               autoComplete="email"
               inputMode="email"
               spellCheck={false}
-              placeholder="name@tribeoftaste.pk"
+              placeholder="name@janoon.pk"
               className={inputClass}
               onChange={(event) => {
                 setEmailError(null);

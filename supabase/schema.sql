@@ -1,5 +1,5 @@
 -- ============================================================================
---  Tribe of Taste — Supabase schema
+--  Janoon LHR Gulberg — Supabase schema
 --  Paste this whole file into the Supabase SQL editor and run it once.
 --  It is idempotent: re-running it will not drop or duplicate anything.
 --

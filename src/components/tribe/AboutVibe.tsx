@@ -35,7 +35,7 @@ export function AboutVibe() {
             <SectionHeading
               eyebrow="The Experience"
               title="An open-air table in Lahore, served whenever your family is hungry"
-              description="Tribe of Taste was built on a single idea: good desi cooking should not keep office hours. Arrive after a wedding, before a shift, or on a slow Friday night — the coals are always lit."
+              description="Janoon LHR Gulberg was built on a single idea: good desi cooking should not keep office hours. Arrive after a wedding, before a shift, or on a slow Friday night — the coals are always lit."
             />
 
             <div className="flex flex-col gap-4">
@@ -78,7 +78,7 @@ export function AboutVibe() {
                   EXPERIENCE_MEDIA.ambiance.slot,
                   EXPERIENCE_MEDIA.ambiance.url,
                 )}
-                alt="Open-air seating at Tribe of Taste"
+                alt="Open-air seating at Janoon LHR Gulberg"
                 className="col-span-5 h-52 w-full rounded-3xl border border-border/70 object-cover sm:h-64"
               />
               <SmartImage
@@ -107,7 +107,7 @@ export function AboutVibe() {
                 coming.&rdquo;
               </blockquote>
               <figcaption className="mt-4 text-xs tracking-wide text-muted-foreground uppercase">
-                A regular from DHA Phase 5
+                A regular from Gulberg
               </figcaption>
             </figure>
           </motion.div>

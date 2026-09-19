@@ -10,16 +10,13 @@ import {
 } from "lucide-react";
 
 const MAPS_EMBED_URL =
-  "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3401.2!2d74.378!3d31.469!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3919011a98e0b1b1%3A0x42e5b3b3b3b3b3b3!2sNatha%20Singh%20Wala%2C%20DHA%20Phase%205%2C%20Lahore!5e0!3m2!1sen!2spk!4v1";
+  "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3405.2!2d74.348!3d31.516!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3919047d7d7d7d7d%3A0x1234567890abcdef!2sGulberg%2C%20Lahore!5e0!3m2!1sen!2spk!4v1";
 
 const INFO_ITEMS = [
   {
     icon: MapPin,
     title: "Find us",
-    lines: [
-      "Natha Singh Wala, near DHA Phase 5",
-      "Lahore, Punjab, Pakistan",
-    ],
+    lines: ["Gulberg, Lahore", "Punjab, Pakistan"],
     action: {
       label: "Open in Google Maps",
       href: RESTAURANT.mapsUrl,
@@ -38,8 +35,8 @@ const INFO_ITEMS = [
     title: "Contact",
     lines: [RESTAURANT.phoneDisplay, "WhatsApp available on the same number"],
     action: {
-      label: "Call now",
-      href: RESTAURANT.phoneHref,
+      label: "WhatsApp us",
+      href: RESTAURANT.whatsappUrl,
     },
   },
   {
@@ -57,7 +54,7 @@ export function LocationMap() {
           {/* Map embed */}
           <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card/40">
             <iframe
-              title="Tribe of Taste location on Google Maps"
+              title="Janoon LHR Gulberg location on Google Maps"
               src={MAPS_EMBED_URL}
               width="100%"
               height="400"
@@ -87,7 +84,7 @@ export function LocationMap() {
               </span>
               <div>
                 <p className="font-display text-lg font-semibold">
-                  Visit us in DHA Phase 5
+                  Visit us in Gulberg
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Open-air terrace with parking alongside

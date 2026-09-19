@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT, TESTIMONIALS } from "@/lib/restaurant";
 import { motion } from "framer-motion";
-import { Instagram, Star } from "lucide-react";
+import { Instagram, Music2, Star } from "lucide-react";
 
 function StarRating({ value }: { value: number }) {
   const percentage = (value / 5) * 100;
@@ -121,16 +121,32 @@ export function SocialProof() {
               Gallery
             </h3>
             <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-              Six tiles from the terrace and the coals at Natha Singh Wala,
-              updated from our kitchen as the week goes on.
+              Six tiles from the terrace and the coals in Gulberg, updated from
+              our kitchen as the week goes on.
             </p>
           </div>
-          <Button asChild variant="outline" className="gap-2 self-start border-gold/30">
-            <a href={RESTAURANT.instagramUrl} target="_blank" rel="noreferrer">
-              <Instagram className="size-4" aria-hidden />
-              Follow us
-            </a>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            <Button asChild variant="outline" className="gap-2 border-gold/30">
+              <a
+                href={RESTAURANT.instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Instagram className="size-4" aria-hidden />
+                Follow us
+              </a>
+            </Button>
+            <Button asChild variant="outline" className="gap-2 border-gold/30">
+              <a
+                href={RESTAURANT.tiktokUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Music2 className="size-4" aria-hidden />
+                TikTok
+              </a>
+            </Button>
+          </div>
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

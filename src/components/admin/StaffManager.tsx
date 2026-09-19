@@ -183,7 +183,7 @@ export function StaffManager() {
               value={email}
               inputMode="email"
               spellCheck={false}
-              placeholder="name@tribeoftaste.pk"
+              placeholder="name@janoon.pk"
               className="h-11 rounded-xl bg-background/60"
               onChange={(event) => {
                 setAddError(null);

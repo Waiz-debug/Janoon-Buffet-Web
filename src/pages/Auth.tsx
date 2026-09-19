@@ -103,7 +103,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <div className="mb-4 mt-4 flex justify-center">
                   <button
                     type="button"
-                    aria-label="Back to the Tribe of Taste website"
+                    aria-label="Back to the Janoon LHR Gulberg website"
                     onClick={() => navigate("/")}
                     className="flex size-14 items-center justify-center rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/25 to-ember/20 text-gold"
                   >

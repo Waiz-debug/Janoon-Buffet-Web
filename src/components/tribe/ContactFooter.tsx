@@ -1,7 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { RESTAURANT } from "@/lib/restaurant";
-import { Clock, Facebook, Flame, Instagram, MapPin, Phone } from "lucide-react";
+import {
+  Clock,
+  Facebook,
+  Flame,
+  Instagram,
+  MapPin,
+  MessageCircle,
+  Music2,
+  Phone,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Link } from "react-router";
 
@@ -15,11 +24,18 @@ type ContactCard = {
 
 const CONTACT_CARDS: ContactCard[] = [
   {
+    icon: MessageCircle,
+    label: "WhatsApp us",
+    value: RESTAURANT.whatsappDisplay,
+    href: RESTAURANT.whatsappUrl,
+    hint: "Reservations, large family tables, takeaway",
+  },
+  {
     icon: Phone,
-    label: "Call or WhatsApp",
+    label: "Call us",
     value: RESTAURANT.phoneDisplay,
     href: RESTAURANT.phoneHref,
-    hint: "Reservations, large family tables, takeaway",
+    hint: "Same number for calls and WhatsApp",
   },
   {
     icon: MapPin,
@@ -82,14 +98,13 @@ export function ContactFooter() {
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
               All-you-can-eat Pakistani BBQ, traditional handi, Lahori fast bites
-              and desi desserts — served in the open air beside Natha Singh Wala,
-              minutes from DHA Phase 5.
+              and desi desserts — served in the open air in Gulberg, Lahore.
             </p>
             <div className="flex items-center gap-3">
               <a
                 href={RESTAURANT.instagramUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 aria-label="Instagram"
                 className="flex size-10 items-center justify-center rounded-xl border border-border/70 text-muted-foreground transition-colors hover:border-gold/40 hover:text-gold"
               >
@@ -98,16 +113,34 @@ export function ContactFooter() {
               <a
                 href={RESTAURANT.facebookUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 aria-label="Facebook"
                 className="flex size-10 items-center justify-center rounded-xl border border-border/70 text-muted-foreground transition-colors hover:border-gold/40 hover:text-gold"
               >
                 <Facebook className="size-4" />
               </a>
               <a
+                href={RESTAURANT.tiktokUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="TikTok"
+                className="flex size-10 items-center justify-center rounded-xl border border-border/70 text-muted-foreground transition-colors hover:border-gold/40 hover:text-gold"
+              >
+                <Music2 className="size-4" />
+              </a>
+              <a
+                href={RESTAURANT.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="WhatsApp"
+                className="flex size-10 items-center justify-center rounded-xl border border-border/70 text-muted-foreground transition-colors hover:border-gold/40 hover:text-gold"
+              >
+                <MessageCircle className="size-4" />
+              </a>
+              <a
                 href={RESTAURANT.instagramUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="text-sm text-muted-foreground transition-colors hover:text-gold"
               >
                 {RESTAURANT.instagramHandle}
@@ -115,7 +148,7 @@ export function ContactFooter() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {CONTACT_CARDS.map((card) => {
               const content = (
                 <>

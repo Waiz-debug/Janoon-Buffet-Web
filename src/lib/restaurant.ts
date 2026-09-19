@@ -1,8 +1,8 @@
 /**
- * Tribe of Taste — single source of truth for public site content.
+ * Janoon LHR Gulberg — single source of truth for public site content.
  *
- * Photos: swap these Unsplash placeholders for real photos of the Natha Singh
- * Wala seating area and live counters. Every image degrades to a themed tile
+ * Photos: swap these Unsplash placeholders for real photos of the Gulberg
+ * seating area and live counters. Every image degrades to a themed tile
  * if it fails to load, so the layout never breaks.
  */
 
@@ -10,20 +10,26 @@ const unsplash = (id: string, width = 1000) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=70`;
 
 export const RESTAURANT = {
-  name: "Tribe of Taste",
+  name: "Janoon LHR Gulberg",
   tagline: "24/7 open buffet",
-  phoneDisplay: "0322 8543333",
-  phoneHref: "tel:+923228543333",
-  address: "Natha Singh Wala, near DHA Phase 5, Lahore",
+  phoneDisplay: "0333 4363996",
+  phoneHref: "tel:+923334363996",
+  /** WhatsApp click-to-chat — international format, no leading zero. */
+  whatsappNumber: "923334363996",
+  whatsappUrl: "https://wa.me/923334363996",
+  whatsappDisplay: "0333 4363996",
+  address: "Gulberg, Lahore",
   hours: "Open 24 hours, every day",
   rating: 4.6,
   reviewCount: 72,
   buffetRange: "Rs 2,000 – 3,000",
-  instagramHandle: "@tribeoftaste",
-  instagramUrl: "https://www.instagram.com/tribeoftaste/",
-  facebookUrl: "https://www.facebook.com/p/TRIBE-of-TASTE-61559778373537",
+  instagramHandle: "@junoonrestaurant",
+  instagramUrl:
+    "https://www.instagram.com/junoonrestaurant?utm_source=ig_web_button_share_sheet&stkn=ZDNlZDc0MzIxNw==",
+  facebookUrl: "https://www.facebook.com/junoonrestaurantpk/",
+  tiktokUrl: "https://www.tiktok.com/@junoonrestaurant",
   mapsUrl:
-    "https://www.google.com/maps/search/?api=1&query=Tribe+of+Taste+Natha+Singh+Wala+DHA+Phase+5+Lahore",
+    "https://www.google.com/maps/search/?api=1&query=Janoon+Gulberg+Lahore",
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
 } as const;
 
@@ -140,7 +146,7 @@ export const BOOKING_PROMISES = [
   },
   {
     title: "Groups over 12",
-    body: "Call 0322 8543333 and our floor team will set up joined tables for you.",
+    body: "Call 0333 4363996 and our floor team will set up joined tables for you.",
   },
 ] as const;
 

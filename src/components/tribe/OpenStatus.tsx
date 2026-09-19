@@ -2,13 +2,13 @@ import { cn } from "@/lib/utils";
 import { Clock } from "lucide-react";
 
 /**
- * Live open/closed indicator. Tribe of Taste is 24/7, so this always shows
+ * Live open/closed indicator. Janoon LHR Gulberg is 24/7, so this always shows
  * "Open now" with a pulsing green dot. Built as a standalone component so
  * it can be dropped into the header or anywhere else, and easily extended
  * if hours change in the future.
  */
 export function OpenStatus({ className }: { className?: string }) {
-  // Tribe of Taste is open 24 hours — no closing logic needed.
+  // Janoon LHR Gulberg is open 24 hours — no closing logic needed.
   const isOpen = true;
 
   return (

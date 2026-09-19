@@ -276,7 +276,7 @@ export default function AuthLanding() {
                 <Flame className="size-4" aria-hidden />
               </span>
               <span className="text-[0.65rem] font-medium uppercase tracking-[0.24em] text-foreground/80">
-                Lahore · Natha Singh Wala
+                Lahore · Gulberg
               </span>
             </div>
             <a
@@ -298,7 +298,7 @@ export default function AuthLanding() {
             className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/55 px-4 py-1.5 text-[0.68rem] font-medium uppercase tracking-[0.22em] text-gold backdrop-blur"
           >
             <Flame className="size-3.5" aria-hidden />
-            Open-air terrace · minutes from DHA Phase 5
+            Open-air terrace · Gulberg, Lahore
           </motion.span>
 
           <motion.h1
@@ -307,9 +307,9 @@ export default function AuthLanding() {
             transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
             className="mt-6 font-display text-5xl leading-[1.02] font-semibold tracking-tight text-balance sm:text-7xl"
           >
-            Tribe of{" "}
+            Janoon{" "}
             <span className="bg-gradient-to-r from-gold via-gold to-ember bg-clip-text text-transparent">
-              Taste
+              LHR Gulberg
             </span>
           </motion.h1>
 
@@ -434,7 +434,7 @@ export default function AuthLanding() {
             </a>
             <span className="inline-flex items-center gap-2">
               <MapPin className="size-3.5 text-gold/70" aria-hidden />
-              Natha Singh Wala · near DHA Phase 5, Lahore
+              Gulberg · Lahore, Pakistan
             </span>
           </div>
 
@@ -471,7 +471,7 @@ export default function AuthLanding() {
           </div>
 
           <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
-            © {new Date().getFullYear()} Tribe of Taste · 24/7 open buffet
+            © {new Date().getFullYear()} Janoon LHR Gulberg · 24/7 open buffet
           </p>
         </motion.div>
       </footer>
@@ -729,7 +729,7 @@ function SignInModal({
                 setEmail(event.target.value);
               }}
               className={inputClass}
-              placeholder="owner@tribeoftaste.pk"
+              placeholder="owner@janoon.pk"
             />
           </div>
 

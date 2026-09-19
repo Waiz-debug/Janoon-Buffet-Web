@@ -26,7 +26,7 @@ const HERO_STATS = [
     label: "per person, unlimited"
   },
   { icon: Clock, value: "Open 24 hours", label: "seating all night" },
-  { icon: MapPin, value: "Open-air terrace", label: "Natha Singh Wala, Lahore" },
+  { icon: MapPin, value: "Open-air terrace", label: "Gulberg, Lahore" },
 ] as const;
 
 const container = {
@@ -76,7 +76,7 @@ export function Hero() {
             className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/60 px-3.5 py-1.5 text-[0.7rem] font-medium tracking-[0.18em] text-gold uppercase backdrop-blur"
           >
             <Flame className="size-3.5" aria-hidden />
-            Natha Singh Wala · Near DHA Phase 5, Lahore
+            Gulberg · Lahore
           </motion.span>
 
           <motion.h1
@@ -92,8 +92,8 @@ export function Hero() {
           >
             {RESTAURANT.name} is Lahore&apos;s open-air, all-you-can-eat buffet:
             charcoal grills, clay-pot handi and desi desserts, laid out on the
-            terrace at Natha Singh Wala, minutes from DHA Phase 5. Reserve your
-            table in advance and be seated on arrival.
+            terrace in Gulberg. Reserve your table in advance and be seated on
+            arrival.
           </motion.p>
 
           <motion.div
