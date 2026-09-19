@@ -21,7 +21,7 @@ export const RESTAURANT = {
   buffetRange: "Rs 2,000 – 3,000",
   instagramHandle: "@tribeoftaste",
   instagramUrl: "https://www.instagram.com/tribeoftaste/",
-  facebookUrl: "https://www.facebook.com/search/top?q=tribe%20of%20taste%20lahore",
+  facebookUrl: "https://www.facebook.com/p/TRIBE-of-TASTE-61559778373537",
   mapsUrl:
     "https://www.google.com/maps/search/?api=1&query=Tribe+of+Taste+Natha+Singh+Wala+DHA+Phase+5+Lahore",
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
