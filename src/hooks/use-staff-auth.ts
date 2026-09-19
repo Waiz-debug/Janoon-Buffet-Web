@@ -122,6 +122,7 @@ export type OwnerSetupResult =
         | "confirm-email"
         | "claimed"
         | "credentials"
+        | "existing-account"
         | "weak-password"
         | "invalid-email"
         | "unreachable"
@@ -347,6 +348,26 @@ export function useStaffAuth() {
           if (message.includes("fetch") || message.includes("network")) {
             return { ok: false, reason: "unreachable" };
           }
+          // The email already exists in Supabase Auth but the password doesn't
+          // match. Instead of showing a confusing error, grant admin to the
+          // existing account via a server-side function. The user can then sign
+          // in with their existing password.
+          const { data: claimData, error: claimErr } = await supabase.rpc(
+            "claim_admin_for_email",
+            { p_email: address },
+          );
+          if (!claimErr && (claimData as { ok?: boolean } | null)?.ok) {
+            return {
+              ok: false,
+              reason: "existing-account",
+              message: address,
+            };
+          }
+          // claim_admin_for_email failed (maybe an admin already exists).
+          // Fall through to the generic credentials error.
+          console.warn(
+            `[trib] existing-email claim failed: ${claimErr?.message ?? "unknown"}`,
+          );
           return { ok: false, reason: "credentials" };
         }
         user = attempt.data.user;

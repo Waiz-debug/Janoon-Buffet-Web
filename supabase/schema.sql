@@ -560,6 +560,93 @@ grant execute on function public.claim_admin() to authenticated;
 
 grant execute on function public.staff_bootstrap_state() to anon, authenticated;
 
+-- ----------------------------------------------------------------- bootstrap --
+--  `claim_admin_for_email` is the recovery counterpart to `claim_admin`. The
+--  existing `claim_admin()` requires the caller to be signed in as the target
+--  user (`auth.uid()`), which means the password must already match. When the
+--  owner's email already exists in Supabase Auth (e.g. as a staff member or a
+--  customer who made a reservation) but they don't recall their password, the
+--  normal flow returns "An account already exists for that email, and that
+--  password does not match it."
+--
+--  This function grants admin to an existing auth user identified by email —
+--  no session needed. The guard is the same as `claim_admin`: it only works
+--  while no active admin exists. Once an admin exists, the door is shut and
+--  this function always refuses.
+--
+--  Security:
+--  • Only callable while `staff_bootstrap_state().claimable` is true.
+--  • The target email must exist in `auth.users`.
+--  • A staff account cannot self-promote (same rule as `claim_admin`).
+--  • No session is created — the user must still sign in with their existing
+--    password, so only the real account holder gains access.
+-- --------------------------------------------------------------------------
+create or replace function public.claim_admin_for_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid   uuid;
+  v_role  text;
+begin
+  -- Look up the auth user by email. SECURITY DEFINER lets us read auth.users.
+  select id into v_uid from auth.users where email = p_email;
+
+  if v_uid is null then
+    raise exception 'No account found for that email address.'
+      using errcode = '23503';
+  end if;
+
+  -- An account already on the team as staff may never promote itself.
+  select role into v_role
+    from public.staff_members
+   where user_id = v_uid;
+
+  if v_role = 'staff' then
+    raise exception
+      'Staff accounts cannot claim admin access. Ask an admin to grant it.'
+      using errcode = '42501';
+  end if;
+
+  lock table public.staff_members in exclusive mode;
+
+  --  Re-read after the lock: only an active admin closes the door.
+  if exists (
+    select 1 from public.staff_members
+     where role = 'admin' and active
+  ) or exists (
+    select 1 from public.staff_member_roles
+     where role = 'admin'
+  ) then
+    raise exception 'An admin account already exists for this restaurant.'
+      using errcode = '23505';
+  end if;
+
+  -- Create or update the admin record for the existing auth user.
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, p_email, 'Owner', 'admin', true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set role = 'admin', active = true, email = excluded.email;
+
+  -- Also add to junction table for multi-role support.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, 'admin', (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  return jsonb_build_object('ok', true, 'role', 'admin', 'email', p_email);
+end $$;
+
+--  Open to both anon and authenticated: the function itself is gated by the
+--  "no admin exists" check, and it never creates a session — the caller must
+--  still authenticate with the real password to use the newly granted access.
+grant execute on function public.claim_admin_for_email(text) to anon, authenticated;
+
 -- ------------------------------------- staff self-service & team admin ----
 --  Two things live here, and they are deliberately different in who they ask:
 --
