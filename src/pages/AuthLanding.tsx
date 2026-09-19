@@ -71,7 +71,7 @@ function ownerSetupMessage(
     case "unreachable":
       return "Could not reach the sign-up service. Check your connection and try again.";
     case "existing-account":
-      return "An account already exists with that email. Admin access has been granted — please sign in with your existing password.";
+      return "An account already exists with that email. Please sign in with your existing password. If you don't remember it, use the password reset option in the sign-in form.";
     case "credentials":
       return "An account already exists for that email, and that password does not match it.";
     default:
@@ -199,13 +199,12 @@ export default function AuthLanding() {
       return;
     }
     setSetupSubmitting(false);
-    // When the email already exists in Auth, admin access has been granted
-    // server-side. Switch back to the sign-in form so the user can sign in
-    // with their existing password.
+    // When the email already exists in Auth, the user may know the existing
+    // password. Keep them in the setup form so they can correct the password
+    // and resubmit — this time signInWithPassword will succeed and claim_admin
+    // will create the admin record.
     if (result.reason === "existing-account") {
-      setOwnerMode("signin");
-      setSetupPhase("form");
-      setError(ownerSetupMessage(result));
+      setSetupError(ownerSetupMessage(result));
       return;
     }
     if (result.reason === "confirm-email") {

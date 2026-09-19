@@ -363,12 +363,19 @@ export function useStaffAuth() {
               message: address,
             };
           }
-          // claim_admin_for_email failed (maybe an admin already exists).
-          // Fall through to the generic credentials error.
+          // claim_admin_for_email failed — the function may not be deployed
+          // yet, or an admin already exists. Either way, the email definitely
+          // exists in Supabase Auth (signUp confirmed it), so tell the user to
+          // sign in with their existing password instead of showing the
+          // confusing "password does not match" error.
           console.warn(
-            `[trib] existing-email claim failed: ${claimErr?.message ?? "unknown"}`,
+            `[tribe] existing-email claim failed: ${claimErr?.message ?? "unknown"}`,
           );
-          return { ok: false, reason: "credentials" };
+          return {
+            ok: false,
+            reason: "existing-account",
+            message: address,
+          };
         }
         user = attempt.data.user;
       }
