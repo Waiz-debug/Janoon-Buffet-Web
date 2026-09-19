@@ -24,13 +24,10 @@ export type AdminSetupState = "open" | "closed" | "outdated" | "unknown";
 const STAFF_TABLE = TABLES.staffMembers;
 
 export const NOT_STAFF_MESSAGE =
-  "That account is not a staff member. Ask the owner to add it under staff_members.";
+  "That account does not have portal access. Ask an administrator to add it.";
 
 export const UNCONFIGURED_MESSAGE =
-  "The staff table is not set up on this project yet. Run supabase/schema.sql once, then create the owner account from the Admin Portal sign-in card.";
-
-export const CLAIMED_MESSAGE =
-  "An admin account already exists for this restaurant. Sign in with it, or ask an admin to add you to the team.";
+  "Sign-in is not available right now. Please try again later.";
 
 /** Staff and admin land on their own dashboards after the same check. */
 export function portalPathFor(role: StaffRole): string {
@@ -330,9 +327,12 @@ export function useStaffAuth() {
         return { ok: true, role: next.role };
       }
 
-      // The claim was refused. Either the site is already set up, or this person
-      // is on the team already — signing in as themselves is the right ending,
-      // so ask the table before treating it as a failure.
+      // The claim was refused. Either the restaurant already has an
+      // administrator, or this person is on the team already — signing in as
+      // themselves is the right ending, so ask the table before treating it as a
+      // failure. The database's own wording is logged for debugging and never
+      // shown to the person using the card.
+      console.warn(`[tribe] admin claim refused: ${claim.error.message}`);
       const lookup = await staffLookup(user.id);
       if (lookup.ok && lookup.role) {
         const next: StaffSession = {

@@ -22,7 +22,6 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
 import {
-  CLAIMED_MESSAGE,
   NOT_STAFF_MESSAGE,
   UNCONFIGURED_MESSAGE,
   portalPathFor,
@@ -56,15 +55,15 @@ const HIGHLIGHTS = [
 function ownerSetupMessage(
   result: Extract<OwnerSetupResult, { ok: false }>,
 ): string {
+  // Plain sentences only. Whatever the database or the sign-in service said is
+  // kept out of the card and written to the console instead, where it is useful
+  // for debugging and invisible to the person using it.
   switch (result.reason) {
     case "claimed":
-      // The database refused the claim. Its own sentence is the useful one —
-      // e.g. "Owner access can only be claimed by the first account created on
-      // this project.", which is exactly the symptom of a database still on the
-      // older rule. Fall back to the generic wording only if it said nothing.
-      return result.message?.trim() || CLAIMED_MESSAGE;
+      return "Unable to create the administrator account. An administrator already exists.";
     case "unconfigured":
-      return UNCONFIGURED_MESSAGE;
+    case "unknown":
+      return "Unable to create the administrator account. Please try again.";
     case "weak-password":
       return "Choose a password with at least six characters.";
     case "invalid-email":
@@ -74,10 +73,7 @@ function ownerSetupMessage(
     case "credentials":
       return "An account already exists for that email, and that password does not match it.";
     default:
-      return (
-        result.message ??
-        "Could not create the admin account. Please try again."
-      );
+      return "Unable to create the administrator account. Please try again.";
   }
 }
 
@@ -473,9 +469,8 @@ export default function AuthLanding() {
               </button>
             </div>
             <p className="max-w-xs text-center text-[0.68rem] leading-relaxed text-muted-foreground/55">
-              Staff sign-in for the admin and the floor team. The first account
-              set up here becomes the admin; every read and write is verified by
-              the database rather than by this page.
+              Staff and management access. The first account set up here becomes
+              the administrator.
             </p>
           </div>
 
@@ -537,6 +532,13 @@ function SignInModal({
   const confirming = settingUp && owner.phase === "confirm";
   const busy = submitting || (settingUp && owner.submitting);
   const shownError = settingUp ? owner.error : error;
+  // Admin recovery, offered only while the database has not told us an
+  // administrator already exists.
+  const offersSetup =
+    role === "admin" &&
+    !settingUp &&
+    owner.claim !== "closed" &&
+    owner.claim !== "checking";
 
   // Ready to type the moment the card opens, and again when the setup tab is
   // chosen.
@@ -557,8 +559,7 @@ function SignInModal({
     ? {
         icon: UserPlus,
         label: "Create Admin Account",
-        blurb:
-          "Offered only while the restaurant has no admin. The account created here becomes its admin, through Supabase Auth — no dashboard step and nothing to configure.",
+        blurb: "Set up the administrator account for this restaurant.",
       }
     : role === "staff"
       ? {
@@ -623,41 +624,38 @@ function SignInModal({
         </div>
 
         {/*
-          The admin door has exactly two states, and the database decides which
-          one it is:
-
-            • an active admin exists  → sign in only (no setup action), or
-            • no active admin exists   → the claim is offered as a plainly
-              visible action.
-
-          Nothing here is remembered between visits: the question is asked again
-          every time the card opens, so removing the last admin brings the
-          action back on its own.
+          Admin recovery. The database decides whether this restaurant already
+          has an administrator; this block only presents that answer. The action
+          is visible whenever setup is possible, and gone the moment one exists.
         */}
-        {role === "admin" ? (
+        {role === "admin" && (offersSetup || settingUp) ? (
           <div className="relative mt-6 flex flex-col gap-3">
-            {owner.claim === "checking" ? (
-              <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground/70">
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                Checking setup availability…
-              </p>
-            ) : null}
-
-            {owner.claim === "closed" && !settingUp ? (
-              <p className="text-center text-xs leading-relaxed text-muted-foreground/70">
-                This restaurant already has an admin. Sign in above.
-              </p>
-            ) : null}
-
-            {owner.claim !== "closed" && owner.claim !== "checking" && !settingUp ? (
-              <button
+            {offersSetup ? (
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => owner.onSelect("setup")}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm font-semibold text-gold transition-colors hover:border-gold/60 hover:bg-gold/15"
+                className="h-11 w-full gap-2 border-gold/30 bg-background/40 hover:border-gold/50 hover:bg-secondary/60"
               >
-                <UserPlus className="size-4" aria-hidden />
+                <UserPlus className="size-4 text-gold" aria-hidden />
                 Create Admin Account
-              </button>
+              </Button>
+            ) : null}
+
+            {offersSetup ? (
+              <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                Set up the administrator account for this restaurant.
+              </p>
+            ) : null}
+
+            {offersSetup ? (
+              <div className="flex items-center gap-3" aria-hidden>
+                <span className="h-px flex-1 bg-border/70" />
+                <span className="text-[0.65rem] tracking-[0.2em] text-muted-foreground/60 uppercase">
+                  or
+                </span>
+                <span className="h-px flex-1 bg-border/70" />
+              </div>
             ) : null}
 
             {settingUp ? (
@@ -670,21 +668,6 @@ function SignInModal({
               </button>
             ) : null}
 
-            {owner.claim === "outdated" && !settingUp ? (
-              <p className="text-center text-[0.68rem] leading-relaxed text-amber-300/80">
-                The database is still on the older setup rule, which hid this
-                action once any staff account existed. Run
-                <span className="text-foreground"> supabase/fix-admin-recovery.sql </span>
-                to update it. You can try anyway — the database decides.
-              </p>
-            ) : null}
-
-            {owner.claim === "unknown" && !settingUp ? (
-              <p className="text-center text-[0.68rem] leading-relaxed text-amber-300/80">
-                The setup check did not answer. You can still try — the database
-                is what decides.
-              </p>
-            ) : null}
           </div>
         ) : null}
 
@@ -695,7 +678,7 @@ function SignInModal({
               Confirm your email
             </p>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Supabase sent a confirmation link to{" "}
+              We sent a confirmation link to{" "}
               <span className="text-foreground">{email.trim()}</span>. Open it,
               then press Continue — the admin account is recorded the moment the
               address is confirmed.
@@ -864,8 +847,8 @@ function SignInModal({
 
         <p className="relative mt-6 text-center text-xs text-muted-foreground/80">
           {settingUp
-            ? "The account is created by Supabase Auth on this device, and you are signed in as the admin straight afterwards."
-            : "Accounts are issued by the admin. You stay signed in on this device until you sign out."}
+            ? "You are signed in as the administrator as soon as setup finishes."
+            : "Accounts are issued by the administrator. You stay signed in on this device until you sign out."}
         </p>
       </motion.div>
     </motion.div>
