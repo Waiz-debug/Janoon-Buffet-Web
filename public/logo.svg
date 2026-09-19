@@ -7,7 +7,7 @@
   buttons and rules, and the tile is the same warm charcoal as the page
   background, so the tab matches the restaurant.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Janoon">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Janoon" shape-rendering="geometricPrecision">
   <defs>
     <linearGradient id="jan-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#2a2016" />

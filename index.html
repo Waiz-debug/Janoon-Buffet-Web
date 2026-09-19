@@ -3,14 +3,21 @@
 
 <head>
   <meta charset="UTF-8" />
-  <!-- Janoon browser icon: SVG where it is supported, PNG and ICO fallbacks
-       for everything else, plus an opaque tile for iOS home screens. -->
-  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-  <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/manifest.webmanifest" />
+  <!-- Janoon browser icon — a single gold "J" on the warm charcoal tile.
+
+       The `?v=` suffix is deliberate. Browsers cache favicons by URL and will
+       keep showing an old one for a long time, so every icon path is versioned:
+       bump it whenever the mark changes and the tab refreshes by itself.
+
+       The ICO and PNGs come first so every browser has a raster it can draw,
+       with the SVG offered after them for the ones that scale it crisply. The
+       apple-touch icon is the same mark on an opaque, full-bleed tile. -->
+  <link rel="icon" href="/favicon.ico?v=2" sizes="any" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=2" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=2" />
+  <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2" />
+  <link rel="manifest" href="/manifest.webmanifest?v=2" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#1c1712" />
   <meta
