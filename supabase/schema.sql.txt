@@ -455,7 +455,10 @@ as $$
     'claimable', not exists (
       select 1 from public.staff_members
        where role = 'admin' and active
-    )
+    ),
+    --  Rule marker: a database still on the first version of this function
+    --  answers without it, which is how the sign-in card spots a stale schema.
+    'version', 2
   );
 $$;
 

@@ -9,6 +9,17 @@ export type StaffSession = {
   role: StaffRole;
 };
 
+/**
+ * What the database says about the admin bootstrap door.
+ *
+ *   open     — no active admin exists, so the claim is on offer
+ *   closed   — an active admin exists, so the claim is refused
+ *   outdated — the live database still carries the first version of the rule,
+ *              which hid the setup action whenever ANY staff row existed
+ *   unknown  — the check could not run at all (schema missing, network down)
+ */
+export type AdminSetupState = "open" | "closed" | "outdated" | "unknown";
+
 /** The table that records who may work the portals. */
 const STAFF_TABLE = TABLES.staffMembers;
 
@@ -207,14 +218,39 @@ export function useStaffAuth() {
    * Asked through a database function because a signed-out visitor cannot read
    * `staff_members` at all — the answer is a boolean and nothing else. The
    * database answers `claimable` only while it holds no **active admin**, so the
-   * "Create Admin Account" tab appears when the panel is unowned and disappears
-   * again the moment an admin exists. Removing the last admin reopens it on the
-   * next check — no code change and nothing cached in the browser.
+   * "Create Admin Account" action appears when the panel is unowned and
+   * disappears again the moment an admin exists. Removing the last admin
+   * reopens it on the next check — no code change and nothing cached in the
+   * browser.
+   *
+   * `unknown` is returned when the check itself could not run (the schema has
+   * not been applied yet, or the network dropped). It is deliberately distinct
+   * from `closed`: reporting "an admin exists" when we simply failed to ask
+   * would hide the only way back into a locked-out panel. The claim remains
+   * database-gated either way, so offering it costs nothing.
    */
-  const canClaimOwner = useCallback(async (): Promise<boolean> => {
+  const canClaimOwner = useCallback(async (): Promise<AdminSetupState> => {
     const { data, error } = await supabase.rpc("staff_bootstrap_state");
-    if (error) return false;
-    return (data as { claimable?: boolean } | null)?.claimable === true;
+    if (error) {
+      console.warn(`[tribe] admin setup check failed: ${error.message}`);
+      return "unknown";
+    }
+    const answer = data as {
+      claimable?: boolean;
+      version?: number;
+    } | null;
+
+    // The current rule answers with `version: 2`. A database that answers
+    // without it is still running the first rule — which reported "not
+    // claimable" as soon as a single staff row existed, and is the usual reason
+    // the setup action looked missing. Say so instead of guessing, and offer the
+    // action anyway: the claim itself is refused by the database when an admin
+    // really does exist, so nothing is granted that should not be.
+    if (answer?.version !== 2) return "outdated";
+
+    if (answer.claimable === true) return "open";
+    if (answer.claimable === false) return "closed";
+    return "unknown";
   }, []);
 
   /**

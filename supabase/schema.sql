@@ -448,7 +448,12 @@ as $$
     'claimable', not exists (
       select 1 from public.staff_members
        where role = 'admin' and active
-    )
+    ),
+    --  Rule marker. A database still carrying the first version of this
+    --  function answers without it, which is how the sign-in card knows the
+    --  schema has not been updated yet — an older build hid the setup action
+    --  whenever *any* staff row existed, which is a different question.
+    'version', 2
   );
 $$;
 

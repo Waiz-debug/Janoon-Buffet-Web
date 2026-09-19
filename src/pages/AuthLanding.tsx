@@ -27,12 +27,12 @@ import {
   UNCONFIGURED_MESSAGE,
   portalPathFor,
   useStaffAuth,
+  type AdminSetupState,
   type OwnerSetupResult,
   type StaffRole,
 } from "@/hooks/use-staff-auth";
 import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
-import { cn } from "@/lib/utils";
 
 const HIGHLIGHTS = [
   {
@@ -58,7 +58,11 @@ function ownerSetupMessage(
 ): string {
   switch (result.reason) {
     case "claimed":
-      return CLAIMED_MESSAGE;
+      // The database refused the claim. Its own sentence is the useful one —
+      // e.g. "Owner access can only be claimed by the first account created on
+      // this project.", which is exactly the symptom of a database still on the
+      // older rule. Fall back to the generic wording only if it said nothing.
+      return result.message?.trim() || CLAIMED_MESSAGE;
     case "unconfigured":
       return UNCONFIGURED_MESSAGE;
     case "weak-password":
@@ -72,7 +76,7 @@ function ownerSetupMessage(
     default:
       return (
         result.message ??
-        "Could not create the owner account. Please try again."
+        "Could not create the admin account. Please try again."
       );
   }
 }
@@ -91,10 +95,14 @@ export default function AuthLanding() {
   const [attempts, setAttempts] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
-  // The one-time owner setup, reachable only from the admin door and only while
-  // the database still reports that no staff row exists at all.
+  // The admin setup, reachable only from the admin door and only while the
+  // database reports that no active admin exists.
   const [ownerMode, setOwnerMode] = useState<"signin" | "setup">("signin");
-  const [claim, setClaim] = useState<"unknown" | "open" | "closed">("unknown");
+  const [claim, setClaim] = useState<"checking" | AdminSetupState>("checking");
+  // Bumped on every open so the effect below re-asks the database even when the
+  // `?unlock=admin` parameter itself did not change — otherwise a second visit
+  // to the same URL would keep a stale answer.
+  const [claimCheck, setClaimCheck] = useState(0);
   const [setupPhase, setSetupPhase] = useState<"form" | "confirm">("form");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSubmitting, setSetupSubmitting] = useState(false);
@@ -115,13 +123,13 @@ export default function AuthLanding() {
   useEffect(() => {
     if (modalRole !== "admin") return;
     let active = true;
-    void canClaimOwner().then((open) => {
-      if (active) setClaim(open ? "open" : "closed");
+    void canClaimOwner().then((state) => {
+      if (active) setClaim(state);
     });
     return () => {
       active = false;
     };
-  }, [modalRole, canClaimOwner]);
+  }, [modalRole, claimCheck, canClaimOwner]);
 
   const resetOwnerFlow = () => {
     setOwnerMode("signin");
@@ -132,10 +140,12 @@ export default function AuthLanding() {
   const openModal = (role: StaffRole) => {
     setError(null);
     resetOwnerFlow();
-    // Back to "unknown" here rather than in the check below: an effect that sets
+    // Back to "checking" here rather than in the effect: an effect that sets
     // state on its way to an async read is the cascading render React warns
-    // about. This is an event, so the reset belongs with it.
-    setClaim("unknown");
+    // about. This is an event, so the reset belongs with it — and the nonce
+    // guarantees the effect runs again even if the URL parameter is unchanged.
+    setClaim("checking");
+    setClaimCheck((count) => count + 1);
     setSearchParams({ unlock: role }, { replace: true });
   };
 
@@ -507,10 +517,10 @@ function SignInModal({
   /** The one-time owner setup, driven by the page that owns the auth state. */
   owner: {
     /**
-     * `open` only while the database holds no staff row at all; `unknown`
-     * until it has answered. The setup tab appears for `open` alone.
+     * `open` only while the database holds no active admin; `checking` until it
+     * has answered, and `unknown` if the check could not run.
      */
-    claim: "unknown" | "open" | "closed";
+    claim: "checking" | AdminSetupState;
     mode: "signin" | "setup";
     phase: "form" | "confirm";
     error: string | null;
@@ -613,35 +623,68 @@ function SignInModal({
         </div>
 
         {/*
-          Two ways in, but only ever one of them on offer: sign in with an
-          account that already exists, or — while the database reports no active
-          admin — create the admin account. The moment an admin exists the
-          second tab is gone for everyone, and it comes back by itself if the
-          last admin is removed.
+          The admin door has exactly two states, and the database decides which
+          one it is:
+
+            • an active admin exists  → sign in only (no setup action), or
+            • no active admin exists   → the claim is offered as a plainly
+              visible action.
+
+          Nothing here is remembered between visits: the question is asked again
+          every time the card opens, so removing the last admin brings the
+          action back on its own.
         */}
-        {role === "admin" && owner.claim === "open" ? (
-          <div className="relative mt-6 grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-background/40 p-1">
-            {(
-              [
-                { id: "signin", label: "Sign in" },
-                { id: "setup", label: "Create Admin Account" },
-              ] as const
-            ).map((tab) => (
+        {role === "admin" ? (
+          <div className="relative mt-6 flex flex-col gap-3">
+            {owner.claim === "checking" ? (
+              <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground/70">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                Checking setup availability…
+              </p>
+            ) : null}
+
+            {owner.claim === "closed" && !settingUp ? (
+              <p className="text-center text-xs leading-relaxed text-muted-foreground/70">
+                This restaurant already has an admin. Sign in above.
+              </p>
+            ) : null}
+
+            {owner.claim !== "closed" && owner.claim !== "checking" && !settingUp ? (
               <button
-                key={tab.id}
                 type="button"
-                aria-pressed={owner.mode === tab.id}
-                onClick={() => owner.onSelect(tab.id)}
-                className={cn(
-                  "rounded-lg px-3 py-2 text-xs font-medium transition-colors",
-                  owner.mode === tab.id
-                    ? "bg-gold/15 text-gold"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                onClick={() => owner.onSelect("setup")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm font-semibold text-gold transition-colors hover:border-gold/60 hover:bg-gold/15"
               >
-                {tab.label}
+                <UserPlus className="size-4" aria-hidden />
+                Create Admin Account
               </button>
-            ))}
+            ) : null}
+
+            {settingUp ? (
+              <button
+                type="button"
+                onClick={() => owner.onSelect("signin")}
+                className="text-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Back to admin sign-in
+              </button>
+            ) : null}
+
+            {owner.claim === "outdated" && !settingUp ? (
+              <p className="text-center text-[0.68rem] leading-relaxed text-amber-300/80">
+                The database is still on the older setup rule, which hid this
+                action once any staff account existed. Run
+                <span className="text-foreground"> supabase/fix-admin-recovery.sql </span>
+                to update it. You can try anyway — the database decides.
+              </p>
+            ) : null}
+
+            {owner.claim === "unknown" && !settingUp ? (
+              <p className="text-center text-[0.68rem] leading-relaxed text-amber-300/80">
+                The setup check did not answer. You can still try — the database
+                is what decides.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
