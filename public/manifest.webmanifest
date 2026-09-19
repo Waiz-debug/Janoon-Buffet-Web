@@ -1,7 +1,7 @@
 {
-  "name": "Janoon LHR Gulberg",
+  "name": "Janoon",
   "short_name": "Janoon",
-  "description": "Janoon LHR Gulberg — 24/7 all-you-can-eat BBQ buffet in Gulberg, Lahore.",
+  "description": "Janoon — 24/7 all-you-can-eat BBQ buffet in Gulberg, Lahore.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1c1712",

@@ -1,5 +1,5 @@
 /**
- * The Janoon LHR Gulberg menu — every dish is a first-class item with its own
+ * The Janoon menu — every dish is a first-class item with its own
  * detail page at `/menu/:slug`, so the landing page list and the dish pages
  * share one source of truth.
  */

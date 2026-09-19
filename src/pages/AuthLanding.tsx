@@ -161,7 +161,7 @@ export default function AuthLanding() {
         ? // While the owner claim is still open, the person most likely to hit
           // this is the owner themselves — signed up, but not yet recorded.
           claim === "open"
-          ? "That account is not on the team yet. If it is yours, open First-time setup above to claim it."
+          ? "That account is not on the team yet. If it is yours, open Create Admin Account above to claim it."
           : NOT_STAFF_MESSAGE
         : result.reason === "unconfigured"
           ? UNCONFIGURED_MESSAGE
@@ -307,9 +307,8 @@ export default function AuthLanding() {
             transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
             className="mt-6 font-display text-5xl leading-[1.02] font-semibold tracking-tight text-balance sm:text-7xl"
           >
-            Janoon{" "}
             <span className="bg-gradient-to-r from-gold via-gold to-ember bg-clip-text text-transparent">
-              LHR Gulberg
+              Janoon
             </span>
           </motion.h1>
 
@@ -464,14 +463,14 @@ export default function AuthLanding() {
               </button>
             </div>
             <p className="max-w-xs text-center text-[0.68rem] leading-relaxed text-muted-foreground/55">
-              Staff sign-in for the owner and the floor team. The first account
-              set up here becomes the owner; every read and write is verified by
+              Staff sign-in for the admin and the floor team. The first account
+              set up here becomes the admin; every read and write is verified by
               the database rather than by this page.
             </p>
           </div>
 
           <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
-            © {new Date().getFullYear()} Janoon LHR Gulberg · 24/7 open buffet
+            © {new Date().getFullYear()} Janoon · 24/7 open buffet
           </p>
         </motion.div>
       </footer>
@@ -547,9 +546,9 @@ function SignInModal({
   const copy = settingUp
     ? {
         icon: UserPlus,
-        label: "Owner setup",
+        label: "Create Admin Account",
         blurb:
-          "One-time setup. The account created here becomes the restaurant's admin — through Supabase Auth, with nothing to configure in the dashboard.",
+          "Offered only while the restaurant has no admin. The account created here becomes its admin, through Supabase Auth — no dashboard step and nothing to configure.",
       }
     : role === "staff"
       ? {
@@ -615,16 +614,17 @@ function SignInModal({
 
         {/*
           Two ways in, but only ever one of them on offer: sign in with an
-          account that already exists, or — while the database says no staff
-          row exists yet — create the owner account. Once it has been claimed,
-          the second tab disappears for everyone, permanently.
+          account that already exists, or — while the database reports no active
+          admin — create the admin account. The moment an admin exists the
+          second tab is gone for everyone, and it comes back by itself if the
+          last admin is removed.
         */}
         {role === "admin" && owner.claim === "open" ? (
           <div className="relative mt-6 grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-background/40 p-1">
             {(
               [
                 { id: "signin", label: "Sign in" },
-                { id: "setup", label: "First-time setup" },
+                { id: "setup", label: "Create Admin Account" },
               ] as const
             ).map((tab) => (
               <button
@@ -654,7 +654,7 @@ function SignInModal({
             <p className="text-sm leading-relaxed text-muted-foreground">
               Supabase sent a confirmation link to{" "}
               <span className="text-foreground">{email.trim()}</span>. Open it,
-              then press Continue — the owner account is recorded the moment the
+              then press Continue — the admin account is recorded the moment the
               address is confirmed.
             </p>
 
@@ -712,7 +712,7 @@ function SignInModal({
               htmlFor="portal-email"
               className="text-[0.68rem] font-medium uppercase tracking-[0.2em] text-muted-foreground"
             >
-              {settingUp ? "Owner email" : "Staff email"}
+              {settingUp || role === "admin" ? "Admin email" : "Staff email"}
             </label>
             <input
               id="portal-email"
@@ -813,7 +813,7 @@ function SignInModal({
               {busy ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : null}
-              {settingUp ? "Create owner account" : "Unlock"}
+              {settingUp ? "Create admin account" : "Unlock"}
             </Button>
           </div>
         </form>
@@ -821,8 +821,8 @@ function SignInModal({
 
         <p className="relative mt-6 text-center text-xs text-muted-foreground/80">
           {settingUp
-            ? "The account is created by Supabase Auth on this device, and you are signed in as the owner straight afterwards."
-            : "Accounts are issued by the owner. You stay signed in on this device until you sign out."}
+            ? "The account is created by Supabase Auth on this device, and you are signed in as the admin straight afterwards."
+            : "Accounts are issued by the admin. You stay signed in on this device until you sign out."}
         </p>
       </motion.div>
     </motion.div>

@@ -19,7 +19,7 @@ export const UNCONFIGURED_MESSAGE =
   "The staff table is not set up on this project yet. Run supabase/schema.sql once, then create the owner account from the Admin Portal sign-in card.";
 
 export const CLAIMED_MESSAGE =
-  "Owner access has already been claimed on this project. Sign in with the account that claimed it, or ask the owner to add you to the team.";
+  "An admin account already exists for this restaurant. Sign in with it, or ask an admin to add you to the team.";
 
 /** Staff and admin land on their own dashboards after the same check. */
 export function portalPathFor(role: StaffRole): string {
@@ -202,11 +202,14 @@ export function useStaffAuth() {
   }, []);
 
   /**
-   * Is the one-time owner claim still open?
+   * Is the admin recovery door still open?
    *
    * Asked through a database function because a signed-out visitor cannot read
-   * `staff_members` at all — the answer is a boolean and nothing else. Once the
-   * owner has claimed it, the setup form is never offered again.
+   * `staff_members` at all — the answer is a boolean and nothing else. The
+   * database answers `claimable` only while it holds no **active admin**, so the
+   * "Create Admin Account" tab appears when the panel is unowned and disappears
+   * again the moment an admin exists. Removing the last admin reopens it on the
+   * next check — no code change and nothing cached in the browser.
    */
   const canClaimOwner = useCallback(async (): Promise<boolean> => {
     const { data, error } = await supabase.rpc("staff_bootstrap_state");
@@ -215,17 +218,18 @@ export function useStaffAuth() {
   }, []);
 
   /**
-   * Create the owner account from the website — no dashboard step.
+   * Create the admin account from the website — no dashboard step.
    *
    * Three things happen, in order:
    *   1. Supabase Auth creates the user with the ordinary publishable key.
    *   2. We hold the auth UUID it hands back.
    *   3. `claim_admin()` records that UUID in `staff_members` as an admin.
    *
-   * Step 3 is decided in Postgres, and only while the table is empty, so this
-   * is a one-time door: whoever claims it first is the owner, and nothing on the
-   * client can grant a role afterwards. No service-role key is involved, and none
-   * could be, since it would have to ship in the bundle.
+   * Step 3 is decided in Postgres, and only while the table holds no active
+   * admin, so the door is shut as soon as one exists — and reopens if the last
+   * one is removed. An account already on the team as staff is refused, so this
+   * is never a route from staff to admin. No service-role key is involved, and
+   * none could be, since it would have to ship in the bundle.
    *
    * Calling this twice with the same details is safe — the second time round
    * `signUp` reports the account already exists, we sign in instead, and the

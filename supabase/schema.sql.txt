@@ -1,5 +1,12 @@
 -- ============================================================================
---  Tribe of Taste — Supabase schema
+--  Janoon — Supabase schema
+--
+--  NOTE: this file differs from supabase/schema.sql only by the SQL-Editor-only
+--  `factory_reset_staff()` block at the very end, whose comment is out of date:
+--  reopening "Create Admin Account" no longer needs Supabase Auth users deleted —
+--  an empty admin list is enough. Prefer supabase/schema.sql, and see
+--  supabase/admin-recovery.sql for the recovery runbook.
+--
 --  Paste this whole file into the Supabase SQL editor and run it once.
 --  It is idempotent: re-running it will not drop or duplicate anything.
 --
@@ -418,17 +425,22 @@ create policy staff_members_select on public.staff_members
 --  the application, and none is needed: the browser can only ever *ask*, and the
 --  answer is decided here.
 --
---  What makes this safe is that the door closes for good. A row is granted only
---  while `staff_members` is completely empty, so the first account to claim it
---  becomes the owner and every later attempt is refused — which leaves the table
---  writable only from the SQL editor or the service role, exactly as before.
---  Two simultaneous claims cannot both win either: the table is locked for the
---  transaction before the emptiness check runs, so the second one re-reads a
---  table that already holds a row.
+--  The door opens only while nobody can open the panel: a row is granted only
+--  when `staff_members` holds no *active* admin, so the claim is refused the
+--  moment an admin exists, and the recovery door reopens by itself if the last
+--  active admin is ever removed. That is what makes the "Create Admin Account"
+--  button database-driven — it is the state of this table, nothing else.
 --
---  Once an owner exists, additional staff are still added the same way they
---  always were — from the SQL editor, which is the one place that can hold a
---  credential powerful enough to grant a role.
+--  Two simultaneous claims cannot both win: the table is locked for the
+--  transaction before the check runs, so the second one re-reads a table that
+--  already holds an active admin.
+--
+--  An account that already holds a staff row is refused outright, so a staff
+--  member can never promote themselves to admin. Only a fresh sign-in account
+--  (or an existing admin re-arming their own row) may claim.
+--
+--  Once an admin exists, additional staff are still added the same way they
+--  always were — by an admin from the Team screen, or from the SQL editor.
 create or replace function public.staff_bootstrap_state()
 returns jsonb
 language sql
@@ -437,7 +449,13 @@ set search_path = public
 stable
 as $$
   select jsonb_build_object(
-    'claimable', not exists (select 1 from public.staff_members)
+    --  Claimable exactly while no admin can open the panel. It counts only an
+    --  active admin: a lone staff account, or an admin switched off, no longer
+    --  blocks the recovery door.
+    'claimable', not exists (
+      select 1 from public.staff_members
+       where role = 'admin' and active
+    )
   );
 $$;
 
@@ -450,32 +468,37 @@ as $$
 declare
   v_uid   uuid := auth.uid();
   v_email text;
+  v_role  text;
 begin
   -- Verified by Supabase Auth, not by anything the page sent up.
   if v_uid is null then
-    raise exception 'Sign in before claiming owner access.'
+    raise exception 'Sign in before claiming admin access.'
       using errcode = '42501';
   end if;
 
-  -- Only the very first account created on this project may claim. A staff or
-  -- customer account made later can therefore never take ownership, even in the
-  -- corner case where the team table has been emptied and the one-time door
-  -- would otherwise look open again.
-  if exists (
-    select 1
-      from auth.users u
-     where u.id <> v_uid
-       and u.created_at < (select created_at from auth.users where id = v_uid)
-  ) then
+  -- An account that is already on the team as staff may never promote itself,
+  -- even while the panel is empty of admins. Without this, emptying the admin
+  -- list would hand every staff account a route to the top.
+  select role into v_role
+    from public.staff_members
+   where user_id = v_uid;
+
+  if v_role = 'staff' then
     raise exception
-      'Owner access can only be claimed by the first account created on this project.'
+      'Staff accounts cannot claim admin access. Ask an admin to grant it.'
       using errcode = '42501';
   end if;
 
   lock table public.staff_members in exclusive mode;
 
-  if exists (select 1 from public.staff_members) then
-    raise exception 'Owner access has already been claimed.'
+  --  Re-read after the lock: only an active admin closes the door. This is the
+  --  same test `staff_bootstrap_state()` reports, so the button and the claim
+  --  can never disagree.
+  if exists (
+    select 1 from public.staff_members
+     where role = 'admin' and active
+  ) then
+    raise exception 'An admin account already exists for this restaurant.'
       using errcode = '23505';
   end if;
 

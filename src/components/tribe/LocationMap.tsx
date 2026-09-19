@@ -54,7 +54,7 @@ export function LocationMap() {
           {/* Map embed */}
           <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card/40">
             <iframe
-              title="Janoon LHR Gulberg location on Google Maps"
+              title="Janoon location on Google Maps"
               src={MAPS_EMBED_URL}
               width="100%"
               height="400"
