@@ -104,6 +104,7 @@ export default function AuthLanding() {
   const [setupPhase, setSetupPhase] = useState<"form" | "confirm">("form");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSubmitting, setSetupSubmitting] = useState(false);
+  const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
 
   // A live session goes straight to its portal — no re-entry.
   useEffect(() => {
@@ -199,14 +200,14 @@ export default function AuthLanding() {
       return;
     }
     setSetupSubmitting(false);
-    // When the email already exists in Auth, admin may have been granted
-    // server-side (via claim_admin_for_email). The user must sign in with
-    // their existing password to get a session. Switch to the sign-in form
-    // with a clear message.
+    // When the email already exists in Auth, admin has been granted
+    // server-side via claim_admin_for_email. Show a SUCCESS message (not an
+    // error) and switch to the sign-in form so the user can sign in with
+    // their existing password.
     if (result.reason === "existing-account") {
       setOwnerMode("signin");
       setSetupPhase("form");
-      setError(ownerSetupMessage(result));
+      setSetupSuccess(ownerSetupMessage(result));
       return;
     }
     if (result.reason === "confirm-email") {
@@ -230,6 +231,7 @@ export default function AuthLanding() {
           onClearError={() => {
             setError(null);
             setSetupError(null);
+            setSetupSuccess(null);
           }}
           onClose={closeModal}
           owner={{
@@ -237,11 +239,13 @@ export default function AuthLanding() {
             mode: ownerMode,
             phase: setupPhase,
             error: setupError,
+            successMessage: setupSuccess,
             submitting: setupSubmitting,
             onSelect: (mode) => {
               setOwnerMode(mode);
               setSetupPhase("form");
               setSetupError(null);
+              setSetupSuccess(null);
             },
             onSubmit: (email, password) =>
               void handleOwnerSetup(email, password),
@@ -537,6 +541,7 @@ function SignInModal({
     mode: "signin" | "setup";
     phase: "form" | "confirm";
     error: string | null;
+    successMessage: string | null;
     submitting: boolean;
     onSelect: (mode: "signin" | "setup") => void;
     onSubmit: (email: string, password: string) => void;
@@ -837,6 +842,18 @@ function SignInModal({
             >
               <AlertCircle className="size-4 shrink-0" aria-hidden />
               {shownError}
+            </motion.p>
+          ) : null}
+
+          {!settingUp && owner.successMessage ? (
+            <motion.p
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300"
+              role="status"
+            >
+              <svg className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+              {owner.successMessage}
             </motion.p>
           ) : null}
 
