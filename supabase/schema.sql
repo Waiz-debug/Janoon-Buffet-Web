@@ -1036,6 +1036,11 @@ grant execute on function public.admin_add_staff(text, text) to authenticated;
 grant execute on function public.admin_set_staff_role(uuid, text) to authenticated;
 grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
+--  These two were revoked from PUBLIC without being handed to anyone, which
+--  meant the Team screen's role buttons failed with "permission denied for
+--  function" for every caller, the owner included.
+grant execute on function public.admin_grant_role(uuid, text) to authenticated;
+grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 grant execute on function public.tribe_active_admins() to authenticated;
 
 -- ------------------------------------------------ storage bucket ----------

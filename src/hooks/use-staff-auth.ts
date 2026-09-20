@@ -55,7 +55,7 @@ export function portalPathFor(role: StaffRole, roles?: StaffRole[]): string {
  * role. An account that is signed in but absent from the table is an ordinary
  * customer, and is deliberately not staff.
  */
-type StaffLookup =
+export type StaffLookup =
   /** The query ran: `roles` is empty when the account is not on the team. */
   | { ok: true; roles: StaffRole[] }
   /** The query itself failed — nearly always a missing schema. */
@@ -71,7 +71,7 @@ type StaffLookup =
  * holds; it never grants access on its own, which is the same rule
  * `public.is_staff()` applies to every table policy.
  */
-async function staffLookup(userId: string): Promise<StaffLookup> {
+export async function staffLookup(userId: string): Promise<StaffLookup> {
   // `*` rather than a column list: this row is the caller's own, and a project
   // whose schema predates a column should not fail the whole sign-in over it.
   const { data, error } = await supabase

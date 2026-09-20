@@ -2,10 +2,16 @@
 --  Janoon — authorization & admin setup rules (copy-paste, idempotent)
 --
 --  Run this whole file in the Supabase SQL Editor, then reload the website and
---  open the Admin Portal. It adds one table if it is missing and replaces six
+--  open the Admin Portal. It adds one table if it is missing and replaces nine
 --  functions. No row is deleted and no business table is touched.
 --
 --  Why it is needed on an older project:
+--
+--    * The Team screen's Remove button and its role buttons called functions the
+--      project did not have at all ("Could not find the function"), and two of
+--      them — admin_grant_role and admin_remove_role — were taken away from
+--      PUBLIC without being handed to `authenticated`, so even the owner was
+--      refused permission to change a role.
 --
 --    * staff_bootstrap_state() used to report claimable only while
 --      staff_members was COMPLETELY EMPTY, and answered without a `version`
@@ -290,6 +296,131 @@ begin
 end $$;
 
 grant execute on function public.claim_admin_for_email(text) to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------------
+--  6. Team management: removing somebody from the team, and adding or removing a
+--     single role on somebody who is already on it. The package splits these the
+--     same way the schema does — the junction table records the grant, and
+--     `staff_members.role` keeps the primary role the portal lets you into.
+--     Every function asks public.is_admin() first, and is granted to
+--     `authenticated` only: nobody who is not already an admin can reach them.
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_remove_staff(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select role into v_role from public.staff_members where user_id = p_user_id;
+  if v_role is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be removed.';
+  end if;
+
+  -- Clean up junction table first.
+  delete from public.staff_member_roles where user_id = p_user_id;
+
+  delete from public.staff_members where user_id = p_user_id;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id);
+end $$;
+
+--  Grant a specific role to an existing team member. The role is added to the
+--  junction table, and the primary role is promoted to admin when the new role
+--  is admin — never the other way round, so this cannot take access away by
+--  accident.
+create or replace function public.admin_grant_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  if not exists (select 1 from public.staff_members where user_id = p_user_id) then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role)
+  values (p_user_id, p_role)
+  on conflict (user_id, role) do nothing;
+
+  -- Promote the primary role if granting admin.
+  if p_role = 'admin' then
+    update public.staff_members set role = 'admin'
+     where user_id = p_user_id and role = 'staff';
+  end if;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'grantedRole', p_role);
+end $$;
+
+--  Remove a specific role. The last admin role cannot be removed — the panel
+--  would otherwise be left with nobody able to open it.
+create or replace function public.admin_remove_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  if p_role = 'admin' then
+    select count(*) into v_count
+      from public.staff_member_roles
+     where role = 'admin';
+    if v_count <= 1 then
+      raise exception 'This is the only admin account — cannot remove admin role.';
+    end if;
+  end if;
+
+  delete from public.staff_member_roles
+   where user_id = p_user_id and role = p_role;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'removedRole', p_role);
+end $$;
+
+--  Taken from PUBLIC and handed to `authenticated`. Leaving out the second half
+--  of that pair is what made the role buttons unusable on an older project.
+revoke all on function public.admin_remove_staff(uuid) from public;
+revoke all on function public.admin_grant_role(uuid, text) from public;
+revoke all on function public.admin_remove_role(uuid, text) from public;
+
+grant execute on function public.admin_remove_staff(uuid) to authenticated;
+grant execute on function public.admin_grant_role(uuid, text) to authenticated;
+grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 
 
 -- ---------------------------------------------------------------------------
