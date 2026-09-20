@@ -31,6 +31,8 @@ const clientOptions: unknown[] = [];
 const inviteSignUps: { email: string; password: string }[] = [];
 
 let rpcReply: Reply = { data: null, error: null };
+/** Answers by rpc name, for the flows that call more than one function. */
+let rpcReplies: Record<string, Reply> = {};
 let authReplies: Record<string, Reply> = {};
 let tableReplies: Record<string, Reply> = {};
 
@@ -73,7 +75,7 @@ function tableProxy(table: string) {
 const supabase = {
   rpc: async (name: string, args: Record<string, unknown> = {}) => {
     rpcCalls.push({ name, args });
-    return rpcReply;
+    return rpcReplies[name] ?? rpcReply;
   },
   from: (table: string) => tableProxy(table),
   auth: {
@@ -96,6 +98,12 @@ const supabase = {
     resetPasswordForEmail: async (...args: unknown[]) => {
       authCalls.push({ method: "resetPasswordForEmail", args });
       return authReplies.resetPasswordForEmail ?? { data: {}, error: null };
+    },
+    signUp: async (...args: unknown[]) => {
+      authCalls.push({ method: "signUp", args });
+      return (
+        authReplies.signUp ?? { data: { user: null, session: null }, error: null }
+      );
     },
     resend: async (...args: unknown[]) => {
       authCalls.push({ method: "resend", args });
@@ -138,7 +146,15 @@ mock.module("@supabase/supabase-js", () => ({
 }));
 
 const staff = await import("../src/lib/staff");
-const { portalPathFor, staffLookup } = await import("../src/hooks/use-staff-auth");
+const {
+  authenticate,
+  claimFirstAdmin,
+  portalPathFor,
+  staffLookup,
+  INCORRECT_CREDENTIALS_MESSAGE,
+  NOT_ADMIN_MESSAGE,
+  SETUP_REQUIRED_MESSAGE,
+} = await import("../src/hooks/use-staff-auth");
 
 beforeEach(() => {
   rpcCalls.length = 0;
@@ -147,6 +163,7 @@ beforeEach(() => {
   clientOptions.length = 0;
   inviteSignUps.length = 0;
   rpcReply = { data: null, error: null };
+  rpcReplies = {};
   authReplies = {};
   tableReplies = {};
 });
@@ -430,6 +447,326 @@ describe("changeOwnPassword", () => {
   });
 });
 
+/* --------------------------------------------------------- the admin door --- */
+
+/**
+ * The sign-in rule, end to end against the fake server.
+ *
+ * Two of these are regressions the restaurant reported: a staff account entering
+ * at `/admin` was opened on `/staff`, and an account that already existed was
+ * told it had just become the admin when nothing had been recorded.
+ */
+describe("authenticate", () => {
+  /** A signed-in account whose staff row says exactly this. */
+  const teamMember = (role: string, active = true) => {
+    tableReplies.staff_members = { data: { role, active }, error: null };
+    authReplies.signInWithPassword = {
+      data: { user: { id: "user-1", email: "user@janoon.pk" } },
+      error: null,
+    };
+  };
+
+  test("a staff account is refused at the admin door, and its session closed with it", async () => {
+    teamMember("staff");
+
+    expect(await authenticate("chef@janoon.pk", "pw", "admin")).toEqual({
+      ok: false,
+      reason: "not-admin",
+    });
+    // Signed in, then signed straight back out: no live session is left for the
+    // next screen to forward to /staff.
+    expect(authCalls.map((call) => call.method)).toEqual([
+      "signInWithPassword",
+      "signOut",
+    ]);
+    expect(NOT_ADMIN_MESSAGE).toBe("Admin access required.");
+  });
+
+  test("an admin reaches the admin door, and the staff desk as well", async () => {
+    teamMember("admin");
+
+    expect(await authenticate("owner@janoon.pk", "pw", "admin")).toEqual({
+      ok: true,
+      userId: "user-1",
+      email: "user@janoon.pk",
+      role: "admin",
+      roles: ["admin"],
+    });
+
+    // The staff desk stays open to an admin, as before.
+    const staffDesk = await authenticate("owner@janoon.pk", "pw", "staff");
+    expect(staffDesk.ok).toBe(true);
+  });
+
+  test("a customer is refused at both doors and is never left signed in", async () => {
+    tableReplies.staff_members = { data: null, error: null };
+    authReplies.signInWithPassword = {
+      data: { user: { id: "customer-1", email: "guest@example.com" } },
+      error: null,
+    };
+
+    expect(await authenticate("guest@example.com", "pw", "admin")).toEqual({
+      ok: false,
+      reason: "not-staff",
+    });
+    expect(await authenticate("guest@example.com", "pw", "staff")).toEqual({
+      ok: false,
+      reason: "not-staff",
+    });
+    expect(authCalls.filter((call) => call.method === "signOut")).toHaveLength(2);
+  });
+
+  test("an account switched off in the Team screen opens neither door", async () => {
+    teamMember("admin", false);
+
+    expect(await authenticate("owner@janoon.pk", "pw", "admin")).toEqual({
+      ok: false,
+      reason: "not-staff",
+    });
+  });
+
+  test("a wrong password is a credential refusal, and the role is never even read", async () => {
+    authReplies.signInWithPassword = {
+      data: null,
+      error: { message: "Invalid login credentials" },
+    };
+
+    expect(await authenticate("owner@janoon.pk", "nope", "admin")).toEqual({
+      ok: false,
+      reason: "credentials",
+    });
+    expect(INCORRECT_CREDENTIALS_MESSAGE).toBe("Incorrect email or password.");
+    // No table was touched: a bad password is not a role question.
+    expect(tableTouches).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------- first admin setup --- */
+
+describe("claimFirstAdmin", () => {
+  /** Not found by email — the answer a project with the rule installed gives. */
+  const NO_ACCOUNT = {
+    code: "23503",
+    message: "No account found for that email address.",
+  };
+  /** The answer a project WITHOUT the rule installed gives. */
+  const NO_RULE = {
+    code: "PGRST202",
+    message:
+      "Could not find the function public.claim_admin_for_email in the schema cache",
+  };
+
+  test("a new address is created, then claimed, and only Auth ever sees the password", async () => {
+    // `emailRedirectTo` is only built where `window` exists.
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "https://janoon.pk" },
+    };
+    rpcReplies = {
+      claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      claim_admin: { data: { ok: true, role: "admin" }, error: null },
+    };
+    authReplies.signUp = {
+      data: {
+        user: { id: "new-admin", email: "owner@janoon.pk" },
+        session: { access_token: "t" },
+      },
+      error: null,
+    };
+
+    try {
+      const outcome = await claimFirstAdmin("  owner@janoon.pk  ", "brand-new-secret");
+
+      expect(outcome).toEqual({
+        ok: true,
+        userId: "new-admin",
+        email: "owner@janoon.pk",
+        roles: ["admin"],
+      });
+      // The address is trimmed, the password goes to Supabase Auth and nowhere
+      // else, and the confirmation link comes back to the admin card so the
+      // claim can be finished in one press.
+      expect(authCalls[0].args[0]).toMatchObject({
+        email: "owner@janoon.pk",
+        password: "brand-new-secret",
+      });
+      expect(JSON.stringify(authCalls[0].args)).toContain("unlock=admin");
+      expect(JSON.stringify(rpcCalls)).not.toContain("brand-new-secret");
+      expect(tableTouches).toEqual([]);
+    } finally {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
+  test("an existing address the database granted is left alone — no second Auth user", async () => {
+    rpcReplies = {
+      claim_admin_for_email: { data: { ok: true, role: "admin" }, error: null },
+    };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "whatever-they-typed")).toEqual({
+      ok: false,
+      reason: "existing-account",
+      message: "owner@janoon.pk",
+    });
+    // The existing identity keeps its UUID and its password: nothing was signed
+    // up, no password was asked for, and only the grant was called.
+    expect(authCalls).toEqual([]);
+    expect(rpcCalls).toEqual([
+      { name: "claim_admin_for_email", args: { p_email: "owner@janoon.pk" } },
+    ]);
+  });
+
+  test("an address that already has an account, with a password that is not accepted, is a failure", async () => {
+    rpcReplies = { claim_admin_for_email: { data: null, error: NO_ACCOUNT } };
+    authReplies.signUp = {
+      data: { user: { id: "ghost", email: "taken@janoon.pk" }, session: null },
+      error: null,
+    };
+    authReplies.signInWithPassword = {
+      data: null,
+      error: { message: "Invalid login credentials" },
+    };
+
+    expect(await claimFirstAdmin("taken@janoon.pk", "not-its-password")).toEqual({
+      ok: false,
+      reason: "email-taken",
+      message: "taken@janoon.pk",
+    });
+  });
+
+  test("the same case on a project without the rule says the setup step is outstanding", async () => {
+    rpcReplies = { claim_admin_for_email: { data: null, error: NO_RULE } };
+    authReplies.signUp = {
+      data: { user: { id: "ghost", email: "owner@janoon.pk" }, session: null },
+      error: null,
+    };
+    authReplies.signInWithPassword = {
+      data: null,
+      error: { message: "Invalid login credentials" },
+    };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "whatever")).toEqual({
+      ok: false,
+      reason: "setup-required",
+      message: "owner@janoon.pk",
+    });
+    expect(SETUP_REQUIRED_MESSAGE).toContain("supabase/fix-admin-recovery.sql");
+  });
+
+  test("a claim refused for an unrecognised reason reports the setup step, not a made-up cause", async () => {
+    authReplies.signUp = {
+      data: {
+        user: { id: "new-admin", email: "owner@janoon.pk" },
+        session: { access_token: "t" },
+      },
+      error: null,
+    };
+    rpcReplies = {
+      claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      claim_admin: {
+        data: null,
+        error: { message: "Only the first account can claim owner access." },
+      },
+    };
+    tableReplies.staff_members = { data: null, error: null };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "pw")).toEqual({
+      ok: false,
+      reason: "setup-required",
+      message: "Only the first account can claim owner access.",
+    });
+    // The session it opened is closed rather than left on an account with no
+    // role recorded.
+    expect(authCalls.map((call) => call.method)).toContain("signOut");
+  });
+
+  test("a claim refused because an admin exists says exactly that", async () => {
+    authReplies.signUp = {
+      data: {
+        user: { id: "new-admin", email: "owner@janoon.pk" },
+        session: { access_token: "t" },
+      },
+      error: null,
+    };
+    rpcReplies = {
+      claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      claim_admin: {
+        data: null,
+        error: { code: "23505", message: "An admin account already exists for this restaurant." },
+      },
+    };
+    tableReplies.staff_members = { data: null, error: null };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "pw")).toEqual({
+      ok: false,
+      reason: "claimed",
+      message: "An admin account already exists for this restaurant.",
+    });
+  });
+
+  test("an address that needs confirming is not a failure", async () => {
+    rpcReplies = { claim_admin_for_email: { data: null, error: NO_ACCOUNT } };
+    authReplies.signUp = {
+      data: { user: { id: "pending", email: "owner@janoon.pk" }, session: null },
+      error: null,
+    };
+    authReplies.signInWithPassword = {
+      data: null,
+      error: { message: "Email not confirmed" },
+    };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "pw")).toEqual({
+      ok: false,
+      reason: "confirm-email",
+    });
+    // The link is re-sent, and nothing was claimed — the card says so.
+    expect(authCalls.map((call) => call.method)).toContain("resend");
+    expect(rpcCalls.map((call) => call.name)).toEqual(["claim_admin_for_email"]);
+  });
+});
+
+/* --------------------------------------------------------- the admin route --- */
+
+/**
+ * The gate itself. The mistake being guarded against is behavioural — a staff
+ * session reaching /admin was sent to /staff — so the check reads the component:
+ * a `<Navigate to="/staff">` would be that redirect coming back.
+ */
+describe("the admin route", () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+  test("refuses a staff session instead of forwarding it to /staff", () => {
+    const src = read("../src/components/RequireRole.tsx");
+
+    expect(src).toContain('role === "admin" && !session.roles.includes("admin")');
+    expect(src).toContain("NOT_ADMIN_MESSAGE");
+    expect(src).toContain("<AccessDenied");
+    expect(src).not.toMatch(/<Navigate\s+to=("|\{`)\/staff/);
+  });
+
+  test("the door hands its own role to the sign-in rule", () => {
+    const src = read("../src/pages/AuthLanding.tsx");
+
+    expect(src).toContain("signIn(email, password, role)");
+    expect(src).toContain("NOT_ADMIN_MESSAGE");
+    expect(src).toContain("INCORRECT_CREDENTIALS_MESSAGE");
+  });
+
+  test("no session or role is ever read from browser storage", () => {
+    for (const path of [
+      "../src/hooks/use-staff-auth.ts",
+      "../src/components/RequireRole.tsx",
+      "../src/pages/AuthLanding.tsx",
+    ]) {
+      const src = read(path);
+      // The words appear in comments only, describing what was removed.
+      expect([path, /(localStorage|sessionStorage)\s*\./.test(src)]).toEqual([
+        path,
+        false,
+      ]);
+    }
+  });
+});
+
 /* ------------------------------------------------------- sql migration --- */
 
 /**
@@ -508,17 +845,32 @@ describe("the security schema", () => {
     expect(missing).toEqual([]);
   });
 
-  test("the copy-paste patch installs what an older project is missing", () => {
+  /**
+   * The whole staff subsystem, as the live project needs it. A project that ran
+   * the earlier migration has some of these and lacks the rest; the patch has to
+   * leave none of them half-upgraded, or the screens that call them fail.
+   */
+  const PATCHED_IN = [
+    "is_staff",
+    "is_admin",
+    "tribe_active_admins",
+    "staff_bootstrap_state",
+    "claim_admin",
+    "claim_admin_for_email",
+    "staff_sync_email",
+    "admin_list_staff",
+    "admin_add_staff",
+    "admin_set_staff_role",
+    "admin_set_staff_active",
+    "admin_remove_staff",
+    "admin_grant_role",
+    "admin_remove_role",
+  ];
+
+  test("the copy-paste patch installs every function an older project is missing", () => {
     const patch = readSql("fix-admin-recovery.sql");
 
-    for (const name of [
-      "staff_bootstrap_state",
-      "claim_admin",
-      "claim_admin_for_email",
-      "admin_remove_staff",
-      "admin_grant_role",
-      "admin_remove_role",
-    ]) {
+    for (const name of PATCHED_IN) {
       expect([name, patch.includes(`create or replace function public.${name}(`)]).toEqual([
         name,
         true,
@@ -526,9 +878,36 @@ describe("the security schema", () => {
     }
 
     expect(patch).toContain("create table if not exists public.staff_member_roles");
+    // The junction table has to exist before the functions that read it.
+    expect(patch.indexOf("create table if not exists public.staff_member_roles")).toBeLessThan(
+      patch.indexOf("create or replace function public.admin_list_staff("),
+    );
     // `version: 2` is what clears the "outdated rule" state in the sign-in card.
     expect(patch).toContain("'version', 2");
     // The setup card calls this while signed out, before it can sign anybody in.
     expect(patch).toMatch(/grant execute on function public\.claim_admin_for_email\(text\) to anon/);
+  });
+
+  test("every function the patch installs is the schema's own definition", () => {
+    const definitions = (sql: string, name: string) => {
+      const start = sql.indexOf(`create or replace function public.${name}(`);
+      expect([name, start > -1]).toEqual([name, true]);
+      // Comments and layout removed: what is compared is the SQL that runs.
+      return sql
+        .slice(start, sql.indexOf("$$;", start))
+        .replace(/--[^\n]*/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+
+    const schema = readSql("schema.sql");
+    const patch = readSql("fix-admin-recovery.sql");
+
+    for (const name of PATCHED_IN) {
+      expect([name, definitions(patch, name)]).toEqual([
+        name,
+        definitions(schema, name),
+      ]);
+    }
   });
 });

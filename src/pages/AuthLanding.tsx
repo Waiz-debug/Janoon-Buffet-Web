@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   ChefHat,
   ChevronDown,
@@ -23,7 +24,10 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
 import {
+  INCORRECT_CREDENTIALS_MESSAGE,
+  NOT_ADMIN_MESSAGE,
   NOT_STAFF_MESSAGE,
+  SETUP_REQUIRED_MESSAGE,
   UNCONFIGURED_MESSAGE,
   portalPathFor,
   useStaffAuth,
@@ -73,6 +77,10 @@ function ownerSetupMessage(
       return "Could not reach the sign-up service. Check your connection and try again.";
     case "existing-account":
       return "An account already exists with that email. Please sign in with your existing password. If you don't remember it, use the password reset option in the sign-in form.";
+    case "email-taken":
+      return "An account already exists with that email address, and that password does not match it. Sign in with the correct password, or use a different email address for the administrator.";
+    case "setup-required":
+      return SETUP_REQUIRED_MESSAGE;
     case "credentials":
       return "An account already exists for that email, and that password does not match it.";
     default:
@@ -159,12 +167,14 @@ export default function AuthLanding() {
     const role = modalRole;
     if (role !== "staff" && role !== "admin") return;
     setSubmitting(true);
-    const result = await signIn(email, password);
+    // The door decides which role the account must hold. Signing in at the
+    // admin door with a staff account is a refusal, never a forwarding to
+    // /staff: an unasked-for redirect reads as "the admin console opened".
+    const result = await signIn(email, password, role);
     if (result.ok) {
-      // If the user entered through the staff door, always go to /staff.
-      // If they entered through the admin door, go to /admin (which is
-      // where portalPathFor sends admin+staff users).
-      if (modalRole === "staff") {
+      // Entered through the staff door → the staff desk. Entered through the
+      // admin door → /admin, which only an admin reaches at all.
+      if (role === "staff") {
         navigate("/staff", { replace: true });
       } else {
         navigate(portalPathFor(result.role, result.roles), { replace: true });
@@ -173,17 +183,19 @@ export default function AuthLanding() {
     }
     setAttempts((count) => count + 1);
     setError(
-      result.reason === "not-staff"
-        ? // While the owner claim is still open, the person most likely to hit
-          // this is the owner themselves — signed up, but not yet recorded.
-          claim === "open"
-          ? "That account is not on the team yet. If it is yours, open Create Admin Account above to claim it."
-          : NOT_STAFF_MESSAGE
-        : result.reason === "unconfigured"
-          ? UNCONFIGURED_MESSAGE
-          : result.reason === "unreachable"
-            ? "Could not reach the sign-in service. Check your connection and try again."
-            : "That email or password is not correct.",
+      result.reason === "not-admin"
+        ? NOT_ADMIN_MESSAGE
+        : result.reason === "not-staff"
+          ? // While the owner claim is still open, the person most likely to hit
+            // this is the owner themselves — signed up, but not yet recorded.
+            claim !== "closed" && claim !== "checking"
+            ? "That account is not on the team yet. If it is yours, open Create Admin Account above to claim it."
+            : NOT_STAFF_MESSAGE
+          : result.reason === "unconfigured"
+            ? UNCONFIGURED_MESSAGE
+            : result.reason === "unreachable"
+              ? "Could not reach the sign-in service. Check your connection and try again."
+              : INCORRECT_CREDENTIALS_MESSAGE,
     );
     setSubmitting(false);
   };
@@ -655,6 +667,34 @@ function SignInModal({
         */}
         {role === "admin" && (offersSetup || settingUp) ? (
           <div className="relative mt-6 flex flex-col gap-3">
+            {/*
+              The database is still running the previous setup rule, so it can
+              answer "is an admin wanted?" but it cannot record one. Only ever
+              shown inside the owner setup block of the admin door — a screen an
+              ordinary visitor cannot reach — and it says what to do about it,
+              which beats a card that offers a button that cannot work.
+            */}
+            {owner.claim === "outdated" ? (
+              <div
+                role="status"
+                className="rounded-xl border border-gold/30 bg-gold/5 px-4 py-3 text-left"
+              >
+                <p className="flex items-center gap-2 text-xs font-medium text-gold">
+                  <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+                  One-time server setup needed
+                </p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  This site&apos;s database still runs the earlier setup rule, so
+                  it cannot record the administrator role yet. Run{" "}
+                  <code className="rounded bg-background/70 px-1 py-0.5 text-[0.68rem] text-foreground/90">
+                    supabase/fix-admin-recovery.sql
+                  </code>{" "}
+                  in the Supabase SQL Editor, then create the account — appearing
+                  again once an admin exists is handled by the database itself.
+                </p>
+              </div>
+            ) : null}
+
             {offersSetup ? (
               <Button
                 type="button"

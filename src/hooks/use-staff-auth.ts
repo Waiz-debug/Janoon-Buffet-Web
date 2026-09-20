@@ -29,8 +29,33 @@ const STAFF_TABLE = TABLES.staffMembers;
 export const NOT_STAFF_MESSAGE =
   "That account does not have portal access. Ask an administrator to add it.";
 
+/**
+ * Shown when a signed-in account reaches the admin door without the role.
+ *
+ * Deliberately not a redirect: sending a staff account on to /staff would look
+ * like the admin door had opened, when what actually happened is that it
+ * refused. The session is closed as well, so no screen can quietly forward the
+ * account somewhere it did not ask for.
+ */
+export const NOT_ADMIN_MESSAGE = "Admin access required.";
+
+/** One wording for a rejected email/password pair, on both doors. */
+export const INCORRECT_CREDENTIALS_MESSAGE = "Incorrect email or password.";
+
 export const UNCONFIGURED_MESSAGE =
   "Sign-in is not available right now. Please try again later.";
+
+/**
+ * The one-time database rule has not been installed on this project yet.
+ *
+ * Only ever shown inside the owner-setup card — a screen an ordinary visitor
+ * cannot reach and which exists for exactly one person: whoever is claiming the
+ * restaurant's admin account. Saying "try again" without saying what is missing
+ * is what left the previous version claiming success over a grant that never
+ * happened.
+ */
+export const SETUP_REQUIRED_MESSAGE =
+  "Owner setup is not finished on this site yet — the admin role could not be recorded. Run supabase/fix-admin-recovery.sql in the Supabase SQL Editor, then try again.";
 
 /** Staff and admin land on their own dashboards after the same check. */
 /**
@@ -110,10 +135,23 @@ export async function staffLookup(userId: string): Promise<StaffLookup> {
 }
 
 export type SignInResult =
-  | { ok: true; role: StaffRole; roles: StaffRole[] }
+  | {
+      ok: true;
+      userId: string;
+      email: string;
+      role: StaffRole;
+      /** Every role the account holds; the door check reads this list. */
+      roles: StaffRole[];
+    }
   | {
       ok: false;
-      reason: "credentials" | "not-staff" | "unreachable" | "unconfigured";
+      reason:
+        | "credentials"
+        | "not-staff"
+        /** Signed in and on the team, but not an admin — the admin door. */
+        | "not-admin"
+        | "unreachable"
+        | "unconfigured";
     };
 
 /**
@@ -123,27 +161,37 @@ export type SignInResult =
  * Supabase project asks new accounts to confirm their address first. The form
  * shows "open the link, then continue" and the same call finishes the job.
  */
-export type OwnerSetupResult =
-  | { ok: true; role: StaffRole }
-  | {
-      ok: false;
-      reason:
-        | "confirm-email"
-        | "claimed"
-        | "credentials"
-        | "existing-account"
-        | "weak-password"
-        | "invalid-email"
-        | "unreachable"
-        | "unconfigured"
-        | "unknown";
-      message?: string;
-    };
+/** Every way the one-time owner setup can stop short, and why. */
+export type OwnerSetupFailure = {
+  ok: false;
+  reason:
+    | "confirm-email"
+    | "claimed"
+    | "credentials"
+    /** The existing account was granted admin; sign in with its password. */
+    | "existing-account"
+    /** The email already has an account whose password was not accepted. */
+    | "email-taken"
+    /** No admin was recorded — the database rule is not installed. */
+    | "setup-required"
+    | "weak-password"
+    | "invalid-email"
+    | "unreachable"
+    | "unconfigured"
+    | "unknown";
+  message?: string;
+};
+
+/** The claim itself, before the hook turns a success into a session. */
+export type OwnerClaim =
+  | { ok: true; userId: string; email: string; roles: StaffRole[] }
+  | OwnerSetupFailure;
+
+/** What the setup card is told once the hook has stored the session. */
+export type OwnerSetupResult = { ok: true; role: StaffRole } | OwnerSetupFailure;
 
 /** Turn a Supabase Auth complaint into something the form can act on. */
-function classifyAuthError(
-  message: string,
-): Extract<OwnerSetupResult, { ok: false }> {
+function classifyAuthError(message: string): OwnerSetupFailure {
   const text = message.toLowerCase();
   if (text.includes("password")) return { ok: false, reason: "weak-password" };
   if (text.includes("email")) return { ok: false, reason: "invalid-email" };
@@ -159,6 +207,275 @@ function isMissingFunction(error: { code?: string; message?: string } | null) {
     error?.code === "PGRST202" ||
     /Could not find the function/i.test(error?.message ?? "")
   );
+}
+
+/**
+ * Check a password and read the role behind it — the whole of sign-in, with no
+ * React state attached, so the rule can be tested without a browser.
+ *
+ * `requiredRole` is the door the person used, not a preference: signing in at
+ * `/admin` with a staff account is a refusal, not a quiet forwarding to
+ * `/staff`. The role comes from `staff_members`, read through row level
+ * security, so the browser cannot invent one — and from nothing else: not the
+ * address, not the page, not storage.
+ *
+ * Three refusals are kept apart, because the card says something different
+ * about each:
+ *
+ *   not-staff    signed in, but no row on the team (an ordinary customer)
+ *   not-admin    on the team, but the admin door wants a row that holds admin
+ *   credentials  the password did not match, or the account does not exist
+ *
+ * The first two close the session they just opened. Leaving one alive would
+ * hand the account to whichever screen renders next, and on a live session the
+ * gateway forwards staff straight to /staff — the very redirect the admin door
+ * must never perform.
+ */
+export async function authenticate(
+  email: string,
+  password: string,
+  requiredRole?: StaffRole,
+): Promise<SignInResult> {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+
+  if (error) {
+    const message = error.message.toLowerCase();
+    if (message.includes("fetch") || message.includes("network")) {
+      return { ok: false, reason: "unreachable" };
+    }
+    return { ok: false, reason: "credentials" };
+  }
+  if (!data.user) return { ok: false, reason: "credentials" };
+
+  const lookup = await staffLookup(data.user.id);
+  if (!lookup.ok) {
+    // The role cannot be checked, so the portal cannot be trusted open.
+    await supabase.auth.signOut();
+    return { ok: false, reason: "unconfigured" };
+  }
+  if (lookup.roles.length === 0) {
+    // Signed in, but not a member of staff: never leave that session open.
+    await supabase.auth.signOut();
+    return { ok: false, reason: "not-staff" };
+  }
+  if (requiredRole === "admin" && !lookup.roles.includes("admin")) {
+    // On the team, but not an admin, at the admin door. Refused — and the
+    // session closed with it, so that nothing quietly forwards this account to
+    // /staff as though the admin console had opened.
+    await supabase.auth.signOut();
+    return { ok: false, reason: "not-admin" };
+  }
+
+  return {
+    ok: true,
+    userId: data.user.id,
+    email: data.user.email ?? "",
+    role: lookup.roles[0],
+    roles: lookup.roles,
+  };
+}
+
+/**
+ * Create the admin account from the website — no dashboard step.
+ *
+ * Three things happen, in order:
+ *   1. Supabase Auth creates the user with the ordinary publishable key.
+ *   2. We hold the auth UUID it hands back.
+ *   3. `claim_admin()` records that UUID in `staff_members` as an admin.
+ *
+ * Step 3 is decided in Postgres, and only while the table holds no active
+ * admin, so the door is shut as soon as one exists — and reopens if the last one
+ * is removed. An account already on the team as staff is refused, so this is
+ * never a route from staff to admin. No service-role key is involved, and none
+ * could be, since it would have to ship in the bundle.
+ *
+ * Calling this twice with the same details is safe — the second time round
+ * `signUp` reports the account already exists, we sign in instead, and the claim
+ * answers `claimed` if someone else got there first. That second pass is also
+ * what finishes the job after a confirmation email is opened.
+ *
+ * Nothing is reported as created until the role is really recorded: every path
+ * that cannot reach the grant ends in a failure the card can explain.
+ */
+export async function claimFirstAdmin(
+  email: string,
+  password: string,
+): Promise<OwnerClaim> {
+  const address = email.trim();
+
+  // ------------------------------------------------------------------
+  // PHASE 1 — Try to grant admin to an EXISTING auth user.
+  //
+  // This must happen BEFORE signUp: if the email already exists in
+  // Supabase Auth, calling signUp would trigger "User already registered"
+  // and signInWithPassword would require the existing password. Instead,
+  // claim_admin_for_email handles everything server-side: it looks up the
+  // auth user by email, creates/grants the admin record, and returns — no
+  // password needed, no duplicate Auth user, no signUp call.
+  // ------------------------------------------------------------------
+  const { data: existingClaim, error: existingErr } = await supabase.rpc(
+    "claim_admin_for_email",
+    { p_email: address },
+  );
+
+  if (!existingErr && (existingClaim as { ok?: boolean } | null)?.ok) {
+    // The email existed in Supabase Auth. Admin has been granted to that
+    // existing identity server-side. The user must now sign in with their
+    // existing password to get a session — we cannot create one without it.
+    console.warn(
+      `[Janoon] admin granted to the existing sign-in account: ${address}`,
+    );
+    return {
+      ok: false,
+      reason: "existing-account",
+      message: address,
+    };
+  }
+
+  // A project that has not run supabase/fix-admin-recovery.sql answers this
+  // call with "Could not find the function". Remember which one it was: it is
+  // the difference between "the database can grant nothing on this build" and
+  // "the account is fine, the password was wrong".
+  const byEmailRuleMissing = !!existingErr && isMissingFunction(existingErr);
+
+  // If the function failed, figure out why and decide what to do next.
+  if (existingErr) {
+    const msg = (existingErr.message ?? "").toLowerCase();
+
+    // The function is not deployed yet — fall through to the normal
+    // signUp flow below. This handles the common case where the SQL
+    // migration has not been run.
+    if (isMissingFunction(existingErr)) {
+      // fall through
+    }
+    // The email does not exist in auth.users — this is a brand-new user.
+    // Fall through to signUp to create the Auth account.
+    else if (msg.includes("no account found")) {
+      // fall through
+    }
+    // Admin already exists — refuse immediately.
+    else if (msg.includes("admin account already exists")) {
+      return { ok: false, reason: "claimed", message: existingErr.message };
+    }
+    // Staff cannot self-promote.
+    else if (msg.includes("staff accounts cannot")) {
+      return {
+        ok: false,
+        reason: "claimed",
+        message: existingErr.message,
+      };
+    }
+    // Any other error from the function — log it and fall through.
+    else {
+      console.warn(
+        `[Janoon] claim_admin_for_email failed: ${existingErr.message}`,
+      );
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // PHASE 2 — Brand-new user: create the Auth account, then claim.
+  //
+  // This path is only reached when the email does NOT already exist in
+  // Supabase Auth (or when claim_admin_for_email is not deployed yet).
+  // signUp will create the Auth user; claim_admin will record the admin
+  // role in staff_members.
+  // ------------------------------------------------------------------
+  // Confirming the address lands back on the admin card, so whoever set the
+  // account up finishes in one press instead of arriving at the gateway holding
+  // a session that records no role yet.
+  const emailRedirectTo =
+    typeof window === "undefined"
+      ? undefined
+      : `${window.location.origin}/?unlock=admin`;
+
+  const { data, error } = await supabase.auth.signUp({
+    email: address,
+    password,
+    options: { emailRedirectTo },
+  });
+
+  if (error && !/already registered|already exists/i.test(error.message)) {
+    return classifyAuthError(error.message);
+  }
+
+  let user = data.user;
+  if (!data.session) {
+    const attempt = await supabase.auth.signInWithPassword({
+      email: address,
+      password,
+    });
+    if (attempt.error) {
+      const message = attempt.error.message.toLowerCase();
+      if (message.includes("confirm")) {
+        // The project asks new accounts to confirm their address before they
+        // can sign in (Supabase's "Confirm email" setting). Not a failure: the
+        // card says so, and Continue finishes the claim once the link has been
+        // opened.
+        await supabase.auth.resend({
+          type: "signup",
+          email: address,
+          options: { emailRedirectTo },
+        });
+        return { ok: false, reason: "confirm-email" };
+      }
+      if (message.includes("fetch") || message.includes("network")) {
+        return { ok: false, reason: "unreachable" };
+      }
+      // The address already has a Supabase Auth account, and the password typed
+      // here is not that account's password. Nothing has been granted — Phase 1
+      // either refused or is not installed — so this is reported as a failure.
+      // Claiming success here is what told people their admin account was ready
+      // and then refused them at the sign-in card.
+      return {
+        ok: false,
+        reason: byEmailRuleMissing ? "setup-required" : "email-taken",
+        message: address,
+      };
+    }
+    user = attempt.data.user;
+  }
+  if (!user) return { ok: false, reason: "unknown" };
+
+  const claim = await supabase.rpc("claim_admin");
+  if (!claim.error) {
+    return {
+      ok: true,
+      userId: user.id,
+      email: user.email ?? address,
+      roles: ["admin"],
+    };
+  }
+
+  console.warn(`[Janoon] admin claim refused: ${claim.error.message}`);
+  const lookup = await staffLookup(user.id);
+  if (lookup.ok && lookup.roles.length > 0) {
+    return {
+      ok: true,
+      userId: user.id,
+      email: user.email ?? address,
+      roles: lookup.roles,
+    };
+  }
+
+  await supabase.auth.signOut();
+  // Two kinds of refusal, told apart. "An admin account already exists" (or a
+  // staff account trying to promote itself) is the rule working, and has its
+  // own wording. Anything else means the role was never recorded — a function
+  // this project does not have, or a rule from an older build refusing for its
+  // own reasons — so the card says the setup step is outstanding rather than
+  // inventing a cause.
+  if (/already exists|staff accounts cannot/i.test(claim.error.message)) {
+    return { ok: false, reason: "claimed", message: claim.error.message };
+  }
+  return {
+    ok: false,
+    reason: "setup-required",
+    message: claim.error.message,
+  };
 }
 
 /**
@@ -211,43 +528,29 @@ export function useStaffAuth() {
     };
   }, []);
 
+  /**
+   * Sign in through one of the two doors, and keep what came back.
+   *
+   * The rule is `authenticate` above — module scope, no React — so it can be
+   * tested against a fake server; this only stores the session.
+   */
   const signIn = useCallback(
-    async (email: string, password: string): Promise<SignInResult> => {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (error) {
-        const message = error.message.toLowerCase();
-        if (message.includes("fetch") || message.includes("network")) {
-          return { ok: false, reason: "unreachable" };
-        }
-        return { ok: false, reason: "credentials" };
+    async (
+      email: string,
+      password: string,
+      requiredRole?: StaffRole,
+    ): Promise<SignInResult> => {
+      const result = await authenticate(email, password, requiredRole);
+      if (result.ok) {
+        setSession({
+          userId: result.userId,
+          email: result.email,
+          role: result.role,
+          roles: result.roles,
+        });
+        setIsLoaded(true);
       }
-      if (!data.user) return { ok: false, reason: "credentials" };
-
-      const lookup = await staffLookup(data.user.id);
-      if (!lookup.ok) {
-        // The role cannot be checked, so the portal cannot be trusted open.
-        await supabase.auth.signOut();
-        return { ok: false, reason: "unconfigured" };
-      }
-      if (lookup.roles.length === 0) {
-        // Signed in, but not a member of staff: never leave that session open.
-        await supabase.auth.signOut();
-        return { ok: false, reason: "not-staff" };
-      }
-
-      const next: StaffSession = {
-        userId: data.user.id,
-        email: data.user.email ?? "",
-        role: lookup.roles[0],
-        roles: lookup.roles,
-      };
-      setSession(next);
-      setIsLoaded(true);
-      return { ok: true, role: next.role, roles: next.roles };
+      return result;
     },
     [],
   );
@@ -314,158 +617,24 @@ export function useStaffAuth() {
    *
    * Calling this twice with the same details is safe — the second time round
    * `signUp` reports the account already exists, we sign in instead, and the
-   * claim answers `claimed` if someone else got there first.
+   * claim answers `claimed` if someone else got there first. That second pass
+   * is also what finishes the job after a confirmation email is opened.
+   *
+   * Nothing is reported as created until the role is really recorded: every
+   * path that cannot reach the grant ends in a failure the card can explain.
    */
   const setupOwner = useCallback(
     async (email: string, password: string): Promise<OwnerSetupResult> => {
-      const address = email.trim();
-
-      // ------------------------------------------------------------------
-      // PHASE 1 — Try to grant admin to an EXISTING auth user.
-      //
-      // This must happen BEFORE signUp: if the email already exists in
-      // Supabase Auth, calling signUp would trigger "User already registered"
-      // and signInWithPassword would require the existing password. Instead,
-      // claim_admin_for_email handles everything server-side: it looks up the
-      // auth user by email, creates/grants the admin record, and returns — no
-      // password needed, no duplicate Auth user, no signUp call.
-      // ------------------------------------------------------------------
-      const { data: existingClaim, error: existingErr } = await supabase.rpc(
-        "claim_admin_for_email",
-        { p_email: address },
-      );
-
-      if (!existingErr && (existingClaim as { ok?: boolean } | null)?.ok) {
-        // The email existed in Supabase Auth. Admin has been granted to that
-        // existing identity server-side. The user must now sign in with their
-        // existing password to get a session — we cannot create one without it.
-        console.warn(
-          `[Janoon] admin granted to the existing sign-in account: ${address}`,
-        );
-        return {
-          ok: false,
-          reason: "existing-account",
-          message: address,
-        };
-      }
-
-      // If the function failed, figure out why and decide what to do next.
-      if (existingErr) {
-        const msg = (existingErr.message ?? "").toLowerCase();
-
-        // The function is not deployed yet — fall through to the normal
-        // signUp flow below. This handles the common case where the SQL
-        // migration has not been run.
-        if (isMissingFunction(existingErr)) {
-          // fall through
-        }
-        // The email does not exist in auth.users — this is a brand-new user.
-        // Fall through to signUp to create the Auth account.
-        else if (msg.includes("no account found")) {
-          // fall through
-        }
-        // Admin already exists — refuse immediately.
-        else if (msg.includes("admin account already exists")) {
-          return { ok: false, reason: "claimed", message: existingErr.message };
-        }
-        // Staff cannot self-promote.
-        else if (msg.includes("staff accounts cannot")) {
-          return {
-            ok: false,
-            reason: "claimed",
-            message: existingErr.message,
-          };
-        }
-        // Any other error from the function — log it and fall through.
-        else {
-          console.warn(
-            `[Janoon] claim_admin_for_email failed: ${existingErr.message}`,
-          );
-        }
-      }
-
-      // ------------------------------------------------------------------
-      // PHASE 2 — Brand-new user: create the Auth account, then claim.
-      //
-      // This path is only reached when the email does NOT already exist in
-      // Supabase Auth (or when claim_admin_for_email is not deployed yet).
-      // signUp will create the Auth user; claim_admin will record the admin
-      // role in staff_members.
-      // ------------------------------------------------------------------
-      const emailRedirectTo =
-        typeof window === "undefined" ? undefined : window.location.origin;
-
-      const { data, error } = await supabase.auth.signUp({
-        email: address,
-        password,
-        options: { emailRedirectTo },
+      const outcome = await claimFirstAdmin(email, password);
+      if (!outcome.ok) return outcome;
+      setSession({
+        userId: outcome.userId,
+        email: outcome.email,
+        role: outcome.roles[0],
+        roles: outcome.roles,
       });
-
-      if (error && !/already registered|already exists/i.test(error.message)) {
-        return classifyAuthError(error.message);
-      }
-
-      let user = data.user;
-      if (!data.session) {
-        const attempt = await supabase.auth.signInWithPassword({
-          email: address,
-          password,
-        });
-        if (attempt.error) {
-          const message = attempt.error.message.toLowerCase();
-          if (message.includes("confirm")) {
-            await supabase.auth.resend({ type: "signup", email: address });
-            return { ok: false, reason: "confirm-email" };
-          }
-          if (message.includes("fetch") || message.includes("network")) {
-            return { ok: false, reason: "unreachable" };
-          }
-          // The email exists in Auth but the password doesn't match. This
-          // happens when claim_admin_for_email is not deployed yet (we
-          // couldn't handle it in Phase 1). Show the existing-account
-          // message so the user knows to sign in with their existing password.
-          return {
-            ok: false,
-            reason: "existing-account",
-            message: address,
-          };
-        }
-        user = attempt.data.user;
-      }
-      if (!user) return { ok: false, reason: "unknown" };
-
-      const claim = await supabase.rpc("claim_admin");
-      if (!claim.error) {
-        const next: StaffSession = {
-          userId: user.id,
-          email: user.email ?? address,
-          role: "admin",
-          roles: ["admin"],
-        };
-        setSession(next);
-        setIsLoaded(true);
-        return { ok: true, role: next.role };
-      }
-
-      console.warn(`[Janoon] admin claim refused: ${claim.error.message}`);
-      const lookup = await staffLookup(user.id);
-      if (lookup.ok && lookup.roles.length > 0) {
-        const next: StaffSession = {
-          userId: user.id,
-          email: user.email ?? address,
-          role: lookup.roles[0],
-          roles: lookup.roles,
-        };
-        setSession(next);
-        setIsLoaded(true);
-        return { ok: true, role: next.role };
-      }
-
-      await supabase.auth.signOut();
-      if (isMissingFunction(claim.error)) {
-        return { ok: false, reason: "unconfigured" };
-      }
-      return { ok: false, reason: "claimed", message: claim.error.message };
+      setIsLoaded(true);
+      return { ok: true, role: outcome.roles[0] };
     },
     [],
   );

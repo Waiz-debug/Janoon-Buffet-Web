@@ -2,8 +2,8 @@
 --  Janoon — authorization & admin setup rules (copy-paste, idempotent)
 --
 --  Run this whole file in the Supabase SQL Editor, then reload the website and
---  open the Admin Portal. It adds one table if it is missing and replaces nine
---  functions. No row is deleted and no business table is touched.
+--  open the Admin Portal. It adds one table if it is missing and replaces
+--  fourteen functions. No row is deleted and no business table is touched.
 --
 --  Why it is needed on an older project:
 --
@@ -12,6 +12,13 @@
 --      them — admin_grant_role and admin_remove_role — were taken away from
 --      PUBLIC without being handed to `authenticated`, so even the owner was
 --      refused permission to change a role.
+--
+--    * The rest of that screen's functions — the team list, adding a member,
+--      changing a role, switching access on and off — exist in earlier copies
+--      that were written before the junction table did. The list one reads that
+--      table, so on a project without it the Team tab fails instead of listing
+--      anyone. All five are replaced here, so one paste leaves nothing
+--      half-upgraded.
 --
 --    * staff_bootstrap_state() used to report claimable only while
 --      staff_members was COMPLETELY EMPTY, and answered without a `version`
@@ -421,6 +428,230 @@ revoke all on function public.admin_remove_role(uuid, text) from public;
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
 grant execute on function public.admin_grant_role(uuid, text) to authenticated;
 grant execute on function public.admin_remove_role(uuid, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+--  7. The rest of the team-management set, replaced for the same reason.
+--
+--     The Team tab lists the team, adds a member, and switches roles or access
+--     on and off. An older project carries earlier copies of these five,
+--     written before the junction table existed — and the list one reads that
+--     table, so on a project without it the Team tab fails outright. They are
+--     installed here exactly as supabase/schema.sql defines them, so a single
+--     paste leaves the whole staff subsystem matching the schema: nothing is
+--     left half-upgraded, and no earlier copy survives to disagree.
+-- ---------------------------------------------------------------------------
+create or replace function public.staff_sync_email()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_email text;
+begin
+  if v_uid is null then
+    raise exception 'Sign in first.' using errcode = '42501';
+  end if;
+
+  select email into v_email from auth.users where id = v_uid;
+
+  -- An UPDATE, never an INSERT: a signed-in customer who is not on the team
+  -- updates zero rows and gains nothing.
+  update public.staff_members
+     set email = v_email
+   where user_id = v_uid;
+
+  return jsonb_build_object('ok', true, 'email', v_email);
+end $$;
+
+--  The team list, for the admin panel. Emails, roles and active flags only —
+--  there is no password column to leak.
+create or replace function public.admin_list_staff()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_rows jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select coalesce(
+           jsonb_agg(
+             jsonb_build_object(
+               'userId',      sm.user_id,
+               'email',       sm.email,
+               'displayName', sm.display_name,
+               'role',        sm.role,
+               'roles',       coalesce(r.roles, jsonb_build_array(sm.role)),
+               'active',      sm.active,
+               'createdAt',   sm.created_at
+             )
+             order by case when sm.role = 'admin' then 0 else 1 end, sm.email
+           ),
+           '[]'::jsonb
+         )
+    into v_rows
+    from public.staff_members sm
+    left join lateral (
+      select jsonb_agg(r2.role) as roles
+        from public.staff_member_roles r2
+       where r2.user_id = sm.user_id
+    ) r on true;
+
+  return v_rows;
+end $$;
+
+--  Give an existing Supabase Auth account a place on the team. The account is
+--  created by the browser; the role is decided here, by an admin, and nowhere
+--  else. A staff caller is refused outright, so this is not a door to promotion.
+create or replace function public.admin_add_staff(
+  p_email text,
+  p_role  text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := lower(trim(coalesce(p_email, '')));
+  v_role  text := case when p_role = 'admin' then 'admin' else 'staff' end;
+  v_uid   uuid;
+  v_name  text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  select u.id,
+         coalesce(nullif(split_part(coalesce(u.email, v_email), '@', 1), ''), 'Team')
+    into v_uid, v_name
+    from auth.users u
+   where lower(u.email) = v_email
+   limit 1;
+
+  if v_uid is null then
+    raise exception
+      'No Sign-in account exists for %. Create the account first, then add the role.',
+      v_email;
+  end if;
+
+  -- Add to the junction table (multi-role support).
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  -- Also ensure a row in staff_members (legacy table).
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, v_name, v_role, true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set email = excluded.email, active = true;
+
+  return jsonb_build_object('ok', true, 'userId', v_uid, 'email', v_email, 'role', v_role);
+end $$;
+
+--  Change a role. Refuses to remove the last admin.
+create or replace function public.admin_set_staff_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_current text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  select role into v_current from public.staff_members where user_id = p_user_id;
+  if v_current is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if v_current = 'admin'
+     and p_role = 'staff'
+     and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — make someone else an admin first.';
+  end if;
+
+  update public.staff_members
+     set role = p_role
+   where user_id = p_user_id;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'role', p_role);
+end $$;
+
+--  Turn portal access on or off without touching the role. Same last-admin rule.
+create or replace function public.admin_set_staff_active(
+  p_user_id uuid,
+  p_active  boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role   text;
+  v_active boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select role, active into v_role, v_active
+    from public.staff_members where user_id = p_user_id;
+  if v_role is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if not p_active and v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be deactivated.';
+  end if;
+
+  update public.staff_members
+     set active = coalesce(p_active, false)
+   where user_id = p_user_id;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'active', p_active);
+end $$;
+
+--  Same reason as above: these are taken from PUBLIC and handed to
+--  `authenticated`. Miss the second half and the function is callable by nobody.
+revoke all on function public.staff_sync_email() from public;
+revoke all on function public.admin_list_staff() from public;
+revoke all on function public.admin_add_staff(text, text) from public;
+revoke all on function public.admin_set_staff_role(uuid, text) from public;
+revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
+
+grant execute on function public.staff_sync_email() to authenticated;
+grant execute on function public.admin_list_staff() to authenticated;
+grant execute on function public.admin_add_staff(text, text) to authenticated;
+grant execute on function public.admin_set_staff_role(uuid, text) to authenticated;
+grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
 
 
 -- ---------------------------------------------------------------------------
