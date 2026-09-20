@@ -1,6 +1,7 @@
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { Button } from "@/components/ui/button";
 import { useStaffAuth } from "@/hooks/use-staff-auth";
-import { Flame, LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import type { ReactNode } from "react";
@@ -37,9 +38,7 @@ export function PortalFrame({
       <header className="border-b border-border/70 bg-background/70 px-4 py-4 backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <Link to="/" className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
-              <Flame className="size-4" aria-hidden />
-            </span>
+            <JanoonMark className="size-10" />
             <span>
               <span className="block font-display text-base font-semibold leading-tight">
                 Janoon

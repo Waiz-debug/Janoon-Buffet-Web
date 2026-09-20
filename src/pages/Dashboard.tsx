@@ -1,10 +1,10 @@
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { useReservations } from "@/hooks/use-live-db";
 import { RESTAURANT, todayKey } from "@/lib/restaurant";
 import {
   CalendarDays,
   CheckCircle2,
-  Flame,
   Users,
   Utensils,
 } from "lucide-react";
@@ -65,9 +65,7 @@ export default function Dashboard() {
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
-              <Flame className="size-4" aria-hidden />
-            </span>
+            <JanoonMark className="size-10" />
             <div>
               <p className="font-display text-base font-semibold">
                 Reservations desk

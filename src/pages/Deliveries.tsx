@@ -1,6 +1,7 @@
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { RESTAURANT } from "@/lib/restaurant";
-import { Bike, Phone } from "lucide-react";
+import { Phone } from "lucide-react";
 import { useEffect } from "react";
 import { Link } from "react-router";
 
@@ -14,9 +15,7 @@ export default function Deliveries() {
       <div className="border-b border-border/70 bg-background/85 px-4 py-4 backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
-              <Bike className="size-4" aria-hidden />
-            </span>
+            <JanoonMark className="size-10" />
             <div>
               <p className="font-display text-lg font-semibold">Delivery desk</p>
               <p className="text-[0.65rem] tracking-[0.2em] text-gold/80 uppercase">

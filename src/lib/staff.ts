@@ -53,7 +53,7 @@ export async function listStaff(): Promise<StaffMember[]> {
   const { data, error } = await supabase.rpc("admin_list_staff");
   if (error) {
     // Reads must not throw: the panel renders an empty list with the reason.
-    console.warn(`[tribe] staff list failed: ${error.message}`);
+    console.warn(`[Janoon] staff list failed: ${error.message}`);
     throw new Error(firstLine(error.message));
   }
   const rows = (data ?? []) as {
@@ -110,7 +110,7 @@ export async function addStaffAccount(
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-      storageKey: "tribe-invite-token",
+      storageKey: "janoon-invite-token",
     },
   });
   const { error: signUpError } = await invite.auth.signUp({
@@ -191,7 +191,7 @@ function randomPassword(): string {
 export async function syncOwnStaffEmail(): Promise<void> {
   const { error } = await supabase.rpc("staff_sync_email");
   if (error && !isMissingFunction(error)) {
-    console.warn(`[tribe] staff email sync failed: ${error.message}`);
+    console.warn(`[Janoon] staff email sync failed: ${error.message}`);
   }
 }
 

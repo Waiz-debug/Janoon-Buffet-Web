@@ -67,14 +67,14 @@ select public.staff_bootstrap_state();
 
 
 -- ---------------------------------------------------------------------------
---  4. Optional, and destructive: wipe the team AND every Supabase Auth user.
+--  4. Emptying the whole team.
 --
---     Only for a genuine clean-slate reset — it deletes logins for real people,
---     so it must never be run without first checking step 1. Deleting from
---     auth.users cascades to auth.sessions and auth.refresh_tokens.
+--     Use supabase/reset-staff-accounts.sql for that — it lists every account
+--     it is about to remove, deletes only the identities that are on the team,
+--     and runs as one transaction. Deleting from `auth.users` as a whole is
+--     deliberately not offered here: it would also take out sign-in accounts
+--     that were never staff.
 -- ---------------------------------------------------------------------------
---  delete from public.staff_members;
---  delete from auth.users;
 
 
 -- ============================================================================

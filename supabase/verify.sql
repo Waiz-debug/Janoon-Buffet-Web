@@ -1,5 +1,5 @@
 -- ============================================================================
---  Tribe of Taste — post-migration verification
+--  Janoon — post-migration verification
 --
 --  Run this in the Supabase SQL editor immediately AFTER supabase/schema.sql.
 --  It changes nothing; it only reports what exists.
@@ -16,8 +16,12 @@ app_tables (name) as (values
   ('site_media'), ('site_content'), ('promotions'), ('delivery_orders'),
   ('reservations'), ('preorders'), ('pre_order_items')
 ),
--- guest_write_log backs the rate limiter: RLS on, deliberately no policies.
-support_tables (name) as (values ('staff_members'), ('guest_write_log')),
+-- The identity tables (RLS on, readable only by the member themselves and by
+-- other staff) plus guest_write_log, which backs the rate limiter with RLS on
+-- and deliberately no policies.
+support_tables (name) as (values
+  ('staff_members'), ('staff_member_roles'), ('guest_write_log')
+),
 -- Every function the client calls, exactly as src/lib/db.ts calls it.
 rpc (name) as (values
   ('is_staff'), ('is_admin'),
@@ -25,9 +29,10 @@ rpc (name) as (values
   ('create_reservation'), ('create_preorder'), ('place_delivery_order'),
   ('tribe_throttle_guest'), ('tribe_rate_limit'), ('tribe_client_ip'),
   ('tribe_reference'), ('tribe_limit_signature_dishes'),
-  ('staff_bootstrap_state'), ('claim_admin'),
+  ('staff_bootstrap_state'), ('claim_admin'), ('claim_admin_for_email'),
   ('staff_sync_email'), ('admin_list_staff'), ('admin_add_staff'),
   ('admin_set_staff_role'), ('admin_set_staff_active'), ('admin_remove_staff'),
+  ('admin_grant_role'), ('admin_remove_role'),
   ('tribe_active_admins')
 ),
 bucket_policies (name) as (values

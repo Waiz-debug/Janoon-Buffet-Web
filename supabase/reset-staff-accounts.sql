@@ -1,0 +1,177 @@
+-- ============================================================================
+--  Janoon — reset every staff and admin account
+--
+--  Run this in the Supabase SQL Editor (Dashboard → SQL Editor). It is meant to
+--  be read once before it is run: section 1 only looks, section 2 is the reset.
+--
+--  Bring the project's schema up to date first: run supabase/schema.sql (it
+--  is idempotent — it only adds what is missing, and it carries the current
+--  authorization rules), or supabase/fix-admin-recovery.sql if the rules are
+--  the only thing that is out of date. Section 0 checks and refuses to go any
+--  further otherwise, because the whole point of emptying the team is that
+--  "Create Admin Account" works afterwards, and it only does under the current
+--  rules.
+--
+--  What this removes
+--  ─────────────────
+--    • every row of public.staff_members and public.staff_member_roles, so no
+--      account can open the Admin or Staff portal whatever role it holds;
+--    • the Supabase Auth identities behind those rows, which is what makes them
+--      logins rather than names in a table. Deleting an `auth.users` row
+--      cascades to both staff tables, and to that account's sessions and
+--      refresh tokens.
+--
+--  What it deliberately leaves alone
+--  ─────────────────────────────────
+--    • customer accounts. Customers sign in through the site's own auth
+--      service (Convex), not Supabase Auth, so no statement here can reach
+--      them.
+--    • every business record: menu_categories, menu_dishes, menu_addons,
+--      addon_categories, site_media, site_content, promotions, reservations,
+--      preorders, pre_order_items and delivery_orders. Outside the two staff
+--      tables, nothing in this database references auth.users, so there is no
+--      cascade path from a login into restaurant data.
+--    • any Supabase Auth account that is not on the team. The delete is scoped
+--      to the ids listed in section 1, never to `auth.users` as a whole.
+--
+--  Afterwards, staff_bootstrap_state() answers { "claimable": true } and the
+--  Admin Portal offers "Create Admin Account" again for the next first admin.
+-- ============================================================================
+
+
+-- ---------------------------------------------------------------------------
+--  0. Which rules is this project running?
+--
+--     Expect { "claimable": …, "version": 2 }. An answer without `version` is an
+--     older copy of the rule, and this script stops rather than leave a project
+--     whose setup button cannot work: run supabase/schema.sql (or
+--     supabase/fix-admin-recovery.sql), then run this file again from the top.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if to_regprocedure('public.staff_bootstrap_state()') is null then
+    raise exception
+      'Run supabase/schema.sql before this file: the staff tables are not there.';
+  end if;
+
+  if (public.staff_bootstrap_state() ->> 'version') is distinct from '2' then
+    raise exception
+      'These are the older authorization rules: run supabase/schema.sql (or supabase/fix-admin-recovery.sql) first.';
+  end if;
+end $$;
+
+select public.staff_bootstrap_state() as current_rules;
+
+
+-- ---------------------------------------------------------------------------
+--  1. Look before you leap — who is on the team right now?
+--     This creates nothing permanent; it is a temporary work table used by
+--     section 2 so the listing and the delete can never disagree.
+-- ---------------------------------------------------------------------------
+drop table if exists janoon_team_reset;
+
+create temporary table janoon_team_reset as
+select m.user_id from public.staff_members m
+union
+select r.user_id from public.staff_member_roles r;
+
+-- 1a. The team, exactly as the admin panel shows it.
+select m.user_id,
+       m.email,
+       m.display_name,
+       m.role as primary_role,
+       m.active,
+       coalesce((select array_agg(r.role order by r.role)
+                   from public.staff_member_roles r
+                  where r.user_id = m.user_id), '{}') as all_roles,
+       u.created_at as sign_in_created_at
+  from public.staff_members m
+  left join auth.users u on u.id = m.user_id
+ order by m.role, m.created_at;
+
+-- 1b. Every Supabase Auth account, and what this script will do with it.
+--     Anything marked "left alone" is not on the team and cannot open a
+--     portal; it is listed so the count is never a surprise.
+select u.id,
+       u.email,
+       u.created_at,
+       case when t.user_id is null
+            then 'left alone — not on the team'
+            else 'removed by this script'
+       end as action
+  from auth.users u
+  left join janoon_team_reset t on t.user_id = u.id
+ order by action, u.created_at;
+
+-- 1c. How many identities section 2 will delete.
+select count(*) as accounts_to_remove from janoon_team_reset;
+
+
+-- ---------------------------------------------------------------------------
+--  2. The reset.
+--
+--     One transaction: if any statement fails, nothing is removed and the
+--     project is exactly as it was. Re-running the file afterwards removes
+--     nothing further, because the list is empty.
+-- ---------------------------------------------------------------------------
+begin;
+
+--  Roles first, then the team rows, then the logins themselves. Deleting the
+--  auth users would cascade to both staff tables on its own; doing it in order
+--  keeps the intent readable and leaves no window in which a portal row exists
+--  without its identity.
+delete from public.staff_member_roles r
+ where exists (select 1 from janoon_team_reset t where t.user_id = r.user_id);
+
+delete from public.staff_members m
+ where exists (select 1 from janoon_team_reset t where t.user_id = m.user_id);
+
+delete from auth.users u
+ where exists (select 1 from janoon_team_reset t where t.user_id = u.id);
+
+commit;
+
+
+-- ---------------------------------------------------------------------------
+--  3. Verify. Expect { "claimable": true, "version": 2 }, zero staff rows, and
+--     the business counts unchanged from before the reset.
+-- ---------------------------------------------------------------------------
+select public.staff_bootstrap_state() as admin_setup_state,
+       public.tribe_active_admins() as active_admins;
+
+select (select count(*) from public.staff_members)       as staff_rows,
+       (select count(*) from public.staff_member_roles)  as role_rows;
+
+select (select count(*) from public.menu_categories)  as menu_categories,
+       (select count(*) from public.menu_dishes)      as menu_dishes,
+       (select count(*) from public.menu_addons)      as menu_addons,
+       (select count(*) from public.addon_categories) as addon_categories,
+       (select count(*) from public.site_media)       as site_media,
+       (select count(*) from public.site_content)     as site_content,
+       (select count(*) from public.promotions)       as promotions,
+       (select count(*) from public.reservations)     as reservations,
+       (select count(*) from public.preorders)        as preorders,
+       (select count(*) from public.delivery_orders)  as delivery_orders;
+
+drop table if exists janoon_team_reset;
+
+
+-- ============================================================================
+--  Making the next admin
+--
+--  Reload the website, open the Admin Portal, and "Create Admin Account" is
+--  offered — the same one-time door as the very first setup. It closes by
+--  itself the moment an active admin exists, and reopens if the last one is
+--  removed (or switched off) here in the SQL editor.
+--
+--  To hand the portal to a second person afterwards, add them from the admin
+--  panel's Team screen, or here:
+--
+--    insert into public.staff_members (user_id, email, display_name, role)
+--    select id, email, 'Team', 'staff' from auth.users where email = 'them@janoon.pk'
+--    on conflict (user_id) do update set role = excluded.role, active = true;
+--
+--    insert into public.staff_member_roles (user_id, role)
+--    select id, 'staff' from auth.users where email = 'them@janoon.pk'
+--    on conflict (user_id, role) do nothing;
+-- ============================================================================

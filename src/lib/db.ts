@@ -339,7 +339,7 @@ async function selectRows<Row>(
   const query = configure ? configure(base) : base;
   const { data, error } = await query;
   if (error) {
-    console.warn(`[tribe] "${table}" read failed: ${error.message}`);
+    console.warn(`[Janoon] "${table}" read failed: ${error.message}`);
     return [];
   }
   return Array.isArray(data) ? (data as Row[]) : [];
@@ -1077,7 +1077,7 @@ export async function fetchDeliveryOrder(
     p_phone: phone,
   });
   if (error) {
-    console.warn(`[tribe] order lookup failed: ${error.message}`);
+    console.warn(`[Janoon] order lookup failed: ${error.message}`);
     return null;
   }
   const row = (Array.isArray(data) ? data[0] : data) as
@@ -1214,7 +1214,7 @@ export async function fetchReservation(
     p_phone: phone,
   });
   if (error) {
-    console.warn(`[tribe] reservation lookup failed: ${error.message}`);
+    console.warn(`[Janoon] reservation lookup failed: ${error.message}`);
     return null;
   }
   const row = (Array.isArray(data) ? data[0] : data) as ReservationDb | undefined;
@@ -1796,7 +1796,7 @@ async function removeStoredObject(
   if (/^https?:\/\//i.test(path) || path.startsWith("data:")) return;
   const { error } = await supabase.storage.from(MEDIA_BUCKET).remove([path]);
   if (error) {
-    console.warn(`[tribe] could not delete "${path}": ${error.message}`);
+    console.warn(`[Janoon] could not delete "${path}": ${error.message}`);
   }
 }
 

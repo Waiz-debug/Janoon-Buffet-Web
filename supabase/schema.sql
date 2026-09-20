@@ -383,12 +383,22 @@ security definer
 set search_path = public
 stable
 as $$
+  --  One row decides, and `active` is part of that decision: an account whose
+  --  row has been switched off in the Team screen is not staff, so switching
+  --  somebody off really does close the door. The junction table still adds the
+  --  extra roles, but it never grants access on its own.
   select exists (
-    select 1 from public.staff_members
-     where user_id = auth.uid() and active
-  ) or exists (
-    select 1 from public.staff_member_roles r
-     where r.user_id = auth.uid()
+    select 1
+      from public.staff_members sm
+     where sm.user_id = auth.uid()
+       and sm.active
+       and (
+         sm.role = 'admin'
+         or exists (
+           select 1 from public.staff_member_roles r
+            where r.user_id = sm.user_id
+         )
+       )
   );
 $$;
 
@@ -399,12 +409,21 @@ security definer
 set search_path = public
 stable
 as $$
+  --  Same rule as is_staff(): an active row in `staff_members`, whose role is
+  --  admin either as its primary role or through the junction table. A row
+  --  switched off is refused even while it still lists the admin role.
   select exists (
-    select 1 from public.staff_members
-     where user_id = auth.uid() and active and role = 'admin'
-  ) or exists (
-    select 1 from public.staff_member_roles r
-     where r.user_id = auth.uid() and r.role = 'admin'
+    select 1
+      from public.staff_members sm
+     where sm.user_id = auth.uid()
+       and sm.active
+       and (
+         sm.role = 'admin'
+         or exists (
+           select 1 from public.staff_member_roles r
+            where r.user_id = sm.user_id and r.role = 'admin'
+         )
+       )
   );
 $$;
 
@@ -518,15 +537,10 @@ begin
 
   lock table public.staff_members in exclusive mode;
 
-  --  Re-read after the lock: only an active admin closes the door. Checks both
-  --  the legacy table and the junction table.
-  if exists (
-    select 1 from public.staff_members
-     where role = 'admin' and active
-  ) or exists (
-    select 1 from public.staff_member_roles
-     where role = 'admin'
-  ) then
+  --  Re-read after the lock, through the same helper the sign-in card asks, so
+  --  the button and the claim can never disagree: one active admin closes the
+  --  door.
+  if public.tribe_active_admins() > 0 then
     raise exception 'An admin account already exists for this restaurant.'
       using errcode = '23505';
   end if;
@@ -612,14 +626,10 @@ begin
 
   lock table public.staff_members in exclusive mode;
 
-  --  Re-read after the lock: only an active admin closes the door.
-  if exists (
-    select 1 from public.staff_members
-     where role = 'admin' and active
-  ) or exists (
-    select 1 from public.staff_member_roles
-     where role = 'admin'
-  ) then
+  --  Re-read after the lock, through the same helper the sign-in card asks, so
+  --  the button and the claim can never disagree: one active admin closes the
+  --  door.
+  if public.tribe_active_admins() > 0 then
     raise exception 'An admin account already exists for this restaurant.'
       using errcode = '23505';
   end if;
@@ -1697,7 +1707,7 @@ revoke all on function public.tribe_client_ip() from public, anon, authenticated
 --  Users (or `supabase auth signup`). Run this with the new user's id:
 --
 --    insert into public.staff_members (user_id, email, display_name, role)
---    select id, email, 'Owner', 'admin' from auth.users where email = 'owner@tribeoftaste.pk'
+--    select id, email, 'Owner', 'admin' from auth.users where email = 'owner@janoon.pk'
 --    on conflict (user_id) do update set role = 'admin', active = true;
 --
 --  Confirm who can reach the portals:

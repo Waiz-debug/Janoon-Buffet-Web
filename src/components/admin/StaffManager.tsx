@@ -11,7 +11,6 @@ import {
   removeStaff,
   sendPasswordReset,
   setStaffActive,
-  setStaffRole,
   type StaffMember,
 } from "@/lib/staff";
 import { motion } from "framer-motion";

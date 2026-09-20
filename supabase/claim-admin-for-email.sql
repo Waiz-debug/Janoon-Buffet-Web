@@ -7,6 +7,11 @@
 --  match (e.g. a staff member or customer whose account predates the admin
 --  setup).
 --
+--  supabase/schema.sql carries this same function, and
+--  supabase/fix-admin-recovery.sql installs it together with the rest of the
+--  current rules — either of those is enough on a new project. This file stays
+--  as the smallest possible patch for a project that only needs this one.
+--
 --  Security:
 --    • Only works while NO active admin exists (same guard as claim_admin).
 --    • The target email must exist in auth.users.
@@ -50,15 +55,10 @@ begin
 
   lock table public.staff_members in exclusive mode;
 
-  --  Re-read after the lock: only an active admin closes the door.
-  --  Checks both the legacy single-role column and the junction table.
-  if exists (
-    select 1 from public.staff_members
-     where role = 'admin' and active
-  ) or exists (
-    select 1 from public.staff_member_roles
-     where role = 'admin'
-  ) then
+  --  Re-read after the lock, through the same helper the sign-in card asks, so
+  --  the button and the claim can never disagree: one active admin closes the
+  --  door.
+  if public.tribe_active_admins() > 0 then
     raise exception 'An admin account already exists for this restaurant.'
       using errcode = '23505';
   end if;

@@ -14,8 +14,9 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowRight, Flame, Loader2, Mail } from "lucide-react";
+import { ArrowRight, Loader2, Mail } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -105,12 +106,15 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     type="button"
                     aria-label="Back to the Janoon website"
                     onClick={() => navigate("/")}
-                    className="flex size-14 items-center justify-center rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/25 to-ember/20 text-gold"
+                    className="flex cursor-pointer items-center justify-center rounded-2xl transition-opacity hover:opacity-85"
                   >
-                    <Flame className="size-6" aria-hidden />
+                    <JanoonMark className="size-14" alt="Janoon" />
                   </button>
                 </div>
-                <CardTitle className="text-xl font-display">
+                <p className="text-[0.65rem] font-medium tracking-[0.24em] text-gold/80 uppercase">
+                  Janoon · Gulberg, Lahore
+                </p>
+                <CardTitle className="mt-2 text-xl font-display">
                   Reservations desk
                 </CardTitle>
                 <CardDescription>

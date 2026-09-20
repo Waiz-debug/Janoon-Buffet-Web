@@ -1,3 +1,4 @@
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { OpenStatus } from "@/components/tribe/OpenStatus";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { useCart } from "@/hooks/use-cart";
@@ -5,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarCheck, Flame, Menu, Phone, ShoppingBag, X } from "lucide-react";
+import { CalendarCheck, Menu, Phone, ShoppingBag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
@@ -50,9 +51,7 @@ export function SiteHeader() {
           onClick={() => goTo("top")}
           className="flex items-center gap-3 text-left"
         >
-          <span className="flex size-9 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
-            <Flame className="size-4" aria-hidden />
-          </span>
+          <JanoonMark className="size-9" />
           <span className="flex flex-col leading-none">
             <span className="font-display text-[1.05rem] font-semibold tracking-tight">
               {RESTAURANT.name}

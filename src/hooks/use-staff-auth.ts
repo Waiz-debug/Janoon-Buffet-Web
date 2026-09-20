@@ -64,40 +64,49 @@ type StaffLookup =
 /**
  * Look up a user's roles from the database.
  *
- * First checks staff_member_roles for all roles, then falls back to
- * staff_members.role for backwards compatibility.
+ * `staff_members` is asked first because it is the row that carries `active`:
+ * an account switched off in the Team screen keeps its roles but may not open a
+ * portal, and letting it in would only produce a screen whose every query the
+ * database then refuses. The junction table adds the extra roles a member
+ * holds; it never grants access on its own, which is the same rule
+ * `public.is_staff()` applies to every table policy.
  */
-async function staffLookup(
-  userId: string,
-): Promise<{ ok: true; roles: StaffRole[] } | { ok: false; message: string }> {
-  // Try the junction table first (multi-role support).
+async function staffLookup(userId: string): Promise<StaffLookup> {
+  // `*` rather than a column list: this row is the caller's own, and a project
+  // whose schema predates a column should not fail the whole sign-in over it.
+  const { data, error } = await supabase
+    .from(STAFF_TABLE)
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn(`[Janoon] staff lookup failed: ${error.message}`);
+    return { ok: false, message: error.message };
+  }
+
+  const row = data as { role?: string; active?: boolean } | null;
+  if (!row) return { ok: true, roles: [] };
+  // Only an explicit `false` counts as switched off, so a project that has not
+  // added the column yet does not lock its whole team out.
+  if (row.active === false) return { ok: true, roles: [] };
+
   const { data: roleRows, error: roleErr } = await supabase
     .from("staff_member_roles")
     .select("role")
     .eq("user_id", userId);
 
-  if (!roleErr && roleRows && roleRows.length > 0) {
-    const roles = roleRows
-      .map((r) => (r as { role?: string }).role)
-      .filter((r): r is StaffRole => r === "admin" || r === "staff");
-    if (roles.length > 0) return { ok: true, roles };
+  const roles = (
+    !roleErr && roleRows
+      ? roleRows.map((r) => (r as { role?: string }).role)
+      : []
+  ).filter((r): r is StaffRole => r === "admin" || r === "staff");
+
+  // The primary role still counts on a project that predates the junction table.
+  if (row.role === "admin" || row.role === "staff") {
+    if (!roles.includes(row.role)) roles.push(row.role);
   }
 
-  // Fallback: legacy single-role row in staff_members.
-  const { data, error } = await supabase
-    .from(STAFF_TABLE)
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    console.warn(`[tribe] staff lookup failed: ${error.message}`);
-    return { ok: false, message: error.message };
-  }
-  const role = (data as { role?: string } | null)?.role;
-  if (role === "admin" || role === "staff") {
-    return { ok: true, roles: [role] };
-  }
-  return { ok: true, roles: [] };
+  return { ok: true, roles };
 }
 
 export type SignInResult =
@@ -268,7 +277,7 @@ export function useStaffAuth() {
   const canClaimOwner = useCallback(async (): Promise<AdminSetupState> => {
     const { data, error } = await supabase.rpc("staff_bootstrap_state");
     if (error) {
-      console.warn(`[tribe] admin setup check failed: ${error.message}`);
+      console.warn(`[Janoon] admin setup check failed: ${error.message}`);
       return "unknown";
     }
     const answer = data as {
@@ -331,7 +340,7 @@ export function useStaffAuth() {
         // existing identity server-side. The user must now sign in with their
         // existing password to get a session — we cannot create one without it.
         console.warn(
-          `[tribe] admin granted to existing auth user: ${address}`,
+          `[Janoon] admin granted to the existing sign-in account: ${address}`,
         );
         return {
           ok: false,
@@ -370,7 +379,7 @@ export function useStaffAuth() {
         // Any other error from the function — log it and fall through.
         else {
           console.warn(
-            `[tribe] claim_admin_for_email failed: ${existingErr.message}`,
+            `[Janoon] claim_admin_for_email failed: ${existingErr.message}`,
           );
         }
       }
@@ -438,7 +447,7 @@ export function useStaffAuth() {
         return { ok: true, role: next.role };
       }
 
-      console.warn(`[tribe] admin claim refused: ${claim.error.message}`);
+      console.warn(`[Janoon] admin claim refused: ${claim.error.message}`);
       const lookup = await staffLookup(user.id);
       if (lookup.ok && lookup.roles.length > 0) {
         const next: StaffSession = {

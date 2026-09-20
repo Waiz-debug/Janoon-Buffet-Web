@@ -18,6 +18,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
@@ -207,6 +208,9 @@ export default function AuthLanding() {
     if (result.reason === "existing-account") {
       setOwnerMode("signin");
       setSetupPhase("form");
+      // The claim has just been spent on that account, so the setup action is
+      // gone the moment it succeeded — no round trip needed to hide it.
+      setClaim("closed");
       setSetupSuccess(ownerSetupMessage(result));
       return;
     }
@@ -300,9 +304,7 @@ export default function AuthLanding() {
         <header className="relative z-10 px-4 pt-5 sm:px-8">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span className="flex size-9 items-center justify-center rounded-xl border border-gold/30 bg-background/50 text-gold backdrop-blur">
-                <Flame className="size-4" aria-hidden />
-              </span>
+              <JanoonMark className="size-9" />
               <span className="text-[0.65rem] font-medium uppercase tracking-[0.24em] text-foreground/80">
                 Lahore · Gulberg
               </span>

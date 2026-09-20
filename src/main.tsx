@@ -1,6 +1,7 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireRole } from "@/components/RequireRole";
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { CartDrawer } from "@/components/tribe/CartDrawer";
 import { CartProvider } from "@/hooks/use-cart";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
@@ -25,11 +26,15 @@ const OrderPage = lazy(() => import("./pages/Order.tsx"));
 const Deliveries = lazy(() => import("./pages/Deliveries.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
-// Simple loading fallback for route transitions
+// Simple loading fallback for route transitions — the restaurant's own mark
+// rather than a bare "Loading…", so a slow chunk still looks like Janoon.
 function RouteLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
+      <JanoonMark className="size-12 animate-pulse" />
+      <p className="text-[0.65rem] font-medium tracking-[0.24em] text-gold/70 uppercase">
+        Janoon
+      </p>
     </div>
   );
 }
@@ -72,8 +77,9 @@ class RootErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
-          <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Preview runtime error</p>
+          <div className="flex max-w-lg flex-col items-center text-center">
+            <JanoonMark className="size-12" />
+            <p className="mt-4 text-sm font-semibold">Janoon — this screen hit an error</p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>

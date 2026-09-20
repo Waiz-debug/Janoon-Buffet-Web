@@ -1465,7 +1465,7 @@ revoke all on function public.tribe_client_ip() from public, anon, authenticated
 --  Users (or `supabase auth signup`). Run this with the new user's id:
 --
 --    insert into public.staff_members (user_id, email, display_name, role)
---    select id, email, 'Owner', 'admin' from auth.users where email = 'owner@tribeoftaste.pk'
+--    select id, email, 'Owner', 'admin' from auth.users where email = 'owner@janoon.pk'
 --    on conflict (user_id) do update set role = 'admin', active = true;
 --
 --  Confirm who can reach the portals:

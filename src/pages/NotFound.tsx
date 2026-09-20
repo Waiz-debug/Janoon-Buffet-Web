@@ -1,6 +1,7 @@
+import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { Link } from "react-router";
 import { motion } from "framer-motion";
-import { ArrowLeft, Flame } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
@@ -18,9 +19,7 @@ export default function NotFound() {
       />
 
       <div className="flex flex-col items-center text-center">
-        <span className="flex size-14 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10 text-gold">
-          <Flame className="size-6" aria-hidden />
-        </span>
+        <JanoonMark className="size-14" alt="Janoon" />
 
         <h1 className="mt-6 font-display text-6xl font-semibold tracking-tight text-foreground">
           404
