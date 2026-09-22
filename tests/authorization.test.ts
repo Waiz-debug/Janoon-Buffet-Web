@@ -649,7 +649,10 @@ describe("claimFirstAdmin", () => {
       reason: "setup-required",
       message: "owner@janoon.pk",
     });
-    expect(SETUP_REQUIRED_MESSAGE).toContain("supabase/fix-admin-recovery.sql");
+    // Read by the restaurant owner, not by whoever maintains the site: no SQL
+    // file to run, no schema language, nothing technical to interpret.
+    expect(SETUP_REQUIRED_MESSAGE).not.toMatch(/sql|supabase|schema|script/i);
+    expect(SETUP_REQUIRED_MESSAGE).toContain("administrator account");
   });
 
   test("a claim refused for an unrecognised reason reports the setup step, not a made-up cause", async () => {
@@ -741,6 +744,24 @@ describe("the admin route", () => {
     expect(src).toContain("NOT_ADMIN_MESSAGE");
     expect(src).toContain("<AccessDenied");
     expect(src).not.toMatch(/<Navigate\s+to=("|\{`)\/staff/);
+  });
+
+  /**
+   * The same mistake seen from the gateway: a staff account that opens the
+   * admin door while already signed in used to be carried straight to /staff by
+   * the "live session goes to its portal" redirect, so the refusal was never
+   * shown. The redirect is skipped while the refusal applies.
+   */
+  test("the gateway never forwards a staff session that asked for the admin door", () => {
+    const src = read("../src/pages/AuthLanding.tsx");
+
+    expect(src).toContain("const staffAtAdminDoor");
+    expect(src).toContain('!session.roles.includes("admin")');
+    // …and the portal redirect stands aside while it does.
+    expect(src).toMatch(/if \(!isLoaded \|\| !session \|\| staffAtAdminDoor\) return;/);
+    expect(src).toContain(
+      'error={error ?? (staffAtAdminDoor ? NOT_ADMIN_MESSAGE : null)}',
+    );
   });
 
   test("the door hands its own role to the sign-in rule", () => {

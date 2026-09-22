@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
-  AlertTriangle,
   ArrowRight,
   ChefHat,
   ChevronDown,
@@ -115,12 +114,23 @@ export default function AuthLanding() {
   const [setupSubmitting, setSetupSubmitting] = useState(false);
   const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
 
-  // A live session goes straight to its portal — no re-entry.
+  /**
+   * A staff session that asked for the admin door, and may not enter it.
+   *
+   * The refusal is shown here, on the card the person is already looking at —
+   * it is never a forward to /staff. Being moved to another screen looks like
+   * the admin console had opened, when what actually happened is that it said
+   * no, and it is exactly the redirect the admin door must never perform.
+   */
+  const staffAtAdminDoor =
+    modalRole === "admin" && !!session && !session.roles.includes("admin");
+
+  // A live session goes straight to its portal — no re-entry. The refusal
+  // above is the one exception: it stays put and says so.
   useEffect(() => {
-    if (isLoaded && session) {
-      navigate(portalPathFor(session.role, session.roles), { replace: true });
-    }
-  }, [isLoaded, session, navigate]);
+    if (!isLoaded || !session || staffAtAdminDoor) return;
+    navigate(portalPathFor(session.role, session.roles), { replace: true });
+  }, [isLoaded, session, staffAtAdminDoor, navigate]);
 
   /**
    * Asked of the database each time the admin door opens. A signed-out visitor
@@ -240,7 +250,7 @@ export default function AuthLanding() {
       {modalRole ? (
         <SignInModal
           role={modalRole as StaffRole}
-          error={error}
+          error={error ?? (staffAtAdminDoor ? NOT_ADMIN_MESSAGE : null)}
           shake={attempts}
           submitting={submitting}
           onSignIn={(email, password) => void handleSignIn(email, password)}
@@ -668,28 +678,12 @@ function SignInModal({
         {role === "admin" && (offersSetup || settingUp) ? (
           <div className="relative mt-6 flex flex-col gap-3">
             {/*
-              The database is still running the previous setup rule, so it can
-              answer "is an admin wanted?" but it cannot record one. Only ever
-              shown inside the owner setup block of the admin door — a screen an
-              ordinary visitor cannot reach — and it says what to do about it,
-              which beats a card that offers a button that cannot work.
+              `outdated` — the database answered without the current rule's
+              marker, so it can say whether an admin is wanted but cannot record
+              one. The action is still offered, because the claim itself is
+              decided in the database: it either grants the role or refuses it.
+              Nothing here tells the owner to run anything by hand.
             */}
-            {owner.claim === "outdated" ? (
-              <div
-                role="status"
-                className="rounded-xl border border-gold/30 bg-gold/5 px-4 py-3 text-left"
-              >
-                <p className="flex items-center gap-2 text-xs font-medium text-gold">
-                  <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
-                  Setting up admin access
-                </p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  Please wait while the admin setup completes. This usually
-                  happens automatically on the first visit.
-                </p>
-              </div>
-            ) : null}
-
             {offersSetup ? (
               <Button
                 type="button"

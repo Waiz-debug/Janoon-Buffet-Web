@@ -46,16 +46,17 @@ export const UNCONFIGURED_MESSAGE =
   "Sign-in is not available right now. Please try again later.";
 
 /**
- * The one-time database rule has not been installed on this project yet.
+ * The account was created but the admin role was never recorded.
  *
- * Only ever shown inside the owner-setup card — a screen an ordinary visitor
- * cannot reach and which exists for exactly one person: whoever is claiming the
- * restaurant's admin account. Saying "try again" without saying what is missing
- * is what left the previous version claiming success over a grant that never
- * happened.
+ * Shown only inside the owner-setup card, and written for the person setting
+ * the restaurant up rather than for whoever maintains the site: no file names,
+ * no SQL, nothing to run by hand. Whatever the database actually said is logged
+ * to the console instead, where it is useful for debugging and invisible to the
+ * owner. Telling somebody to go and paste a script into a database console is
+ * not a way to finish setting up an account.
  */
 export const SETUP_REQUIRED_MESSAGE =
-  "Owner setup is not finished on this site yet — the admin role could not be recorded. Run supabase/fix-admin-recovery.sql in the Supabase SQL Editor, then try again.";
+  "We could not finish setting up the administrator account. Please try again in a moment.";
 
 /** Staff and admin land on their own dashboards after the same check. */
 /**
@@ -335,10 +336,10 @@ export async function claimFirstAdmin(
     };
   }
 
-  // A project that has not run supabase/fix-admin-recovery.sql answers this
-  // call with "Could not find the function". Remember which one it was: it is
-  // the difference between "the database can grant nothing on this build" and
-  // "the account is fine, the password was wrong".
+  // A project whose database predates this rule answers the call with "Could
+  // not find the function". Remember which one it was: it is the difference
+  // between "this database can grant nothing" and "the account is fine, the
+  // password was wrong".
   const byEmailRuleMissing = !!existingErr && isMissingFunction(existingErr);
 
   // If the function failed, figure out why and decide what to do next.
