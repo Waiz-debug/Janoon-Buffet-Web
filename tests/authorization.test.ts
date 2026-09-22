@@ -970,3 +970,66 @@ describe("the security schema", () => {
     }
   });
 });
+
+/* ---------------------------------------------------------- staff reset --- */
+
+/**
+ * The reset file makes one dangerous promise: it empties the team and touches
+ * nothing else. The mistake it guards against — a delete that is a table wider
+ * than intended — is invisible until somebody runs it against a live project
+ * that is full of customers and bookings, so the promise is read out of the SQL
+ * here rather than trusted.
+ */
+describe("the staff reset", () => {
+  const sql = readFileSync(
+    new URL("../supabase/reset-staff-accounts.sql", import.meta.url),
+    "utf8",
+  );
+
+  test("deletes the team's own rows and their sign-in identities, and nothing else", () => {
+    const deletes = [...sql.matchAll(/delete\s+from\s+([a-z_.]+)/gi)].map((match) =>
+      match[1].toLowerCase(),
+    );
+
+    expect(deletes.sort()).toEqual([
+      "auth.users",
+      "public.staff_member_roles",
+      "public.staff_members",
+    ]);
+  });
+
+  test("never writes to a business table", () => {
+    for (const table of [
+      "menu_categories",
+      "menu_dishes",
+      "menu_addons",
+      "addon_categories",
+      "site_media",
+      "site_content",
+      "promotions",
+      "reservations",
+      "preorders",
+      "pre_order_items",
+      "delivery_orders",
+      "orders",
+    ]) {
+      const writes = new RegExp(
+        `(delete from|insert into|update)\\s+\\w*\\.?${table}\\b`,
+        "i",
+      );
+      expect([table, writes.test(sql)]).toEqual([table, false]);
+    }
+  });
+
+  test("is scoped by an explicit id list, never by auth.users as a whole", () => {
+    expect(sql).toContain("create temporary table janoon_team_reset as");
+    expect(sql).toContain("from janoon_team_reset t where t.user_id = u.id");
+  });
+
+  test("refuses to run until the current rules are installed", () => {
+    // The whole point of emptying the team is that the setup action works
+    // afterwards, which it only does under the current rules.
+    expect(sql).toContain("'version') is distinct from '2'");
+    expect(sql).toMatch(/raise exception/);
+  });
+});
