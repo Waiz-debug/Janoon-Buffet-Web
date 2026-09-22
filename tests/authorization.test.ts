@@ -572,6 +572,9 @@ describe("claimFirstAdmin", () => {
       },
       error: null,
     };
+    // The row the claim is supposed to have written, read back by the account
+    // itself before the card is allowed to say the account exists.
+    tableReplies.staff_members = { data: { role: "admin", active: true }, error: null };
 
     try {
       const outcome = await claimFirstAdmin("  owner@janoon.pk  ", "brand-new-secret");
@@ -591,10 +594,45 @@ describe("claimFirstAdmin", () => {
       });
       expect(JSON.stringify(authCalls[0].args)).toContain("unlock=admin");
       expect(JSON.stringify(rpcCalls)).not.toContain("brand-new-secret");
-      expect(tableTouches).toEqual([]);
+      // The grant is confirmed by reading the caller's own staff rows back —
+      // those two tables and nothing else, and never the password.
+      expect([...new Set(tableTouches.map((touch) => touch.table))].sort()).toEqual([
+        "staff_member_roles",
+        "staff_members",
+      ]);
+      expect(JSON.stringify(tableTouches)).not.toContain("brand-new-secret");
     } finally {
       delete (globalThis as { window?: unknown }).window;
     }
+  });
+
+  /**
+   * The failure the portal used to be able to report backwards: a claim that
+   * wrote nothing, announced as a created admin. The account could sign up and
+   * was then refused at the sign-in card, because no row recorded it. Success
+   * is now read back from the database, so this ends as a failure.
+   */
+  test("a claim that records no row is a failure, not a created admin", async () => {
+    authReplies.signUp = {
+      data: {
+        user: { id: "ghost-admin", email: "owner@janoon.pk" },
+        session: { access_token: "t" },
+      },
+      error: null,
+    };
+    rpcReplies = {
+      claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // No error — and no row behind it.
+      claim_admin: { data: { ok: true }, error: null },
+    };
+    tableReplies.staff_members = { data: null, error: null };
+
+    const outcome = await claimFirstAdmin("owner@janoon.pk", "pw");
+
+    expect(outcome).toMatchObject({ ok: false, reason: "setup-required" });
+    // And the session it opened is closed again: an account with no row must
+    // not be left signed in on the strength of a function that said nothing.
+    expect(authCalls.map((call) => call.method)).toContain("signOut");
   });
 
   test("an existing address the database granted is left alone — no second Auth user", async () => {

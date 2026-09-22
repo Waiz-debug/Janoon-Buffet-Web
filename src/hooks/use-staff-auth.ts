@@ -442,23 +442,29 @@ export async function claimFirstAdmin(
   if (!user) return { ok: false, reason: "unknown" };
 
   const claim = await supabase.rpc("claim_admin");
-  if (!claim.error) {
-    return {
-      ok: true,
-      userId: user.id,
-      email: user.email ?? address,
-      roles: ["admin"],
-    };
+  if (claim.error) {
+    console.warn(`[Janoon] admin claim refused: ${claim.error.message}`);
   }
 
-  console.warn(`[Janoon] admin claim refused: ${claim.error.message}`);
-  const lookup = await staffLookup(user.id);
-  if (lookup.ok && lookup.roles.length > 0) {
+  /**
+   * The grant is believed only once the database agrees with it.
+   *
+   * The function returning without an error is not proof that the role was
+   * recorded: a database still carrying an older copy of the rule, or a policy
+   * that will not let the account read its own row, both leave an account that
+   * looks created and is then refused at the sign-in card. Reading the caller's
+   * own row back is what separates the two, and it is why nothing is reported
+   * as created until the row is present, `admin`, and switched on — the same
+   * four things sign-in checks a moment later. Anything less and the session is
+   * closed again rather than handed to an account with no access.
+   */
+  const confirmed = await staffLookup(user.id);
+  if (confirmed.ok && confirmed.roles.includes("admin")) {
     return {
       ok: true,
       userId: user.id,
       email: user.email ?? address,
-      roles: lookup.roles,
+      roles: confirmed.roles,
     };
   }
 
@@ -469,14 +475,11 @@ export async function claimFirstAdmin(
   // this project does not have, or a rule from an older build refusing for its
   // own reasons — so the card says the setup step is outstanding rather than
   // inventing a cause.
-  if (/already exists|staff accounts cannot/i.test(claim.error.message)) {
-    return { ok: false, reason: "claimed", message: claim.error.message };
+  const refusal = claim.error?.message ?? "";
+  if (/already exists|staff accounts cannot/i.test(refusal)) {
+    return { ok: false, reason: "claimed", message: refusal };
   }
-  return {
-    ok: false,
-    reason: "setup-required",
-    message: claim.error.message,
-  };
+  return { ok: false, reason: "setup-required", message: refusal };
 }
 
 /**
