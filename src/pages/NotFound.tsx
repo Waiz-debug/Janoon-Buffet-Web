@@ -19,7 +19,7 @@ export default function NotFound() {
       />
 
       <div className="flex flex-col items-center text-center">
-        <JanoonMark className="size-14" alt="Janoon" />
+        <JanoonMark className="size-14" alt="JUNOON" />
 
         <h1 className="mt-6 font-display text-6xl font-semibold tracking-tight text-foreground">
           404

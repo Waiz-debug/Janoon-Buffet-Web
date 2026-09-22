@@ -1,5 +1,5 @@
 /**
- * Janoon — single source of truth for public site content.
+ * JUNOON — single source of truth for public site content.
  *
  * Photos: swap these Unsplash placeholders for real photos of the Gulberg
  * seating area and live counters. Every image degrades to a themed tile
@@ -10,7 +10,7 @@ const unsplash = (id: string, width = 1000) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=70`;
 
 export const RESTAURANT = {
-  name: "Janoon",
+  name: "JUNOON",
   tagline: "24/7 open buffet",
   phoneDisplay: "0333 4363996",
   phoneHref: "tel:+923334363996",
@@ -29,7 +29,7 @@ export const RESTAURANT = {
   facebookUrl: "https://www.facebook.com/junoonrestaurantpk/",
   tiktokUrl: "https://www.tiktok.com/@junoonrestaurant",
   mapsUrl:
-    "https://www.google.com/maps/search/?api=1&query=Janoon+Gulberg+Lahore",
+    "https://www.google.com/maps/search/?api=1&query=JUNOON+Gulberg+Lahore",
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
 } as const;
 

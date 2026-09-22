@@ -53,82 +53,82 @@
     "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* THE HERITAGE HEARTH — hearthstone charcoal, aged brass, restrained ember */
+/* JUNOON — deep forest background, antique-gold accents */
 :root {
   --radius: 0.625rem;
   color-scheme: dark;
 
-  --background: oklch(0.166 0.011 58);
+  --background: oklch(0.16 0.018 145);
   --foreground: oklch(0.945 0.012 85);
-  --card: oklch(0.208 0.013 56);
+  --card: oklch(0.19 0.016 145);
   --card-foreground: oklch(0.945 0.012 85);
-  --popover: oklch(0.222 0.014 56);
+  --popover: oklch(0.20 0.015 145);
   --popover-foreground: oklch(0.945 0.012 85);
-  --primary: oklch(0.778 0.122 76);
+  --primary: oklch(0.78 0.12 76);
   --primary-foreground: oklch(0.198 0.026 58);
-  --secondary: oklch(0.274 0.016 54);
+  --secondary: oklch(0.24 0.012 145);
   --secondary-foreground: oklch(0.93 0.014 85);
-  --muted: oklch(0.236 0.012 56);
-  --muted-foreground: oklch(0.716 0.02 78);
-  --accent: oklch(0.592 0.132 44);
+  --muted: oklch(0.21 0.012 145);
+  --muted-foreground: oklch(0.68 0.02 80);
+  --accent: oklch(0.58 0.13 44);
   --accent-foreground: oklch(0.972 0.014 85);
   --destructive: oklch(0.596 0.19 26);
-  --border: oklch(0.96 0.014 82 / 11%);
-  --input: oklch(0.96 0.014 82 / 15%);
-  --ring: oklch(0.778 0.122 76 / 55%);
-  --gold: oklch(0.815 0.112 84);
-  --ember: oklch(0.644 0.148 44);
-  --clay: oklch(0.508 0.052 46);
-  --chart-1: oklch(0.778 0.122 76);
-  --chart-2: oklch(0.644 0.148 44);
-  --chart-3: oklch(0.815 0.112 84);
-  --chart-4: oklch(0.508 0.052 46);
-  --chart-5: oklch(0.45 0.04 56);
-  --sidebar: oklch(0.194 0.012 57);
+  --border: oklch(0.85 0.04 82 / 14%);
+  --input: oklch(0.85 0.04 82 / 18%);
+  --ring: oklch(0.78 0.12 76 / 55%);
+  --gold: oklch(0.82 0.11 80);
+  --ember: oklch(0.64 0.14 44);
+  --clay: oklch(0.50 0.05 46);
+  --chart-1: oklch(0.78 0.12 76);
+  --chart-2: oklch(0.64 0.14 44);
+  --chart-3: oklch(0.82 0.11 80);
+  --chart-4: oklch(0.50 0.05 46);
+  --chart-5: oklch(0.42 0.03 145);
+  --sidebar: oklch(0.18 0.015 145);
   --sidebar-foreground: oklch(0.945 0.012 85);
-  --sidebar-primary: oklch(0.778 0.122 76);
+  --sidebar-primary: oklch(0.78 0.12 76);
   --sidebar-primary-foreground: oklch(0.198 0.026 58);
-  --sidebar-accent: oklch(0.264 0.015 55);
+  --sidebar-accent: oklch(0.23 0.012 145);
   --sidebar-accent-foreground: oklch(0.93 0.014 85);
-  --sidebar-border: oklch(0.96 0.014 82 / 11%);
-  --sidebar-ring: oklch(0.778 0.122 76 / 55%);
+  --sidebar-border: oklch(0.85 0.04 82 / 14%);
+  --sidebar-ring: oklch(0.78 0.12 76 / 55%);
 }
 
 .dark {
-  --background: oklch(0.166 0.011 58);
+  --background: oklch(0.16 0.018 145);
   --foreground: oklch(0.945 0.012 85);
-  --card: oklch(0.208 0.013 56);
+  --card: oklch(0.19 0.016 145);
   --card-foreground: oklch(0.945 0.012 85);
-  --popover: oklch(0.222 0.014 56);
+  --popover: oklch(0.20 0.015 145);
   --popover-foreground: oklch(0.945 0.012 85);
-  --primary: oklch(0.778 0.122 76);
+  --primary: oklch(0.78 0.12 76);
   --primary-foreground: oklch(0.198 0.026 58);
-  --secondary: oklch(0.274 0.016 54);
+  --secondary: oklch(0.24 0.012 145);
   --secondary-foreground: oklch(0.93 0.014 85);
-  --muted: oklch(0.236 0.012 56);
-  --muted-foreground: oklch(0.716 0.02 78);
-  --accent: oklch(0.592 0.132 44);
+  --muted: oklch(0.21 0.012 145);
+  --muted-foreground: oklch(0.68 0.02 80);
+  --accent: oklch(0.58 0.13 44);
   --accent-foreground: oklch(0.972 0.014 85);
   --destructive: oklch(0.596 0.19 26);
-  --border: oklch(0.96 0.014 82 / 11%);
-  --input: oklch(0.96 0.014 82 / 15%);
-  --ring: oklch(0.778 0.122 76 / 55%);
-  --gold: oklch(0.815 0.112 84);
-  --ember: oklch(0.644 0.148 44);
-  --clay: oklch(0.508 0.052 46);
-  --chart-1: oklch(0.778 0.122 76);
-  --chart-2: oklch(0.644 0.148 44);
-  --chart-3: oklch(0.815 0.112 84);
-  --chart-4: oklch(0.508 0.052 46);
-  --chart-5: oklch(0.45 0.04 56);
-  --sidebar: oklch(0.194 0.012 57);
+  --border: oklch(0.85 0.04 82 / 14%);
+  --input: oklch(0.85 0.04 82 / 18%);
+  --ring: oklch(0.78 0.12 76 / 55%);
+  --gold: oklch(0.82 0.11 80);
+  --ember: oklch(0.64 0.14 44);
+  --clay: oklch(0.50 0.05 46);
+  --chart-1: oklch(0.78 0.12 76);
+  --chart-2: oklch(0.64 0.14 44);
+  --chart-3: oklch(0.82 0.11 80);
+  --chart-4: oklch(0.50 0.05 46);
+  --chart-5: oklch(0.42 0.03 145);
+  --sidebar: oklch(0.18 0.015 145);
   --sidebar-foreground: oklch(0.945 0.012 85);
-  --sidebar-primary: oklch(0.778 0.122 76);
+  --sidebar-primary: oklch(0.78 0.12 76);
   --sidebar-primary-foreground: oklch(0.198 0.026 58);
-  --sidebar-accent: oklch(0.264 0.015 55);
+  --sidebar-accent: oklch(0.23 0.012 145);
   --sidebar-accent-foreground: oklch(0.93 0.014 85);
-  --sidebar-border: oklch(0.96 0.014 82 / 11%);
-  --sidebar-ring: oklch(0.778 0.122 76 / 55%);
+  --sidebar-border: oklch(0.85 0.04 82 / 14%);
+  --sidebar-ring: oklch(0.78 0.12 76 / 55%);
 }
 
 /* Soft firelight pooling from the top of a section */

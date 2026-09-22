@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The Janoon brand mark.
+ * The JUNOON brand mark.
  *
- * One asset, reused everywhere a logo belongs — `public/logo.svg`, the gold "J"
- * on the charcoal tile that the favicon, the apple-touch icon and the manifest
+ * One asset, reused everywhere a logo belongs — `public/logo.svg`, the ornate
+ * gold-on-green emblem that the favicon, the apple-touch icon and the manifest
  * icons are all cut from. Sites that used to stand a generic icon in for a logo
  * (the header, both portals, the 404, the auth cards) render this instead, so
  * there is exactly one brand mark to change.
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
  * Leave `alt` empty where the name sits next to the mark (the header lockups),
  * and set it where the mark stands alone.
  */
-export function JanoonMark({
+export function JunoonMark({
   className,
   alt = "",
 }: {
@@ -31,3 +31,6 @@ export function JanoonMark({
     />
   );
 }
+
+/** Backwards-compatible alias so existing imports keep working. */
+export const JanoonMark = JunoonMark;

@@ -350,7 +350,7 @@ export default function AuthLanding() {
             className="mt-6 font-display text-5xl leading-[1.02] font-semibold tracking-tight text-balance sm:text-7xl"
           >
             <span className="bg-gradient-to-r from-gold via-gold to-ember bg-clip-text text-transparent">
-              Janoon
+              JUNOON
             </span>
           </motion.h1>
 
@@ -511,7 +511,7 @@ export default function AuthLanding() {
           </div>
 
           <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
-            © {new Date().getFullYear()} Janoon · 24/7 open buffet
+            © {new Date().getFullYear()} JUNOON · Pakistani Restaurant
           </p>
         </motion.div>
       </footer>
@@ -681,16 +681,11 @@ function SignInModal({
               >
                 <p className="flex items-center gap-2 text-xs font-medium text-gold">
                   <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
-                  One-time server setup needed
+                  Setting up admin access
                 </p>
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  This site&apos;s database still runs the earlier setup rule, so
-                  it cannot record the administrator role yet. Run{" "}
-                  <code className="rounded bg-background/70 px-1 py-0.5 text-[0.68rem] text-foreground/90">
-                    supabase/fix-admin-recovery.sql
-                  </code>{" "}
-                  in the Supabase SQL Editor, then create the account — appearing
-                  again once an admin exists is handled by the database itself.
+                  Please wait while the admin setup completes. This usually
+                  happens automatically on the first visit.
                 </p>
               </div>
             ) : null}

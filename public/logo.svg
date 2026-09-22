@@ -1,33 +1,103 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Janoon browser icon / monogram.
+  JUNOON emblem — the official restaurant brand mark.
 
-  A single gold "J" on a warm near-black tile: no text, no illustration, and it
-  stays legible down to 16px. The gold is the same accent the site uses for its
-  buttons and rules, and the tile is the same warm charcoal as the page
-  background, so the tab matches the restaurant.
+  Ornate gold emblem on dark forest green, matching the uploaded logo.
+  Used as the site logo, favicon (via rasterisation), apple-touch-icon,
+  and manifest icon.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Janoon" shape-rendering="geometricPrecision">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Junoon Pakistani Restaurant" shape-rendering="geometricPrecision">
   <defs>
-    <linearGradient id="jan-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a2016" />
-      <stop offset="1" stop-color="#120e0a" />
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1a10" />
+      <stop offset="1" stop-color="#080e08" />
     </linearGradient>
-    <linearGradient id="jan-gold" x1="0.15" y1="0" x2="0.85" y2="1">
+    <linearGradient id="gold" x1="0.15" y1="0" x2="0.85" y2="1">
       <stop offset="0" stop-color="#f0cd72" />
-      <stop offset="0.5" stop-color="#e3b341" />
-      <stop offset="1" stop-color="#c9822f" />
+      <stop offset="0.5" stop-color="#d4a843" />
+      <stop offset="1" stop-color="#b8912e" />
+    </linearGradient>
+    <linearGradient id="goldLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5dc8a" />
+      <stop offset="1" stop-color="#c99530" />
     </linearGradient>
   </defs>
 
-  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#jan-bg)" />
+  <!-- Background -->
+  <rect width="512" height="512" rx="28" ry="28" fill="url(#bg)" />
 
-  <path
-    d="M362 114 V292 A106 106 0 0 1 150 292 V228"
-    fill="none"
-    stroke="url(#jan-gold)"
-    stroke-width="62"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
+  <!-- Outer ornate border -->
+  <rect x="48" y="48" width="416" height="416" rx="208" ry="208"
+    fill="none" stroke="url(#gold)" stroke-width="2.5" opacity="0.6" />
+
+  <!-- Main oval border -->
+  <ellipse cx="256" cy="256" rx="192" ry="192"
+    fill="none" stroke="url(#gold)" stroke-width="4" />
+
+  <!-- Inner oval border -->
+  <ellipse cx="256" cy="256" rx="176" ry="176"
+    fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.5" />
+
+  <!-- Top decorative arch -->
+  <path d="M128 140 Q256 80 384 140" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.7" />
+  <path d="M148 152 Q256 100 364 152" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.4" />
+
+  <!-- Bottom decorative arch -->
+  <path d="M128 372 Q256 432 384 372" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.7" />
+  <path d="M148 360 Q256 412 364 360" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.4" />
+
+  <!-- Top ornament: diamond -->
+  <path d="M256 108 L264 118 L256 128 L248 118 Z" fill="url(#gold)" opacity="0.8" />
+  <circle cx="256" cy="118" r="3" fill="url(#bg)" />
+
+  <!-- Bottom ornament: diamond -->
+  <path d="M256 384 L264 394 L256 404 L248 394 Z" fill="url(#gold)" opacity="0.8" />
+  <circle cx="256" cy="394" r="3" fill="url(#bg)" />
+
+  <!-- Left ornament -->
+  <path d="M88 256 L98 248 L108 256 L98 264 Z" fill="url(#gold)" opacity="0.6" />
+
+  <!-- Right ornament -->
+  <path d="M404 256 L414 248 L424 256 L414 264 Z" fill="url(#gold)" opacity="0.6" />
+
+  <!-- Horizontal divider lines -->
+  <line x1="130" y1="172" x2="382" y2="172" stroke="url(#gold)" stroke-width="1" opacity="0.35" />
+  <line x1="130" y1="340" x2="382" y2="340" stroke="url(#gold)" stroke-width="1" opacity="0.35" />
+
+  <!-- Top label: PAKISTAN RESTAURANT -->
+  <text x="256" y="158" text-anchor="middle" font-family="'Georgia', 'Times New Roman', serif" font-size="22" font-weight="400" letter-spacing="6" fill="url(#gold)" opacity="0.85">
+    PAKISTAN RESTAURANT
+  </text>
+
+  <!-- Main title: JUNOON -->
+  <text x="256" y="280" text-anchor="middle" font-family="'Georgia', 'Times New Roman', serif" font-size="78" font-weight="700" letter-spacing="10" fill="url(#goldLight)">
+    JUNOON
+  </text>
+
+  <!-- Decorative dots flanking the title -->
+  <circle cx="118" cy="262" r="3.5" fill="url(#gold)" opacity="0.7" />
+  <circle cx="394" cy="262" r="3.5" fill="url(#gold)" opacity="0.7" />
+
+  <!-- Small decorative lines between title and bottom -->
+  <line x1="200" y1="302" x2="312" y2="302" stroke="url(#gold)" stroke-width="1.2" opacity="0.5" />
+
+  <!-- Bottom label: EST 2025 -->
+  <text x="256" y="332" text-anchor="middle" font-family="'Georgia', 'Times New Roman', serif" font-size="16" font-weight="400" letter-spacing="4" fill="url(#gold)" opacity="0.65">
+    EST 2025
+  </text>
+
+  <!-- Corner flourish accents (top-left) -->
+  <path d="M64 100 Q80 80 100 64" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
+
+  <!-- Corner flourish accents (top-right) -->
+  <path d="M448 100 Q432 80 412 64" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
+
+  <!-- Corner flourish accents (bottom-left) -->
+  <path d="M64 412 Q80 432 100 448" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
+
+  <!-- Corner flourish accents (bottom-right) -->
+  <path d="M448 412 Q432 432 412 448" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
+
+  <!-- Inner decorative circle pattern -->
+  <circle cx="256" cy="256" r="155" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.2" stroke-dasharray="4 8" />
 </svg>
