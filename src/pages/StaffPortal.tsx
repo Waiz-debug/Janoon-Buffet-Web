@@ -356,12 +356,12 @@ export default function StaffPortal() {
               {active.length} active
             </span>
             <span
-              className="inline-flex items-center gap-1.5 text-xs text-emerald-300"
+              className="inline-flex items-center gap-1.5 text-xs text-gold"
               aria-hidden
             >
               <span className="relative flex size-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gold opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-gold" />
               </span>
               live
             </span>

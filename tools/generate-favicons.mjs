@@ -25,7 +25,7 @@ const logo = readFileSync("public/logo.svg");
  * mask to home-screen icons, so the full-bleed sizes are flattened onto it
  * rather than left with transparent corners the mask would reveal as black.
  */
-const TILE_BG = "#0f1a10";
+const TILE_BG = "#141008";
 
 /** Rasterise the mark. `flat` fills the corners for the masked sizes. */
 async function png(size, { flat = false } = {}) {

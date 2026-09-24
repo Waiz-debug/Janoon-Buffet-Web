@@ -103,7 +103,7 @@ export function OrderTracker({
         </ul>
 
         {order.status === "delivered" && order.deliveredAt ? (
-          <p className="text-xs text-emerald-400">
+          <p className="text-xs text-gold">
             Delivered — this tracking hides automatically in{" "}
             {Math.max(
               0,
@@ -120,7 +120,7 @@ export function OrderTracker({
 function StatusBadge({ status }: { status: string }) {
   if (status === "delivered") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-emerald-300 uppercase">
+      <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-gold uppercase">
         <CheckCircle2 className="size-3" aria-hidden />
         Delivered
       </span>

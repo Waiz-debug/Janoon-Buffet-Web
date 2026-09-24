@@ -40,102 +40,116 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  /* Heritage Hearth accents */
+  /* JUNOON house accents */
   --color-gold: var(--gold);
+  --color-champagne: var(--champagne);
   --color-ember: var(--ember);
   --color-clay: var(--clay);
+  --color-brown: var(--brown);
 }
 
-/* Typography — a warm heritage serif for display, a clean sans for reading */
+/* Typography — an editorial serif for headings, a clean sans for reading */
 @theme {
   --font-display: "Fraunces", ui-serif, Georgia, Cambria, serif;
   --font-sans:
     "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* JUNOON — deep forest background, antique-gold accents */
+/*
+ * JUNOON — deep charcoal, champagne gold, warm brown, cream.
+ *
+ * Every surface hue here is warm. An earlier revision carried a green cast
+ * (hue 145) through the background, card, muted and sidebar tones, which made
+ * the whole restaurant look like a generic dashboard. The neutrals are now
+ * near-neutral warm charcoals (hue 55-60, very low chroma) so the gold and
+ * cream type carry the colour instead of competing with a tinted floor.
+ */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   color-scheme: dark;
 
-  --background: oklch(0.16 0.018 145);
-  --foreground: oklch(0.945 0.012 85);
-  --card: oklch(0.19 0.016 145);
-  --card-foreground: oklch(0.945 0.012 85);
-  --popover: oklch(0.20 0.015 145);
-  --popover-foreground: oklch(0.945 0.012 85);
-  --primary: oklch(0.78 0.12 76);
-  --primary-foreground: oklch(0.198 0.026 58);
-  --secondary: oklch(0.24 0.012 145);
-  --secondary-foreground: oklch(0.93 0.014 85);
-  --muted: oklch(0.21 0.012 145);
-  --muted-foreground: oklch(0.68 0.02 80);
-  --accent: oklch(0.58 0.13 44);
-  --accent-foreground: oklch(0.972 0.014 85);
+  --background: oklch(0.145 0.006 60);
+  --foreground: oklch(0.955 0.014 85);
+  --card: oklch(0.185 0.007 55);
+  --card-foreground: oklch(0.955 0.014 85);
+  --popover: oklch(0.2 0.008 55);
+  --popover-foreground: oklch(0.955 0.014 85);
+  --primary: oklch(0.8 0.11 78);
+  --primary-foreground: oklch(0.19 0.02 55);
+  --secondary: oklch(0.225 0.009 55);
+  --secondary-foreground: oklch(0.94 0.016 85);
+  --muted: oklch(0.2 0.007 55);
+  --muted-foreground: oklch(0.715 0.022 78);
+  --accent: oklch(0.56 0.12 45);
+  --accent-foreground: oklch(0.97 0.014 85);
   --destructive: oklch(0.596 0.19 26);
-  --border: oklch(0.85 0.04 82 / 14%);
-  --input: oklch(0.85 0.04 82 / 18%);
-  --ring: oklch(0.78 0.12 76 / 55%);
-  --gold: oklch(0.82 0.11 80);
-  --ember: oklch(0.64 0.14 44);
-  --clay: oklch(0.50 0.05 46);
-  --chart-1: oklch(0.78 0.12 76);
-  --chart-2: oklch(0.64 0.14 44);
-  --chart-3: oklch(0.82 0.11 80);
-  --chart-4: oklch(0.50 0.05 46);
-  --chart-5: oklch(0.42 0.03 145);
-  --sidebar: oklch(0.18 0.015 145);
-  --sidebar-foreground: oklch(0.945 0.012 85);
-  --sidebar-primary: oklch(0.78 0.12 76);
-  --sidebar-primary-foreground: oklch(0.198 0.026 58);
-  --sidebar-accent: oklch(0.23 0.012 145);
-  --sidebar-accent-foreground: oklch(0.93 0.014 85);
-  --sidebar-border: oklch(0.85 0.04 82 / 14%);
-  --sidebar-ring: oklch(0.78 0.12 76 / 55%);
+  --border: oklch(0.86 0.035 82 / 13%);
+  --input: oklch(0.86 0.035 82 / 17%);
+  --ring: oklch(0.8 0.11 78 / 55%);
+  --gold: oklch(0.845 0.1 82);
+  --champagne: oklch(0.9 0.062 88);
+  --ember: oklch(0.655 0.135 45);
+  --clay: oklch(0.44 0.045 44);
+  --brown: oklch(0.3 0.032 50);
+  --chart-1: oklch(0.845 0.1 82);
+  --chart-2: oklch(0.655 0.135 45);
+  --chart-3: oklch(0.9 0.062 88);
+  --chart-4: oklch(0.44 0.045 44);
+  --chart-5: oklch(0.3 0.032 50);
+  --sidebar: oklch(0.17 0.007 55);
+  --sidebar-foreground: oklch(0.955 0.014 85);
+  --sidebar-primary: oklch(0.8 0.11 78);
+  --sidebar-primary-foreground: oklch(0.19 0.02 55);
+  --sidebar-accent: oklch(0.22 0.008 55);
+  --sidebar-accent-foreground: oklch(0.94 0.016 85);
+  --sidebar-border: oklch(0.86 0.035 82 / 13%);
+  --sidebar-ring: oklch(0.8 0.11 78 / 55%);
 }
 
 .dark {
-  --background: oklch(0.16 0.018 145);
-  --foreground: oklch(0.945 0.012 85);
-  --card: oklch(0.19 0.016 145);
-  --card-foreground: oklch(0.945 0.012 85);
-  --popover: oklch(0.20 0.015 145);
-  --popover-foreground: oklch(0.945 0.012 85);
-  --primary: oklch(0.78 0.12 76);
-  --primary-foreground: oklch(0.198 0.026 58);
-  --secondary: oklch(0.24 0.012 145);
-  --secondary-foreground: oklch(0.93 0.014 85);
-  --muted: oklch(0.21 0.012 145);
-  --muted-foreground: oklch(0.68 0.02 80);
-  --accent: oklch(0.58 0.13 44);
-  --accent-foreground: oklch(0.972 0.014 85);
+  --background: oklch(0.145 0.006 60);
+  --foreground: oklch(0.955 0.014 85);
+  --card: oklch(0.185 0.007 55);
+  --card-foreground: oklch(0.955 0.014 85);
+  --popover: oklch(0.2 0.008 55);
+  --popover-foreground: oklch(0.955 0.014 85);
+  --primary: oklch(0.8 0.11 78);
+  --primary-foreground: oklch(0.19 0.02 55);
+  --secondary: oklch(0.225 0.009 55);
+  --secondary-foreground: oklch(0.94 0.016 85);
+  --muted: oklch(0.2 0.007 55);
+  --muted-foreground: oklch(0.715 0.022 78);
+  --accent: oklch(0.56 0.12 45);
+  --accent-foreground: oklch(0.97 0.014 85);
   --destructive: oklch(0.596 0.19 26);
-  --border: oklch(0.85 0.04 82 / 14%);
-  --input: oklch(0.85 0.04 82 / 18%);
-  --ring: oklch(0.78 0.12 76 / 55%);
-  --gold: oklch(0.82 0.11 80);
-  --ember: oklch(0.64 0.14 44);
-  --clay: oklch(0.50 0.05 46);
-  --chart-1: oklch(0.78 0.12 76);
-  --chart-2: oklch(0.64 0.14 44);
-  --chart-3: oklch(0.82 0.11 80);
-  --chart-4: oklch(0.50 0.05 46);
-  --chart-5: oklch(0.42 0.03 145);
-  --sidebar: oklch(0.18 0.015 145);
-  --sidebar-foreground: oklch(0.945 0.012 85);
-  --sidebar-primary: oklch(0.78 0.12 76);
-  --sidebar-primary-foreground: oklch(0.198 0.026 58);
-  --sidebar-accent: oklch(0.23 0.012 145);
-  --sidebar-accent-foreground: oklch(0.93 0.014 85);
-  --sidebar-border: oklch(0.85 0.04 82 / 14%);
-  --sidebar-ring: oklch(0.78 0.12 76 / 55%);
+  --border: oklch(0.86 0.035 82 / 13%);
+  --input: oklch(0.86 0.035 82 / 17%);
+  --ring: oklch(0.8 0.11 78 / 55%);
+  --gold: oklch(0.845 0.1 82);
+  --champagne: oklch(0.9 0.062 88);
+  --ember: oklch(0.655 0.135 45);
+  --clay: oklch(0.44 0.045 44);
+  --brown: oklch(0.3 0.032 50);
+  --chart-1: oklch(0.845 0.1 82);
+  --chart-2: oklch(0.655 0.135 45);
+  --chart-3: oklch(0.9 0.062 88);
+  --chart-4: oklch(0.44 0.045 44);
+  --chart-5: oklch(0.3 0.032 50);
+  --sidebar: oklch(0.17 0.007 55);
+  --sidebar-foreground: oklch(0.955 0.014 85);
+  --sidebar-primary: oklch(0.8 0.11 78);
+  --sidebar-primary-foreground: oklch(0.19 0.02 55);
+  --sidebar-accent: oklch(0.22 0.008 55);
+  --sidebar-accent-foreground: oklch(0.94 0.016 85);
+  --sidebar-border: oklch(0.86 0.035 82 / 13%);
+  --sidebar-ring: oklch(0.8 0.11 78 / 55%);
 }
 
-/* Soft firelight pooling from the top of a section */
+/* Soft candlelight pooling from the top of a section */
 @utility hearth-glow {
   background-image: radial-gradient(
     72% 58% at 50% 0%,
-    color-mix(in oklab, var(--gold) 14%, transparent) 0%,
+    color-mix(in oklab, var(--gold) 13%, transparent) 0%,
     transparent 72%
   );
 }
@@ -145,14 +159,29 @@
   background-image:
     radial-gradient(
       78% 62% at 12% 0%,
-      color-mix(in oklab, var(--ember) 10%, transparent) 0%,
+      color-mix(in oklab, var(--ember) 9%, transparent) 0%,
       transparent 66%
     ),
     radial-gradient(
       70% 56% at 88% 100%,
-      color-mix(in oklab, var(--gold) 9%, transparent) 0%,
+      color-mix(in oklab, var(--gold) 8%, transparent) 0%,
       transparent 70%
     );
+}
+
+/*
+ * The house panel: a dark, faintly warm sheet with an elegant hairline.
+ * Portals use this instead of floating pastel cards, so a working screen reads
+ * as the same restaurant as the public site without becoming a landing page.
+ */
+@utility junoon-panel {
+  background-image: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--champagne) 4%, transparent) 0%,
+    transparent 42%
+  );
+  background-color: color-mix(in oklab, var(--card) 88%, transparent);
+  border: 1px solid var(--border);
 }
 
 /* Aged brass hairline used to separate heritage panels */
@@ -163,6 +192,21 @@
     color-mix(in oklab, var(--gold) 55%, transparent) 50%,
     transparent 100%
   );
+}
+
+/* The seated-dining-room light: a warm top-lit wash for auth screens */
+@utility candlelit {
+  background-image:
+    radial-gradient(
+      120% 78% at 50% -12%,
+      color-mix(in oklab, var(--ember) 20%, transparent) 0%,
+      transparent 62%
+    ),
+    radial-gradient(
+      90% 60% at 82% 108%,
+      color-mix(in oklab, var(--gold) 12%, transparent) 0%,
+      transparent 68%
+    );
 }
 
 @layer base {

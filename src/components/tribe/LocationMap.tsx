@@ -139,9 +139,9 @@ export function LocationMap() {
             </div>
 
             {/* Trust signal */}
-            <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3">
-              <ShieldCheck className="size-4 shrink-0 text-emerald-400" aria-hidden />
-              <p className="text-xs text-emerald-300">
+            <div className="flex items-center gap-2 rounded-2xl border border-gold/25 bg-gold/[0.06] px-4 py-3">
+              <ShieldCheck className="size-4 shrink-0 text-gold" aria-hidden />
+              <p className="text-xs text-gold">
                 {RESTAURANT.rating}/5 from {RESTAURANT.reviewCount}+ Google
                 reviews · Verified restaurant listing
               </p>

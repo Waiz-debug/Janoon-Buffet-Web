@@ -42,6 +42,27 @@ export const NOT_ADMIN_MESSAGE = "Admin access required.";
 /** One wording for a rejected email/password pair, on both doors. */
 export const INCORRECT_CREDENTIALS_MESSAGE = "Incorrect email or password.";
 
+/**
+ * The password was right, but the address was never confirmed.
+ *
+ * Saying "incorrect email or password" here is what made a perfectly good
+ * administrator account look broken: the sign-in service refuses an
+ * unconfirmed address with its own error, and every error used to be reported
+ * as a bad password. This is the honest wording — plus the link is sent again.
+ */
+export const EMAIL_UNCONFIRMED_MESSAGE =
+  "That email address has not been confirmed yet. We have sent a new confirmation link — open it, then sign in.";
+
+/** Too many attempts in a row; the sign-in service is asking us to slow down. */
+export const RATE_LIMITED_MESSAGE =
+  "Too many sign-in attempts just now. Please wait a minute and try again.";
+
+/** Where a confirmation link lands: back on the admin door, signed in. */
+export function confirmationRedirect(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/?unlock=admin`;
+}
+
 export const UNCONFIGURED_MESSAGE =
   "Sign-in is not available right now. Please try again later.";
 
@@ -146,14 +167,87 @@ export type SignInResult =
     }
   | {
       ok: false;
-      reason:
-        | "credentials"
-        | "not-staff"
-        /** Signed in and on the team, but not an admin — the admin door. */
-        | "not-admin"
-        | "unreachable"
-        | "unconfigured";
+      reason: SignInRefusal;
     };
+
+/**
+ * Every way the sign-in service can turn an account away.
+ *
+ * These are kept apart on purpose. Collapsing them into one "bad credentials"
+ * answer is how an unconfirmed address, a rate limit and a genuinely wrong
+ * password all ended up looking identical on screen — and it sent the owner
+ * hunting for a password problem that did not exist.
+ */
+export type SignInRefusal =
+  /** The password did not match, or no such account exists. */
+  | "credentials"
+  /** Password accepted, but the address still has to be confirmed. */
+  | "email-unconfirmed"
+  /** Too many attempts for now. */
+  | "rate-limited"
+  /** Signed in, but no row on the team (an ordinary customer). */
+  | "not-staff"
+  /** Signed in and on the team, but not an admin — the admin door. */
+  | "not-admin"
+  | "unreachable"
+  | "unconfigured";
+
+/**
+ * Read the sign-in service's own answer instead of assuming it.
+ *
+ * `error.code` is the stable machine-readable field (`email_not_confirmed`,
+ * `invalid_credentials`, `over_request_rate_limit`); the message is matched too
+ * so a project on an older version of the library is classified the same way.
+ * Only the network case is inferred from prose, because that is genuinely a
+ * failure to reach the service rather than a decision it made.
+ */
+export function classifySignInError(error: {
+  message?: string;
+  code?: string;
+}): SignInRefusal {
+  const code = (error.code ?? "").toLowerCase();
+  const message = (error.message ?? "").toLowerCase();
+  const both = `${code} ${message}`;
+
+  if (both.includes("email_not_confirmed") || both.includes("email not confirmed")) {
+    return "email-unconfirmed";
+  }
+  if (
+    both.includes("rate_limit") ||
+    both.includes("too many requests") ||
+    /rate limit/.test(both)
+  ) {
+    return "rate-limited";
+  }
+  if (
+    /fetch|network|failed to fetch|load failed|timed? out/.test(both)
+  ) {
+    return "unreachable";
+  }
+  return "credentials";
+}
+
+/**
+ * Send the confirmation link again.
+ *
+ * Called when the sign-in service says the address is unconfirmed, so the way
+ * forward is on screen: open the new link, which returns here with a real
+ * session, and the account signs itself in. A failure is reported, never
+ * swallowed — telling somebody a link is on its way when it is not is the same
+ * class of mistake as blaming their password.
+ */
+export async function resendConfirmationEmail(email: string): Promise<boolean> {
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: email.trim(),
+    options: { emailRedirectTo: confirmationRedirect() },
+  });
+  if (error) {
+    console.warn(`[JUNOON] confirmation email not sent: ${error.message}`);
+    return false;
+  }
+  return true;
+}
 
 /**
  * Why creating the owner account stopped short.
@@ -243,11 +337,12 @@ export async function authenticate(
   });
 
   if (error) {
-    const message = error.message.toLowerCase();
-    if (message.includes("fetch") || message.includes("network")) {
-      return { ok: false, reason: "unreachable" };
-    }
-    return { ok: false, reason: "credentials" };
+    // The service's own answer, reported as-is. Whatever it said is kept in the
+    // console so the console shows the truth even where the card shows a single
+    // sentence; it is never quietly rewritten into "wrong password".
+    const reason = classifySignInError(error);
+    console.warn(`[JUNOON] sign-in refused (${reason}): ${error.message}`);
+    return { ok: false, reason };
   }
   if (!data.user) return { ok: false, reason: "credentials" };
 
@@ -388,10 +483,7 @@ export async function claimFirstAdmin(
   // Confirming the address lands back on the admin card, so whoever set the
   // account up finishes in one press instead of arriving at the gateway holding
   // a session that records no role yet.
-  const emailRedirectTo =
-    typeof window === "undefined"
-      ? undefined
-      : `${window.location.origin}/?unlock=admin`;
+  const emailRedirectTo = confirmationRedirect();
 
   const { data, error } = await supabase.auth.signUp({
     email: address,

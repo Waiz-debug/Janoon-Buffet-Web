@@ -10,18 +10,16 @@ export default function NotFound() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="flex min-h-screen flex-col items-center justify-center bg-background px-4"
+      className="candlelit flex min-h-screen flex-col items-center justify-center bg-background px-4"
     >
-      {/* Subtle hearth glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_45%_at_50%_40%,rgba(227,179,65,0.06),transparent_70%)]"
-      />
 
       <div className="flex flex-col items-center text-center">
         <JanoonMark className="size-14" alt="JUNOON" />
 
-        <h1 className="mt-6 font-display text-6xl font-semibold tracking-tight text-foreground">
+        <span className="mt-6 text-[0.65rem] font-medium tracking-[0.28em] text-gold/80 uppercase">
+          Junoon
+        </span>
+        <h1 className="mt-2 font-display text-6xl font-semibold tracking-tight text-foreground">
           404
         </h1>
 
@@ -30,7 +28,11 @@ export default function NotFound() {
           restaurant site.
         </p>
 
-        <Button asChild size="lg" className="mt-8 gap-2">
+        <Button
+          asChild
+          size="lg"
+          className="mt-8 gap-2 bg-gradient-to-r from-champagne to-gold font-semibold text-primary-foreground"
+        >
           <Link to="/restaurant">
             <ArrowLeft className="size-4" aria-hidden />
             Back to the restaurant

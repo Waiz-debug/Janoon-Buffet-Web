@@ -189,7 +189,7 @@ export function AccountSettings() {
           <Feedback error={emailError} />
 
           {emailDone ? (
-            <p className="flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-emerald-200">
+            <p className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold">
               <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               {emailDone}
             </p>
@@ -296,7 +296,7 @@ export function AccountSettings() {
           <Feedback error={pwError} />
 
           {pwDone ? (
-            <p className="flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-emerald-200">
+            <p className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold">
               <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               Password changed. You stay signed in on this device, and your role
               is unchanged.

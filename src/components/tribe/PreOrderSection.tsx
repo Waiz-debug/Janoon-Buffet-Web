@@ -352,7 +352,7 @@ export function PreOrderSection() {
             {confirmedRef ? (
               <p
                 role="status"
-                className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-center text-xs leading-relaxed text-emerald-300"
+                className="rounded-xl border border-gold/30 bg-gold/[0.08] px-4 py-3 text-center text-xs leading-relaxed text-gold"
               >
                 Sent to the kitchen — reference{" "}
                 <span className="font-mono tracking-[0.14em]">{confirmedRef}</span>

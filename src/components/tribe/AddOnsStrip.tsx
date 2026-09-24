@@ -90,7 +90,7 @@ export function AddOnsStrip() {
                           "inline-flex items-center gap-2 rounded-xl border py-2.5 pr-4 text-sm transition-all",
                           addon.image ? "pl-2" : "pl-4",
                           justAdded
-                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                            ? "border-gold/40 bg-gold/10 text-gold"
                             : "border-border/70 bg-card/40 text-foreground hover:border-gold/30 hover:bg-gold/[0.06]",
                         )}
                       >

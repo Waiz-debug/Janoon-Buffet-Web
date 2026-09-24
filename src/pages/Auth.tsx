@@ -91,13 +91,13 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="candlelit flex min-h-screen flex-col bg-background">
 
       
       {/* Auth Content */}
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="flex items-center justify-center h-full flex-col">
-        <Card className="min-w-[350px] pb-0 border shadow-md">
+        <Card className="w-full max-w-sm rounded-xl border-border/70 bg-card/85 pb-0 shadow-[0_44px_90px_-40px_rgba(0,0,0,0.9)]">
           {step === "signIn" ? (
             <>
               <CardHeader className="text-center">
@@ -106,7 +106,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     type="button"
                     aria-label="Back to the JUNOON website"
                     onClick={() => navigate("/")}
-                    className="flex cursor-pointer items-center justify-center rounded-2xl transition-opacity hover:opacity-85"
+                    className="flex cursor-pointer items-center justify-center rounded-lg transition-opacity hover:opacity-85"
                   >
                     <JanoonMark className="size-14" alt="JUNOON" />
                   </button>
@@ -150,7 +150,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </Button>
                   </div>
                   {error && (
-                    <p className="mt-2 text-sm text-red-500">{error}</p>
+                    <p className="mt-2 text-sm text-rose-300">{error}</p>
                   )}
                 </CardContent>
               </form>
@@ -192,7 +192,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </InputOTP>
                   </div>
                   {error && (
-                    <p className="mt-2 text-sm text-red-500 text-center">
+                    <p className="mt-2 text-sm text-rose-300 text-center">
                       {error}
                     </p>
                   )}

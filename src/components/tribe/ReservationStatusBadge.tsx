@@ -10,7 +10,7 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
 
 const STATUS_STYLES: Record<ReservationStatus, string> = {
   pending: "border-gold/40 bg-gold/15 text-gold",
-  confirmed: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300",
+  confirmed: "border-gold/30 bg-gold/15 text-gold",
   seated: "border-sky-500/30 bg-sky-500/15 text-sky-300",
   cancelled: "border-rose-500/30 bg-rose-500/15 text-rose-300",
 };

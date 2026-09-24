@@ -319,7 +319,7 @@ function StatusChip({
   const tones = {
     pending: "border-amber-500/40 bg-amber-500/10 text-amber-300",
     active: "border-gold/40 bg-gold/10 text-gold",
-    done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+    done: "border-gold/40 bg-gold/10 text-gold",
     cancelled: "border-rose-500/40 bg-rose-500/10 text-rose-300",
   } as const;
   return (
@@ -373,7 +373,7 @@ function RecordShell({
 const BUTTON_TONES = {
   gold: "border-gold/30 bg-gold/10 text-gold hover:bg-gold/20",
   green:
-    "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
+    "border-gold/30 bg-gold/10 text-gold hover:bg-gold/20",
   sky: "border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20",
   red: "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20",
 } as const;

@@ -94,7 +94,7 @@ export default function Order() {
       <div className="min-h-screen bg-background">
         <SiteHeader />
         <main className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col items-center justify-center px-4 py-24 text-center sm:px-6">
-          <span className="flex size-16 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+          <span className="flex size-16 items-center justify-center rounded-full border border-gold/30 bg-gold/10 text-gold">
             <CheckCircle2 className="size-8" aria-hidden />
           </span>
           <h1 className="mt-6 font-display text-3xl font-semibold text-balance">
@@ -321,7 +321,7 @@ export default function Order() {
               className={cn(
                 "mt-4 rounded-xl border px-3 py-2 text-xs",
                 deliveryFee === 0
-                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                  ? "border-gold/25 bg-gold/10 text-gold"
                   : "border-gold/25 bg-gold/[0.06] text-muted-foreground",
               )}
             >

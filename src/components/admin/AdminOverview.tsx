@@ -47,7 +47,7 @@ export function AdminOverview() {
       icon: CalendarCheck,
       label: "Active reservations",
       value: activeReservations.length,
-      accent: "text-emerald-400",
+      accent: "text-gold",
     },
     {
       icon: Package,

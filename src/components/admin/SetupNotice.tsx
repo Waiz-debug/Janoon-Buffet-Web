@@ -49,9 +49,9 @@ export function SetupNotice() {
 
   if (status.ready) {
     return (
-      <p className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.07] p-4 text-sm">
-        <CheckCircle2 className="size-4 shrink-0 text-emerald-400" aria-hidden />
-        <span className="font-medium text-emerald-300">Live sync active.</span>
+      <p className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-gold/30 bg-gold/[0.07] p-4 text-sm">
+        <CheckCircle2 className="size-4 shrink-0 text-gold" aria-hidden />
+        <span className="font-medium text-gold">Live sync active.</span>
         <span className="text-muted-foreground">
           Every change here publishes to the customer site immediately — no
           reload needed on their side.

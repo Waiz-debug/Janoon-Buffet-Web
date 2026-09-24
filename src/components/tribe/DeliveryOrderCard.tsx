@@ -30,7 +30,7 @@ export function DeliveryOrderCard({
           </p>
         </div>
         {isDelivered ? (
-          <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-emerald-300 uppercase">
+          <span className="inline-flex items-center rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-[0.14em] text-gold uppercase">
             Completed
           </span>
         ) : isConfirmed ? (
@@ -108,7 +108,7 @@ export function DeliveryOrderCard({
               disabled={busy}
               onClick={() => onDeliver(order)}
               className={cn(
-                "flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50",
+                "flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm font-medium text-gold transition-colors hover:bg-gold/20 disabled:opacity-50",
               )}
             >
               <PackageCheck className="size-4" aria-hidden />

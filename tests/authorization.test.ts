@@ -149,10 +149,13 @@ const staff = await import("../src/lib/staff");
 const {
   authenticate,
   claimFirstAdmin,
+  classifySignInError,
   portalPathFor,
   staffLookup,
+  EMAIL_UNCONFIRMED_MESSAGE,
   INCORRECT_CREDENTIALS_MESSAGE,
   NOT_ADMIN_MESSAGE,
+  RATE_LIMITED_MESSAGE,
   SETUP_REQUIRED_MESSAGE,
 } = await import("../src/hooks/use-staff-auth");
 
@@ -538,6 +541,105 @@ describe("authenticate", () => {
     expect(INCORRECT_CREDENTIALS_MESSAGE).toBe("Incorrect email or password.");
     // No table was touched: a bad password is not a role question.
     expect(tableTouches).toEqual([]);
+  });
+});
+
+/* ----------------------------------- telling the refusals apart (login) --- */
+
+/**
+ * This is the bug the restaurant reported as "the correct admin password is
+ * rejected".
+ *
+ * The password was never the problem. The Supabase project requires a confirmed
+ * email address, so the sign-in service answered `email_not_confirmed` — and
+ * every failure used to be flattened into one "bad credentials" answer. An
+ * unconfirmed address, a rate limit and a genuinely wrong password were
+ * indistinguishable on screen, and the only one that named the wrong cause was
+ * the one people actually hit.
+ *
+ * These pin the separation, and that the card acts on it instead of guessing.
+ */
+describe("sign-in refusals", () => {
+  test("the sign-in service's own answer decides the reason", () => {
+    expect(
+      classifySignInError({
+        code: "email_not_confirmed",
+        message: "Email not confirmed",
+      }),
+    ).toBe("email-unconfirmed");
+    // The same answer from an older library build, which sends no `code`.
+    expect(classifySignInError({ message: "Email not confirmed" })).toBe(
+      "email-unconfirmed",
+    );
+    expect(
+      classifySignInError({
+        code: "invalid_credentials",
+        message: "Invalid login credentials",
+      }),
+    ).toBe("credentials");
+    expect(
+      classifySignInError({
+        code: "over_request_rate_limit",
+        message: "Email rate limit exceeded",
+      }),
+    ).toBe("rate-limited");
+    // Only the network case is read from prose: that is a failure to reach the
+    // service, not a decision it made.
+    expect(classifySignInError({ message: "Failed to fetch" })).toBe(
+      "unreachable",
+    );
+  });
+
+  test("an unconfirmed address is reported as unconfirmed, never as a wrong password", async () => {
+    authReplies.signInWithPassword = {
+      data: { user: null, session: null },
+      error: { code: "email_not_confirmed", message: "Email not confirmed" },
+    };
+
+    expect(
+      await authenticate("owner@janoon.pk", "the-right-password", "admin"),
+    ).toEqual({ ok: false, reason: "email-unconfirmed" });
+    // A rejected sign-in is not a role question, so no role was read.
+    expect(tableTouches).toEqual([]);
+    expect(EMAIL_UNCONFIRMED_MESSAGE).not.toBe(INCORRECT_CREDENTIALS_MESSAGE);
+  });
+
+  test("a rate limit is not dressed up as a wrong password either", async () => {
+    authReplies.signInWithPassword = {
+      data: null,
+      error: {
+        code: "over_request_rate_limit",
+        message: "Email rate limit exceeded",
+      },
+    };
+
+    expect(await authenticate("owner@janoon.pk", "pw", "admin")).toEqual({
+      ok: false,
+      reason: "rate-limited",
+    });
+  });
+
+  test("both new messages are plain sentences, with nothing technical in them", () => {
+    for (const message of [
+      EMAIL_UNCONFIRMED_MESSAGE,
+      RATE_LIMITED_MESSAGE,
+    ]) {
+      expect(message.length).toBeGreaterThan(20);
+      expect(message).not.toMatch(/supabase|sql|schema|token|PGRST|stack/i);
+    }
+  });
+
+  test("the card sends a fresh link for an unconfirmed address and says why", () => {
+    const src = readFileSync(
+      new URL("../src/pages/AuthLanding.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(src).toContain("resendConfirmationEmail");
+    expect(src).toContain("EMAIL_UNCONFIRMED_MESSAGE");
+    // One switch decides the wording; the password sentence is one branch of it
+    // rather than the fallback for every refusal the service can make.
+    expect(src).toContain("signInMessage(result.reason");
   });
 });
 

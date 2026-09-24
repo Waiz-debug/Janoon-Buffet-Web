@@ -23,15 +23,19 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
 import {
+  EMAIL_UNCONFIRMED_MESSAGE,
   INCORRECT_CREDENTIALS_MESSAGE,
   NOT_ADMIN_MESSAGE,
   NOT_STAFF_MESSAGE,
+  RATE_LIMITED_MESSAGE,
   SETUP_REQUIRED_MESSAGE,
   UNCONFIGURED_MESSAGE,
   portalPathFor,
+  resendConfirmationEmail,
   useStaffAuth,
   type AdminSetupState,
   type OwnerSetupResult,
+  type SignInRefusal,
   type StaffRole,
 } from "@/hooks/use-staff-auth";
 import { useLiveSite } from "@/hooks/use-live-site";
@@ -54,6 +58,36 @@ const HIGHLIGHTS = [
     label: `${RESTAURANT.reviewCount}+ Google reviews`,
   },
 ] as const;
+
+/**
+ * What the card says for each way the sign-in service turned the account away.
+ *
+ * One sentence per cause, and never a cause borrowed from a different failure:
+ * an unconfirmed address is not a wrong password, and a rate limit is neither.
+ * `claimOpen` decides the wording of the one genuinely ambiguous case — a
+ * signed-in account with no team row is most likely the owner who has not
+ * finished setup, but only while setup is still on offer.
+ */
+function signInMessage(reason: SignInRefusal, claimOpen: boolean): string {
+  switch (reason) {
+    case "not-admin":
+      return NOT_ADMIN_MESSAGE;
+    case "not-staff":
+      return claimOpen
+        ? "That account is not on the team yet. If it is yours, open Create Admin Account above to claim it."
+        : NOT_STAFF_MESSAGE;
+    case "email-unconfirmed":
+      return EMAIL_UNCONFIRMED_MESSAGE;
+    case "rate-limited":
+      return RATE_LIMITED_MESSAGE;
+    case "unconfigured":
+      return UNCONFIGURED_MESSAGE;
+    case "unreachable":
+      return "Could not reach the sign-in service. Check your connection and try again.";
+    default:
+      return INCORRECT_CREDENTIALS_MESSAGE;
+  }
+}
 
 /** Plain language for every way the one-time owner setup can stop short. */
 function ownerSetupMessage(
@@ -192,22 +226,23 @@ export default function AuthLanding() {
       return;
     }
     setAttempts((count) => count + 1);
-    setError(
-      result.reason === "not-admin"
-        ? NOT_ADMIN_MESSAGE
-        : result.reason === "not-staff"
-          ? // While the owner claim is still open, the person most likely to hit
-            // this is the owner themselves — signed up, but not yet recorded.
-            claim !== "closed" && claim !== "checking"
-            ? "That account is not on the team yet. If it is yours, open Create Admin Account above to claim it."
-            : NOT_STAFF_MESSAGE
-          : result.reason === "unconfigured"
-            ? UNCONFIGURED_MESSAGE
-            : result.reason === "unreachable"
-              ? "Could not reach the sign-in service. Check your connection and try again."
-              : INCORRECT_CREDENTIALS_MESSAGE,
-    );
     setSubmitting(false);
+
+    // Password accepted, address not confirmed. The way forward is a fresh
+    // link, so one is sent before the card says anything — and if the send
+    // itself fails, that is what the card reports. Nothing here claims a
+    // rejection was a wrong password.
+    if (result.reason === "email-unconfirmed") {
+      const sent = await resendConfirmationEmail(email);
+      setError(
+        sent
+          ? EMAIL_UNCONFIRMED_MESSAGE
+          : "That email address has not been confirmed yet, and the confirmation email could not be sent just now. Please try again in a moment.",
+      );
+      return;
+    }
+
+    setError(signInMessage(result.reason, claim !== "closed" && claim !== "checking"));
   };
 
   /**
@@ -442,9 +477,9 @@ export default function AuthLanding() {
           {HIGHLIGHTS.map((item) => (
             <div
               key={item.label}
-              className="flex items-center gap-3.5 rounded-2xl border border-border/70 bg-card/80 px-5 py-4 backdrop-blur-md transition-colors duration-300 hover:border-gold/30"
+              className="junoon-panel flex items-center gap-3.5 rounded-xl px-5 py-4 backdrop-blur-md transition-colors duration-300 hover:border-gold/30"
             >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-gold/25 bg-gold/10 text-gold">
                 <item.icon className="size-4.5" aria-hidden />
               </span>
               <div>
@@ -633,7 +668,7 @@ function SignInModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label={`${copy.label} sign-in`}
@@ -650,7 +685,7 @@ function SignInModal({
             : { scale: 1, opacity: 1, y: 0 }
         }
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-border/70 bg-card p-6 shadow-[0_44px_90px_-30px_rgba(0,0,0,0.9)] sm:p-8"
+        className="junoon-panel candlelit relative w-full max-w-sm overflow-hidden rounded-xl p-6 shadow-[0_44px_90px_-30px_rgba(0,0,0,0.9)] sm:p-8"
       >
         <div className="brass-rule absolute inset-x-8 top-0 h-px" aria-hidden />
         <div
@@ -658,14 +693,22 @@ function SignInModal({
           className="pointer-events-none absolute -top-20 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full bg-gold/10 blur-3xl"
         />
 
+        {/*
+          The house mark, so the door is unmistakably JUNOON's — the same
+          artwork as the favicon and the apple-touch tile, not a stand-in icon.
+        */}
         <div className="relative flex flex-col items-center text-center">
-          <span className="flex size-12 items-center justify-center rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/25 via-gold/10 to-transparent text-gold shadow-[0_0_28px_-8px_rgba(227,179,65,0.55)]">
-            <RoleIcon className="size-5" aria-hidden />
+          <JanoonMark className="size-14 rounded-lg" alt="JUNOON" />
+          <span className="mt-3 inline-flex items-center gap-2 text-gold/80">
+            <RoleIcon className="size-3.5" aria-hidden />
+            <span className="text-[0.62rem] font-medium tracking-[0.26em] uppercase">
+              Junoon
+            </span>
           </span>
-          <h2 className="mt-4 font-display text-xl font-semibold">
+          <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight">
             {copy.label}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
             {copy.blurb}
           </p>
         </div>
@@ -880,7 +923,7 @@ function SignInModal({
             <motion.p
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300"
+              className="flex items-center justify-center gap-2 rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-sm text-gold"
               role="status"
             >
               <svg className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>

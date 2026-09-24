@@ -152,7 +152,7 @@ export function CartDrawer() {
                   Add {formatRupees(toFree)} more for free delivery.
                 </p>
               ) : (
-                <p className="mb-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                <p className="mb-3 rounded-xl border border-gold/25 bg-gold/10 px-3 py-2 text-xs text-gold">
                   Free delivery unlocked.
                 </p>
               )}

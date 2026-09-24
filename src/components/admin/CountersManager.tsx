@@ -259,7 +259,7 @@ export function CountersManager({
                 <span
                   className={
                     counter.active
-                      ? "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] text-emerald-300"
+                      ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[0.65rem] text-gold"
                       : "rounded-full border border-border/70 px-2 py-0.5 text-[0.65rem] text-muted-foreground"
                   }
                 >
@@ -366,7 +366,7 @@ export function CountersManager({
                           <span
                             className={
                               dish.active
-                                ? "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] text-emerald-300"
+                                ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[0.65rem] text-gold"
                                 : "rounded-full border border-border/70 px-2 py-0.5 text-[0.65rem] text-muted-foreground"
                             }
                           >

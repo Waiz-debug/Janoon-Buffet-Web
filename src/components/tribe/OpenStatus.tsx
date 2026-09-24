@@ -16,19 +16,19 @@ export function OpenStatus({ className }: { className?: string }) {
       className={cn(
         "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
         isOpen
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+          ? "border-gold/30 bg-gold/10 text-gold"
           : "border-border/70 bg-card/60 text-muted-foreground",
         className,
       )}
     >
       <span className="relative flex size-2">
         {isOpen ? (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gold opacity-75" />
         ) : null}
         <span
           className={cn(
             "relative inline-flex size-2 rounded-full",
-            isOpen ? "bg-emerald-500" : "bg-muted-foreground/50",
+            isOpen ? "bg-gold" : "bg-muted-foreground/50",
           )}
         />
       </span>

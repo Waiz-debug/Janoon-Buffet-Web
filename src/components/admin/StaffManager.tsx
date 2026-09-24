@@ -246,7 +246,7 @@ export function StaffManager() {
         ) : null}
 
         {addDone ? (
-          <p className="flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-emerald-200">
+          <p className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold">
             <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             {addDone}
           </p>
@@ -381,7 +381,7 @@ export function StaffManager() {
                       <span
                         className={
                           member.active
-                            ? "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300"
+                            ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-gold"
                             : "rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300"
                         }
                       >
