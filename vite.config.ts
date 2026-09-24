@@ -89,12 +89,13 @@ export default defineConfig({
   },
   // Performance hints
   server: {
-    // Bind to all interfaces so WebContainer's server-ready event fires.
+    // Bind to all interfaces so the platform's server-ready event fires.
     host: true,
     port: 5173,
-    // Keep HMR on, but disable full-screen error overlay
-    hmr: {
-      overlay: false,
-    },
+    // HMR stays off on this platform: the managed dev server picks file edits
+    // up on its own, and an HMR websocket against it only leaves a scrolling
+    // overlay over the preview. This must remain `false` — not an options
+    // object, which is what the inherited template had here.
+    hmr: false,
   },
 });
