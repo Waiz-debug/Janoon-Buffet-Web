@@ -4,7 +4,7 @@ import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite } from "@/hooks/use-live-site";
-import { formatRupees } from "@/lib/menu";
+import { formatRupees, photoThumb } from "@/lib/menu";
 import { BUFFET_INCLUDES, BUFFET_TIERS } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -17,7 +17,13 @@ function DishRow({
   unitPrice,
   add,
 }: {
-  dish: { slug: string; name: string; summary: string; weights?: { id: string; label: string; priceDelta: number }[] };
+  dish: {
+    slug: string;
+    name: string;
+    summary: string;
+    image: string;
+    weights?: { id: string; label: string; priceDelta: number }[];
+  };
   unitPrice: (dish: { slug: string; pricePerPlate?: number | null }) => number;
   add: (item: { slug: string; name: string; unitPrice: number; weight?: string }) => void;
 }) {
@@ -36,17 +42,25 @@ function DishRow({
       <div className="flex items-center gap-3">
         <Link
           to={`/menu/${dish.slug}`}
-          className="group flex min-w-0 flex-1 items-start justify-between gap-4"
+          className="group flex min-w-0 flex-1 items-center gap-3"
         >
-          <span className="min-w-0">
+          {/* The dish itself next to its name, or the house tile when the
+              kitchen has not photographed it yet — see SmartImage. */}
+          <SmartImage
+            src={photoThumb(dish.image)}
+            alt={dish.name}
+            className="size-14 shrink-0 rounded-xl object-cover"
+            glyphClassName="size-4"
+          />
+          <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium transition-colors group-hover:text-gold">
               {dish.name}
             </span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+            <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
               {dish.summary}
             </span>
           </span>
-          <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-gold" />
+          <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-gold" />
         </Link>
         {price > 0 ? (
           <button
@@ -72,7 +86,7 @@ function DishRow({
         )}
       </div>
       {hasWeights ? (
-        <div className="flex items-center gap-2 pl-0">
+        <div className="flex items-center gap-2 pl-[4.25rem]">
           <Scale className="size-3 text-gold/60" aria-hidden />
           <div className="flex gap-1.5">
             {dish.weights!.map((w) => (

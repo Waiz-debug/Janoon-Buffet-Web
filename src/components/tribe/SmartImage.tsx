@@ -8,19 +8,28 @@ type SmartImageProps = {
   className?: string;
   /** Extra classes for the themed tile shown when the photo cannot load. */
   fallbackClassName?: string;
+  /** Size of the flame on that tile — a 56px row thumbnail needs a smaller
+   *  mark than a full-width dish photo does. */
+  glyphClassName?: string;
   loading?: "lazy" | "eager";
 };
 
 /**
- * Photo with a dignified heritage fallback: if the image fails to load the tile
- * becomes a warm ember gradient with a flame mark, so the layout still reads as
- * an intentional part of the design instead of a broken image.
+ * Photo with a dignified heritage fallback.
+ *
+ * A dish the kitchen has not photographed yet, a demo URL that has gone stale,
+ * an upload the owner cleared — all three arrive here as "no picture", and none
+ * of them should look like a broken image. They get the house tile instead:
+ * deep maroon fading into the page, a brass hairline and the flame mark, so the
+ * gap reads as part of the design. The 1200px demo photos are the only thing
+ * that ever fills it in; see `photoThumb` for the small sizes.
  */
 export function SmartImage({
   src,
   alt,
   className,
   fallbackClassName,
+  glyphClassName = "size-8",
   loading = "lazy",
 }: SmartImageProps) {
   const [failed, setFailed] = useState(false);
@@ -42,12 +51,12 @@ export function SmartImage({
         role="img"
         aria-label={alt}
         className={cn(
-          "flex items-center justify-center bg-gradient-to-br from-clay/40 via-card to-background",
+          "photo-fallback flex items-center justify-center overflow-hidden",
           className,
           fallbackClassName,
         )}
       >
-        <Flame className="size-8 text-gold/40" aria-hidden />
+        <Flame className={cn("text-gold/45", glyphClassName)} aria-hidden />
       </div>
     );
   }

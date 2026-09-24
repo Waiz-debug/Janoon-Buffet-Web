@@ -194,6 +194,27 @@
   );
 }
 
+/*
+ * The tile a dish photo falls back to when there is no photo to show — a dish
+ * the owner has not photographed yet, or a demo URL that will not load. Deep
+ * maroon bleeding into the page, a hairline of brass and the house flame, so an
+ * image-less row still reads as part of the design instead of a hole in it.
+ */
+@utility photo-fallback {
+  background-image:
+    radial-gradient(
+      118% 118% at 18% 0%,
+      color-mix(in oklab, var(--clay) 88%, transparent) 0%,
+      transparent 62%
+    ),
+    linear-gradient(
+      158deg,
+      color-mix(in oklab, var(--clay) 46%, transparent) 0%,
+      var(--background) 100%
+    );
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--gold) 16%, transparent);
+}
+
 /* The seated-dining-room light: a warm top-lit wash for auth screens */
 @utility candlelit {
   background-image:

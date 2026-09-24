@@ -70,8 +70,33 @@ export type Dish = {
   weights?: WeightOption[];
 };
 
+/**
+ * Demo food photography, straight from Unsplash's CDN.
+ *
+ * Every dish below carries one of these so the guest menu looks like the
+ * designed menu rather than a wall of empty tiles — on the site and, once the
+ * seed has run, in the database too: `seedMenuCatalog()` writes the same URL
+ * into `menu_dishes.image`, and `supabase/official-menu.sql` is generated from
+ * this file by `tools/generate-menu-sql.mjs`, so the SQL copy cannot drift.
+ *
+ * They are placeholders by design: an upload in the admin panel writes
+ * `image_path` and clears `image`, which is what takes over once the kitchen
+ * has real photographs.
+ */
 const unsplash = (id: string, width = 1200) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=70`;
+
+/**
+ * The same photo at thumbnail width.
+ *
+ * A counter row shows the dish at 56px, and there is no reason for a phone to
+ * pull a 1200px file to fill a 56px box. Only the demo URLs carry a `w=` to
+ * rewrite; a photo uploaded through the admin panel is served exactly as it was
+ * stored, whatever size that is.
+ */
+export function photoThumb(url: string, width = 240): string {
+  return url.replace(/([?&])w=\d+/, `$1w=${width}`);
+}
 
 const IMG = {
   lemonade: unsplash("photo-1546173159-315724a31696"),
@@ -240,8 +265,8 @@ export const DISHES: Dish[] = [
   makeDish(["rasmalai", "Rasmalai", "رسمالائی", "desserts-signature", "Cottage-cheese dumplings in saffron milk.", IMG.falooda, 765]),
   makeDish(["piping-hot-gulab-jamun", "Piping Hot Gulab Jamun", "گرم گلاب جامن", "desserts-signature", "Gulab jamun served hot in cardamom syrup.", IMG.mithai, 765]),
   makeDish(["san-sebastian-cheesecake", "San Sebastian Cheese Cake", "سین سیباسٹین چیز کیک", "desserts-signature", "Burnt on top, barely set and served near the centre.", IMG.cheesecake, 1145]),
-  makeDish(["water-small", "Water Small", "چھوٹا پانی", "drinks", "Chilled small bottle of mineral water.", IMG.dahi, 105]),
-  makeDish(["water-large", "Water (Large)", "بڑا پانی", "drinks", "Chilled large bottle of mineral water.", IMG.dahi, 195]),
+  makeDish(["water-small", "Water Small", "چھوٹا پانی", "drinks", "Chilled small bottle of mineral water.", IMG.lemonade, 105]),
+  makeDish(["water-large", "Water (Large)", "بڑا پانی", "drinks", "Chilled large bottle of mineral water.", IMG.lemonade, 195]),
   makeDish(["soft-drinks", "Soft Drinks", "سافٹ ڈرنکس", "drinks", "Chilled soft drinks served with ice.", IMG.lemonade, 195]),
   makeDish(["karak-chai", "Karak Chai", "کراک چائے", "drinks", "The pink chai pulled between two vessels.", IMG.tea, 245]),
   makeDish(["frrsh-lime-soda", "Frrsh Lime Soda", "فریش لائم سوڈا", "drinks", "Fresh lime soda with a bright citrus finish.", IMG.lemonade, 275]),
