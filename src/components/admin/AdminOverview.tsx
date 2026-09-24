@@ -57,7 +57,9 @@ export function AdminOverview() {
     },
     {
       icon: UtensilsCrossed,
-      label: "Menu items live",
+      // The number is the add-on board, so it says so — the menu items
+      // themselves are counted on the Menu board, where they can be edited.
+      label: "Add-ons live",
       value: addons.length,
       accent: "text-amber-300",
     },

@@ -13,7 +13,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { Check, Plus, UtensilsCrossed } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 
 function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
@@ -66,7 +68,10 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
 }
 
 export function FullMenuDialog() {
-  const { categories, dishes, dishesByCategory, unitPrice } = useLiveSite();
+  const { counters, menuItemCount, unitPrice } = useLiveSite();
+  /** `null` shows every counter — what the guest sees on opening. */
+  const [only, setOnly] = useState<string | null>(null);
+  const shown = only ? counters.filter((counter) => counter.id === only) : counters;
 
   return (
     <Dialog>
@@ -79,7 +84,7 @@ export function FullMenuDialog() {
           <UtensilsCrossed className="size-4" aria-hidden />
           View Full Menu
           <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
-            {dishes.length} dishes
+            {menuItemCount} dishes
           </span>
         </Button>
       </DialogTrigger>
@@ -103,24 +108,59 @@ export function FullMenuDialog() {
               </span>
             ))}
           </div>
+
+          {/* One chip per counter, so a guest can read a single station — the
+              charcoal grill — without scrolling the whole spread. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={only === null}
+              onClick={() => setOnly(null)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs transition-colors",
+                only === null
+                  ? "border-gold/50 bg-gold/15 text-gold"
+                  : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
+              )}
+            >
+              All counters
+            </button>
+            {counters.map((counter) => (
+              <button
+                key={counter.id}
+                type="button"
+                aria-pressed={only === counter.id}
+                onClick={() => setOnly(counter.id)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs transition-colors",
+                  only === counter.id
+                    ? "border-gold/50 bg-gold/15 text-gold"
+                    : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
+                )}
+              >
+                {counter.name}
+                <span className="ml-1.5 opacity-70">{counter.items.length}</span>
+              </button>
+            ))}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-10">
-            {categories.map((category) => {
-              const Icon = CATEGORY_ICONS[category.icon];
-              const catDishes = dishesByCategory(category.id);
+            {shown.map((counter) => {
+              const Icon = CATEGORY_ICONS[counter.icon];
+              const catDishes = counter.items;
               return (
-                <section key={category.id} aria-label={category.name}>
+                <section key={counter.id} aria-label={counter.name}>
                   <header className="flex items-center gap-3">
                     <span className="flex size-9 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
                       <Icon className="size-4" aria-hidden />
                     </span>
                     <div>
                       <h3 className="font-display text-lg font-semibold">
-                        {category.name}
+                        {counter.name}
                       </h3>
-                      <p className="text-xs text-gold/70">{category.urdu}</p>
+                      <p className="text-xs text-gold/70">{counter.urdu}</p>
                     </div>
                   </header>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -136,7 +176,7 @@ export function FullMenuDialog() {
               );
             })}
           </div>
-          {dishes.length === 0 ? (
+          {menuItemCount === 0 ? (
             <p className="py-16 text-center text-sm text-muted-foreground">
               The menu is being updated — please check back shortly.
             </p>

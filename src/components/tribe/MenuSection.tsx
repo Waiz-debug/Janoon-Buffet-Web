@@ -94,13 +94,7 @@ function DishRow({
 
 export function MenuSection() {
   const { add } = useCart();
-  const {
-    categories,
-    getDish,
-    dishesByCategory,
-    signatures,
-    unitPrice,
-  } = useLiveSite();
+  const { counters, getDish, signatures, unitPrice } = useLiveSite();
 
   const special = getDish("grilled-fish");
 
@@ -247,16 +241,16 @@ export function MenuSection() {
 
         {/* Counters */}
         <div className="mt-16 grid gap-5 md:grid-cols-2">
-          {categories.map((category, index) => {
-            const Icon = CATEGORY_ICONS[category.icon];
+          {counters.map((counter, index) => {
+            const Icon = CATEGORY_ICONS[counter.icon];
             // Signature dishes are shown once, in the section above, and are
             // deliberately kept out of the counters so nothing appears twice.
-            const dishes = dishesByCategory(category.id).filter(
-              (dish) => !dish.featured,
-            );
+            // The items themselves come straight from the counter, so a dish
+            // sits under the section it was filed on in the admin panel.
+            const dishes = counter.items.filter((dish) => !dish.featured);
             return (
               <motion.article
-                key={category.id}
+                key={counter.id}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.2 }}
@@ -269,14 +263,14 @@ export function MenuSection() {
                   </span>
                   <div>
                     <h3 className="font-display text-xl font-semibold">
-                      {category.name}
+                      {counter.name}
                     </h3>
-                    <p className="text-xs text-gold/70">{category.urdu}</p>
+                    <p className="text-xs text-gold/70">{counter.urdu}</p>
                   </div>
                 </header>
 
                 <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                  {category.blurb}
+                  {counter.blurb}
                 </p>
 
                 <ul className="mt-4 flex flex-col divide-y divide-border/60 border-t border-border/60">

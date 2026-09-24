@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -20,19 +21,22 @@ export type CategoryIconName = keyof typeof CATEGORY_ICONS;
 export type CategoryFormValues = {
   name: string;
   urdu: string;
+  /** The line the public menu prints under the counter's name. */
+  blurb?: string;
   /** Only the counter form carries an icon. */
   icon?: CategoryIconName;
   active: boolean;
 };
 
 /**
- * The one "create a category" form, shared by the Counters board and the
+ * The one "create a counter" form, shared by the Counters board and the
  * Add-ons board so both read identically.
  *
  * Deliberately tiny: a name in English and Urdu is all that is required — the
  * id, position and default icon are derived on save. Counters add a one-row
- * icon picker because the public menu draws that icon next to the section;
- * add-on headings carry an emoji the panel sets for them.
+ * icon picker, because the public menu draws that icon beside the section, and
+ * a description, because that is the line printed under the counter's name.
+ * Add-on headings carry an emoji the panel sets for them.
  */
 type CategoryDialogProps = {
   open: boolean;
@@ -41,6 +45,7 @@ type CategoryDialogProps = {
   initial?: {
     name?: string;
     urdu?: string;
+    blurb?: string;
     icon?: CategoryIconName;
     active?: boolean;
   };
@@ -68,6 +73,7 @@ function CategoryForm({
 }: Omit<CategoryDialogProps, "open">) {
   const [name, setName] = useState(initial?.name ?? "");
   const [urdu, setUrdu] = useState(initial?.urdu ?? "");
+  const [blurb, setBlurb] = useState(initial?.blurb ?? "");
   const [icon, setIcon] = useState<CategoryIconName>(initial?.icon ?? "flame");
   const [active, setActive] = useState(initial?.active ?? true);
   const [saving, setSaving] = useState(false);
@@ -76,7 +82,7 @@ function CategoryForm({
 
   const submit = async () => {
     if (name.trim().length < 2) {
-      toast.error("Give the category a name first.");
+      toast.error(kind === "counter" ? "Give the counter a name first." : "Give the category a name first.");
       return;
     }
     setSaving(true);
@@ -84,13 +90,16 @@ function CategoryForm({
       await onSubmit({
         name: name.trim(),
         urdu: urdu.trim(),
+        // Sent on every save. Leaving it out of the payload is what used to
+        // blank a counter's description the moment someone renamed it.
+        blurb: kind === "counter" ? blurb.trim() : undefined,
         icon: kind === "counter" ? icon : undefined,
         active,
       });
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Could not save the category.",
+        error instanceof Error ? error.message : "Could not save the counter.",
       );
     } finally {
       setSaving(false);
@@ -105,12 +114,12 @@ function CategoryForm({
             {editing
               ? `Edit ${initial?.name}`
               : kind === "counter"
-                ? "Create a menu category"
+                ? "Create a counter"
                 : "Create an add-on category"}
           </DialogTitle>
           <DialogDescription>
             {kind === "counter"
-              ? "A section of the menu, like Tandoor or Traditional Handi. Add its items once it exists."
+              ? "A cooking station on the menu, like Barbecue & Grill or Charcoal Counter. Add its items once it exists."
               : "A new heading on the guest add-ons board, like Tandoor Breads or Ice Cream."}
           </DialogDescription>
         </DialogHeader>
@@ -144,6 +153,22 @@ function CategoryForm({
               }}
             />
           </div>
+
+          {kind === "counter" ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="counter-blurb">Description</Label>
+              <Textarea
+                id="counter-blurb"
+                rows={2}
+                value={blurb}
+                placeholder="Charcoal counters that stay lit all night, working from recipes the family has grilled for years."
+                onChange={(e) => setBlurb(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Printed under the counter&apos;s name on the public menu.
+              </p>
+            </div>
+          ) : null}
 
           {kind === "counter" ? (
             <div className="flex flex-col gap-2">
@@ -187,7 +212,7 @@ function CategoryForm({
           </Button>
           <Button onClick={() => void submit()} disabled={saving} className="gap-2">
             {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-            {editing ? "Save changes" : "Create category"}
+            {editing ? "Save changes" : kind === "counter" ? "Create counter" : "Create category"}
           </Button>
         </DialogFooter>
       </DialogContent>

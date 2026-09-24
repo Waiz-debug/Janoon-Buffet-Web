@@ -3,6 +3,7 @@ import { AddOnManager } from "@/components/admin/AddOnManager";
 import { CountersManager } from "@/components/admin/CountersManager";
 import { ExperienceManager } from "@/components/admin/ExperienceManager";
 import { HeroPhotoManager } from "@/components/admin/HeroPhotoManager";
+import { MenuManager } from "@/components/admin/MenuManager";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { PreOrderManager } from "@/components/admin/PreOrderManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
@@ -32,9 +33,14 @@ import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 
-/** Tabs the promotions section links straight into: /admin?tab=promos. */
+/**
+ * The panel's tabs, also the values `?tab=` accepts. "counters" used to hold
+ * both halves of the menu; it now holds the counters alone and "menu" holds the
+ * items, which is why the old value still has to work.
+ */
 const TAB_VALUES = new Set([
   "overview",
+  "menu",
   "counters",
   "addons",
   "preorders",
@@ -127,10 +133,10 @@ export default function AdminPortal() {
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1 text-xs text-muted-foreground">
-          {dishes.length} dishes live
+          {dishes.length} menu items
         </span>
         <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1 text-xs text-muted-foreground">
-          {categories.length} categories
+          {categories.length} counters
         </span>
         <Button asChild variant="outline" size="sm" className="ml-auto gap-2">
           <a href="/restaurant" target="_blank" rel="noreferrer">
@@ -142,7 +148,8 @@ export default function AdminPortal() {
       <Tabs defaultValue={tab}>
         <TabsList className="mb-6 flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="counters">Menu categories</TabsTrigger>
+          <TabsTrigger value="menu">Menu</TabsTrigger>
+          <TabsTrigger value="counters">Counters</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
           <TabsTrigger value="preorders">Pre-order items</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
@@ -155,28 +162,33 @@ export default function AdminPortal() {
           <AdminOverview />
         </TabsContent>
 
+        <TabsContent value="menu" className="flex flex-col gap-4">
+          <div>
+            <h3 className="font-display text-base font-semibold">
+              Menu &amp; prices
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Every dish on the menu in one list. Change a price, move a dish to
+              another counter or take it off the menu without leaving the row —
+              the guest site updates the moment you save.
+            </p>
+          </div>
+          <MenuManager categories={categories} dishes={dishes} />
+        </TabsContent>
+
         <TabsContent value="counters" className="flex flex-col gap-4">
           <div>
             <h3 className="font-display text-base font-semibold">
-              Menu categories &amp; their items
+              Counters &amp; their items
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create a category, then add its items from inside it. The public
-              menu draws one counter per category, in this order.
+              A counter is one station in the kitchen — Barbecue &amp; Grill,
+              Charcoal Counter, Traditional Handi. Create one, add its items,
+              and put them in guest order: the public menu draws one section per
+              counter, in this order.
             </p>
           </div>
-          <CountersManager
-            categories={categories.map((category) => ({
-              id: category.id,
-              name: category.name,
-              urdu: category.urdu,
-              blurb: category.blurb,
-              icon: category.icon,
-              sortOrder: category.sortOrder ?? 0,
-              active: category.active ?? true,
-            }))}
-            dishes={dishes}
-          />
+          <CountersManager categories={categories} dishes={dishes} />
         </TabsContent>
 
         <TabsContent value="addons">

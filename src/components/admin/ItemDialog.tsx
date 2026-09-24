@@ -1,3 +1,4 @@
+import { CounterSelect } from "@/components/admin/CounterSelect";
 import { ImageField } from "@/components/admin/ImageField";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,19 +46,29 @@ const EMPTY: ItemFormValues = {
 };
 
 /**
- * The one "add an item" form, shared by the Counters board and the Add-ons
- * board.
+ * The one "add an item" form, shared by the Menu board, the Counters board and
+ * the Add-ons board.
  *
  * Four fields to fill in — English name, Urdu name, price, photo — with the
  * category supplied by the section you clicked "Add item" in. Menu items get
  * the visibility and Signature switches; their summary and description sit
  * behind a disclosure so the everyday form stays short.
+ *
+ * When `counters` is supplied the form also carries the counter picker, which
+ * is what makes an item movable: the same form adds a dish to Charcoal Counter
+ * and files an existing one under Barbecue & Grill. The value is owned by the
+ * caller, because that is where the save reads it from.
  */
 type ItemDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: "dish" | "addon";
   categoryName: string;
+  /** Every counter an item can be filed under, for the picker. */
+  counters?: { id: string; name: string }[];
+  /** The counter the item is being filed under right now. */
+  counterId?: string;
+  onCounterChange?: (id: string) => void;
   /** Set when editing, so a photo can attach to the row immediately. */
   itemId?: string | null;
   initial?: Partial<ItemFormValues>;
@@ -85,6 +96,9 @@ function ItemForm({
   onOpenChange,
   mode,
   categoryName,
+  counters,
+  counterId,
+  onCounterChange,
   itemId,
   initial,
   signatureCount = 0,
@@ -99,6 +113,11 @@ function ItemForm({
   const [saving, setSaving] = useState(false);
 
   const editing = Boolean(itemId);
+  const showCounter = mode === "dish" && Boolean(counters?.length);
+  // Where the item is being filed, by name — the heading reads from the
+  // picker rather than from whichever section happened to open the form.
+  const counterName =
+    counters?.find((counter) => counter.id === counterId)?.name ?? categoryName;
   const signatureFull =
     mode === "dish" && !values.featured && signatureCount >= SIGNATURE_LIMIT;
   const set = <K extends keyof ItemFormValues>(key: K, value: ItemFormValues[K]) =>
@@ -131,7 +150,7 @@ function ItemForm({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {editing ? `Edit ${initial?.name}` : `Add to ${categoryName}`}
+            {editing ? `Edit ${initial?.name}` : `Add to ${counterName}`}
           </DialogTitle>
           <DialogDescription>
             {mode === "dish"
@@ -141,6 +160,21 @@ function ItemForm({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          {showCounter ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="item-counter">Counter</Label>
+              <CounterSelect
+                id="item-counter"
+                value={counterId ?? ""}
+                counters={counters ?? []}
+                onChange={(id) => onCounterChange?.(id)}
+              />
+              <p className="text-xs text-muted-foreground">
+                The section this item appears under on the public menu.
+              </p>
+            </div>
+          ) : null}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="item-name">Name (English)</Label>

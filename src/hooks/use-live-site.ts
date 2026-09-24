@@ -6,6 +6,11 @@ import {
   useSiteMedia,
 } from "@/hooks/use-live-db";
 import {
+  groupByCounter,
+  groupedItemCount,
+  type CounterGroup,
+} from "@/lib/counters";
+import {
   ADDONS as STATIC_ADDONS,
   ADDON_GROUPS,
   DISHES as STATIC_DISHES,
@@ -154,6 +159,22 @@ export function useLiveSite() {
   const dishesByCategory = (categoryId: string): LiveDish[] =>
     data.dishes.filter((dish) => dish.categoryId === categoryId);
 
+  /**
+   * The counters, each with the items filed under it, in menu order.
+   *
+   * Built from the same two lists the page renders, so a section can never be
+   * drawn from one array while a heading is counted from another — an item
+   * whose counter was deleted is simply not in any section, rather than being
+   * counted in a total that no longer has a place to show it.
+   */
+  const counters = useMemo<CounterGroup<LiveDish>[]>(
+    () => groupByCounter(data.categories, data.dishes),
+    [data],
+  );
+
+  /** Menu items the counters above actually show — the honest total. */
+  const menuItemCount = useMemo(() => groupedItemCount(counters), [counters]);
+
   /** Price shown for a plate: the admin-managed price when set, otherwise
    *  the static delivery table. Mirrors the rule used at order time. */
   const unitPrice = (dish: { slug: string; pricePerPlate?: number }): number =>
@@ -278,6 +299,8 @@ export function useLiveSite() {
 
   return {
     ...data,
+    counters,
+    menuItemCount,
     media,
     heroImage: media[HERO_MEDIA.slot]?.url,
     mediaOr,

@@ -623,10 +623,23 @@ export async function upsertCategory(
   return { id, created: existing.length === 0 };
 }
 
+/**
+ * The counter that holds items whose real counter was removed. It is seeded by
+ * the schema (`supabase/counters.sql`), switched off so guests never see it,
+ * and it must outlive every counter it shelters — which is why it cannot be
+ * deleted.
+ */
+export const UNCATEGORIZED_COUNTER = "uncategorized";
+
 export async function deleteCategory(id: string): Promise<void> {
+  if (id === UNCATEGORIZED_COUNTER) {
+    throw new Error(
+      "This counter holds the items left over from deleted counters. Move them to a counter first.",
+    );
+  }
   const { error: dishError } = await supabase
     .from(TABLES.dishes)
-    .update({ category_id: "uncategorized", active: false })
+    .update({ category_id: UNCATEGORIZED_COUNTER, active: false })
     .eq("category_id", id);
   fail(dishError, "Could not move the dishes off that counter.");
   const { error } = await supabase.from(TABLES.categories).delete().eq("id", id);
@@ -698,6 +711,55 @@ export async function upsertDish(
 export async function deleteDish(slug: string): Promise<void> {
   const { error } = await supabase.from(TABLES.dishes).delete().eq("slug", slug);
   fail(error, "Could not delete the dish.");
+}
+
+/**
+ * Move an item to a different counter.
+ *
+ * Only `category_id` is written. Re-saving the whole row would work too, but
+ * this way a move can never disturb the photo, price or description on the way
+ * past — the one operation the admin panel offers most often should not be the
+ * one that can quietly overwrite something else.
+ */
+export async function setDishCategory(
+  slug: string,
+  categoryId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.dishes)
+    .update({ category_id: categoryId, updated_at: Date.now() })
+    .eq("slug", slug);
+  fail(error, "Could not move the item to that counter.");
+}
+
+/**
+ * Publish or hide an item without opening its form — the availability switch on
+ * the Menu board. Writes `active` alone, for the same reason as above.
+ */
+export async function setDishAvailability(
+  slug: string,
+  active: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.dishes)
+    .update({ active, updated_at: Date.now() })
+    .eq("slug", slug);
+  fail(error, "Could not change the item's availability.");
+}
+
+/**
+ * Set the per-plate price from the Menu board. `null` clears it, which puts the
+ * dish back on the built-in delivery price until a figure is typed in again.
+ */
+export async function setDishPrice(
+  slug: string,
+  pricePerPlate: number | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from(TABLES.dishes)
+    .update({ price_per_plate: pricePerPlate, updated_at: Date.now() })
+    .eq("slug", slug);
+  fail(error, "Could not save the price.");
 }
 
 export async function setDishImage(
