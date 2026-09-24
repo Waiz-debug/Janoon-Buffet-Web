@@ -1,17 +1,38 @@
 /**
- * The Janoon menu — every dish is a first-class item with its own
- * detail page at `/menu/:slug`, so the landing page list and the dish pages
- * share one source of truth.
+ * The JUNOON demo menu — the catalogue the app ships with, and the exact rows
+ * the admin panel writes into Supabase.
+ *
+ * This is the single place the demo menu is written down. `seedMenuCatalog()`
+ * copies it into `menu_categories` (the counters) and `menu_dishes` (the
+ * items), after which every row is the owner's to edit: names, prices, photos,
+ * which counter an item sits on and whether guests see it at all. Nothing on the
+ * guest site reads this file once the database has rows — it is the source for
+ * the seed, and the fallback while the first read is still in flight.
+ *
+ * Ids are stable and meaningful (`bbq`, `handi`, `tandoor`, `fast-bites`,
+ * `desserts`) so re-seeding updates the same rows instead of creating a second
+ * set of counters beside the first. Four dishes are `SIGNATURE_SLUGS`, which is
+ * also the most the database allows — the guest page shows them once, in the
+ * Signatures strip, and withholds them from the counter sections so nothing
+ * appears twice.
  */
 
-export type CategoryId = "bbq" | "handi" | "fast-bites" | "desserts";
+export type CategoryId =
+  | "bbq"
+  | "handi"
+  | "tandoor"
+  | "fast-bites"
+  | "desserts";
+
+/** The badge a counter carries. Kept in step with `CATEGORY_ICONS`. */
+export type MenuIcon = "flame" | "pot" | "bread" | "bites" | "dessert";
 
 export type MenuCategory = {
   id: CategoryId;
   name: string;
   urdu: string;
   blurb: string;
-  icon: "flame" | "pot" | "bites" | "dessert";
+  icon: MenuIcon;
 };
 
 export type WeightOption = {
@@ -34,6 +55,12 @@ export type Dish = {
   /** Slugs of dishes served well alongside this one. */
   pairings: string[];
   image: string;
+  /**
+   * Per-plate price in rupees. This is what the guest menu shows, what the
+   * delivery cart charges and what the server re-prices an order from, so a
+   * price lives beside the dish it belongs to rather than in a second table.
+   */
+  pricePerPlate: number;
   /** Weight/portion options (e.g. Half KG / Full KG) for shareable dishes. */
   weights?: WeightOption[];
 };
@@ -41,22 +68,55 @@ export type Dish = {
 const unsplash = (id: string, width = 1200) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=70`;
 
-const IMAGES = {
-  kebab: unsplash("photo-1555939594-58d7cb561ad1"),
-  grill: unsplash("photo-1600891964092-4316c288032e"),
-  bbq: unsplash("photo-1544025162-d76694265947"),
-  tikka: unsplash("photo-1585937421612-70a008356fbe"),
-  handi: unsplash("photo-1563379091339-03b21ab4a4f8"),
-  curry: unsplash("photo-1517248135467-4c7edcad34c4"),
-  snacks: unsplash("photo-1414235077428-338989a2e8c0"),
-  sweets: unsplash("photo-1563379091339-03b21ab4a4f8"),
+/**
+ * Demo photography, one named entry per dish family.
+ *
+ * Every id here resolves to a real Unsplash image (a bogus id 404s, so this
+ * list was checked), and a dish is only ever pointed at a photo from its own
+ * family — skewers on the grill counter, curry in the handi, bread by the
+ * tandoor, mithai and glasses on the last. They are placeholders for the real
+ * kitchen photography: any of them can be swapped in the admin panel, which
+ * clears the row's photo outright when a file is uploaded.
+ */
+const IMG = {
+  kebabSkewers: unsplash("photo-1555939594-58d7cb561ad1"),
+  grillPlate: unsplash("photo-1600891964092-4316c288032e"),
+  skewers: unsplash("photo-1544025162-d76694265947"),
+  tandooriChicken: unsplash("photo-1585937421612-70a008356fbe"),
+  grilledSteak: unsplash("photo-1504674900247-0877df9cc836"),
+  grilledMeat: unsplash("photo-1585032226651-759b368d7246"),
+  meatBoard: unsplash("photo-1541529086526-db283c563270"),
+  kebabPlate: unsplash("photo-1512058564366-18510be2db19"),
+  beefPlate: unsplash("photo-1606491956689-2ea866880c84"),
+  fish: unsplash("photo-1467003909585-2f8a72700288"),
+  fishCurry: unsplash("photo-1631452180519-c014fe946bc7"),
+  curry: unsplash("photo-1563379091339-03b21ab4a4f8"),
+  curry2: unsplash("photo-1517248135467-4c7edcad34c4"),
+  curry3: unsplash("photo-1565557623262-b51c2513a641"),
+  butterChicken: unsplash("photo-1603894584373-5ac82b2ae398"),
+  rice: unsplash("photo-1603133872878-684f208fb84b"),
+  breadLoaves: unsplash("photo-1509440159596-0249088772ff"),
+  bakery: unsplash("photo-1495521821757-a1efb6729352"),
+  flatbread: unsplash("photo-1549931319-a545dcf3bc73"),
+  breadBasket: unsplash("photo-1608039755401-742074f0548d"),
+  chaat: unsplash("photo-1414235077428-338989a2e8c0"),
+  streetFood: unsplash("photo-1599487488170-d11ec9c172f0"),
+  bowl: unsplash("photo-1476224203421-9ac39bcb3327"),
+  saladBowl: unsplash("photo-1546069901-ba9599a7e63c"),
+  mithai: unsplash("photo-1551024506-0bccd828d307"),
+  mithai2: unsplash("photo-1488900128323-21503983a07e"),
+  iceCream: unsplash("photo-1501443762994-82bd5dace89a"),
+  kulfi: unsplash("photo-1621263764928-df1444c5e859"),
+  falooda: unsplash("photo-1563805042-7684c019e1cb"),
+  juice: unsplash("photo-1546173159-315724a31696"),
+  drinks: unsplash("photo-1544145945-f90425340c7e"),
 } as const;
 
 export const MENU_CATEGORIES: MenuCategory[] = [
   {
     id: "bbq",
-    name: "BBQ & Grills",
-    urdu: "باری بی کیو",
+    name: "Barbecue & Grill",
+    urdu: "باریکو اور گرل",
     blurb:
       "Charcoal counters that stay lit all night, working from recipes the family has grilled for years.",
     icon: "flame",
@@ -70,25 +130,33 @@ export const MENU_CATEGORIES: MenuCategory[] = [
     icon: "pot",
   },
   {
-    id: "fast-bites",
-    name: "Fast Bites",
-    urdu: "فاسٹ بائٹس",
+    id: "tandoor",
+    name: "Tandoor & Naan",
+    urdu: "تندور اور نان",
     blurb:
-      "Lahori street plates and lighter bites for children, cousins and the midnight crowd.",
+      "A tandoor banked at opening and never let go out — breads pulled to order and blistered in the heat.",
+    icon: "bread",
+  },
+  {
+    id: "fast-bites",
+    name: "Fast Bites & Chaat",
+    urdu: "فاسٹ بائٹس اور چات",
+    blurb:
+      "Lahori street plates and lighter bites, built in front of you so the crunch survives the walk to the table.",
     icon: "bites",
   },
   {
     id: "desserts",
-    name: "Desi Desserts",
-    urdu: "دیسی میٹھا",
+    name: "Desserts & Drinks",
+    urdu: "میٹھا اور مشروبات",
     blurb:
-      "Warm mithai lifted straight from the degh, served until the last table leaves.",
+      "Warm mithai lifted straight from the degh, and the glasses to wash it down — served until the last table leaves.",
     icon: "dessert",
   },
 ];
 
 export const DISHES: Dish[] = [
-  /* ---------------------------------- BBQ ---------------------------------- */
+  /* ------------------------------ Barbecue & Grill -------------------------- */
   {
     slug: "beef-seekh-kebab",
     name: "Beef Seekh Kebab",
@@ -96,14 +164,15 @@ export const DISHES: Dish[] = [
     categoryId: "bbq",
     summary: "Hand-pressed minced beef, grilled over open charcoal.",
     description:
-      "Our signature kebab since the first night we opened: finely minced beef worked by hand with green chilli, coriander and toasted spice, pressed onto flat skewers and grilled over open charcoal until the edges catch. It is served the traditional way, with mint chutney, sliced onion and tandoor bread straight from the oven.",
+      "Our signature kebab since the first night we opened: finely minced beef worked by hand with green chilli, coriander and toasted spice, pressed onto flat skewers and grilled over open charcoal until the edges catch. Served the traditional way, with mint chutney, sliced onion and tandoor bread straight from the oven.",
     notes: [
       { label: "Counter", value: "Live charcoal grill" },
       { label: "Marination", value: "Twelve hours, pressed by hand" },
       { label: "Served with", value: "Mint chutney & tandoor bread" },
     ],
     pairings: ["chicken-malai-boti", "mutton-nihari"],
-    image: IMAGES.kebab,
+    image: IMG.kebabSkewers,
+    pricePerPlate: 1250,
   },
   {
     slug: "chicken-malai-boti",
@@ -112,30 +181,15 @@ export const DISHES: Dish[] = [
     categoryId: "bbq",
     summary: "Cream-marinated chicken, grilled soft with a faint smoke.",
     description:
-      "Boneless chicken rests overnight in cream, cheddar and white pepper, then meets the coals just long enough to colour without drying. The result is the mildest kebab on our counter — soft, rich and the usual first request from younger guests.",
+      "Boneless chicken rests overnight in cream, cheddar and white pepper, then meets the coals just long enough to colour without drying. The mildest kebab on our counter — soft, rich and the usual first request from younger guests.",
     notes: [
       { label: "Counter", value: "Live charcoal grill" },
       { label: "Spice", value: "Mild" },
       { label: "Served with", value: "Garlic yoghurt & salad" },
     ],
-    pairings: ["beef-seekh-kebab", "chicken-shashlik"],
-    image: IMAGES.grill,
-  },
-  {
-    slug: "chicken-tikka",
-    name: "Charcoal Chicken Tikka",
-    urdu: "چکن تکہ",
-    categoryId: "bbq",
-    summary: "Bone-in tikka with a deep red chilli and yoghurt marinade.",
-    description:
-      "Whole leg pieces are scored, soaked in a chilli, yoghurt and mustard-oil marinade, and turned slowly over charcoal until the skin blisters. Sharp, smoky and unapologetically Lahori — ask for extra imli chutney.",
-    notes: [
-      { label: "Counter", value: "Live charcoal grill" },
-      { label: "Spice", value: "Medium to hot" },
-      { label: "Cut", value: "Bone-in leg and thigh" },
-    ],
-    pairings: ["beef-seekh-kebab", "lahori-chana-chaat"],
-    image: IMAGES.tikka,
+    pairings: ["beef-seekh-kebab", "samosa-pakora"],
+    image: IMG.grillPlate,
+    pricePerPlate: 1150,
   },
   {
     slug: "grilled-fish",
@@ -151,10 +205,62 @@ export const DISHES: Dish[] = [
       { label: "Served with", value: "Imli chutney & lemon" },
     ],
     pairings: ["chicken-tikka", "shahi-kheer"],
-    image: IMAGES.bbq,
+    image: IMG.fish,
+    pricePerPlate: 1800,
+  },
+  {
+    slug: "chicken-tikka",
+    name: "Charcoal Chicken Tikka",
+    urdu: "چکن تکہ",
+    categoryId: "bbq",
+    summary: "Bone-in tikka with a deep red chilli and yoghurt marinade.",
+    description:
+      "Whole leg pieces are scored, soaked in a chilli, yoghurt and mustard-oil marinade, and turned slowly over charcoal until the skin blisters. Sharp, smoky and unapologetically Lahori — ask for extra imli chutney.",
+    notes: [
+      { label: "Counter", value: "Live charcoal grill" },
+      { label: "Spice", value: "Medium to hot" },
+      { label: "Cut", value: "Bone-in leg and thigh" },
+    ],
+    pairings: ["beef-seekh-kebab", "lahori-chana-chaat"],
+    image: IMG.tandooriChicken,
+    pricePerPlate: 950,
+  },
+  {
+    slug: "lamb-chop",
+    name: "Lamb Chops",
+    urdu: "گوشت کے ٹکڑے",
+    categoryId: "bbq",
+    summary: "French-trimmed lamb on the bone, salt-crusted and charred.",
+    description:
+      "Lamb racks trimmed to the bone, crusted in coarse salt with rosemary and cracked pepper, then grilled hard on the outside and rested in the foil so the juices stay in the meat. Cut into chops at the counter — two per plate, bread and chutney alongside.",
+    notes: [
+      { label: "Counter", value: "Live charcoal grill" },
+      { label: "Resting", value: "Eight minutes, wrapped" },
+      { label: "Served with", value: "Rosemary jus & bread" },
+    ],
+    pairings: ["chicken-malai-boti", "beef-qorma"],
+    image: IMG.grilledSteak,
+    pricePerPlate: 1650,
+  },
+  {
+    slug: "beher-tikka",
+    name: "Beher Tikka",
+    urdu: "بہری ٹکہ",
+    categoryId: "bbq",
+    summary: "Firm river fish in a yoghurt marinade, kissed by the coals.",
+    description:
+      "Chunks of firm fish marinated in yoghurt, ginger and green chilli, threaded with onion and capsicum and finished over charcoal so the outside takes colour while the inside stays moist. The lighter of the two fish dishes, and the one to order if you want the smoke without the whole fish.",
+    notes: [
+      { label: "Counter", value: "Live charcoal grill" },
+      { label: "Spice", value: "Medium" },
+      { label: "Served with", value: "Imli chutney & salad" },
+    ],
+    pairings: ["grilled-fish", "plain-naan"],
+    image: IMG.fishCurry,
+    pricePerPlate: 1250,
   },
 
-  /* --------------------------------- Handi -------------------------------- */
+  /* ------------------------------ Traditional Handi ------------------------- */
   {
     slug: "mutton-nihari",
     name: "Mutton Nihari",
@@ -173,7 +279,8 @@ export const DISHES: Dish[] = [
       { label: "Served with", value: "Ginger, chilli & lemon" },
     ],
     pairings: ["beef-seekh-kebab", "palak-paneer"],
-    image: IMAGES.handi,
+    image: IMG.curry,
+    pricePerPlate: 1450,
   },
   {
     slug: "chicken-karahi",
@@ -193,7 +300,8 @@ export const DISHES: Dish[] = [
       { label: "Served with", value: "Tandoori naan" },
     ],
     pairings: ["palak-paneer", "kulfi-falooda"],
-    image: IMAGES.curry,
+    image: IMG.curry2,
+    pricePerPlate: 1250,
   },
   {
     slug: "chicken-haleem",
@@ -213,7 +321,42 @@ export const DISHES: Dish[] = [
       { label: "Toppings", value: "Fried onion, ginger, lemon" },
     ],
     pairings: ["beef-seekh-kebab", "gulab-jamun"],
-    image: IMAGES.handi,
+    image: IMG.curry3,
+    pricePerPlate: 750,
+  },
+  {
+    slug: "beef-qorma",
+    name: "Beef Shahi Qorma",
+    urdu: "بیف شاہی قورمہ",
+    categoryId: "handi",
+    summary: "Yoghurt and nut gravy, mild enough for the whole table.",
+    description:
+      "Beef shank braised until it gives, then folded into a pale gravy of whisked yoghurt, almond and cashew, browned onion and a whisper of cardamom. Finished with cream and silver leaf at the pass — the dish to order when the table wants something gentle and rich at once.",
+    notes: [
+      { label: "Cooking time", value: "Six hours, sealed" },
+      { label: "Spice", value: "Mild" },
+      { label: "Served with", value: "Sheermal or naan" },
+    ],
+    pairings: ["mutton-nihari", "lamb-chop"],
+    image: IMG.butterChicken,
+    pricePerPlate: 1150,
+  },
+  {
+    slug: "mutton-paya",
+    name: "Mutton Paya",
+    urdu: "مٹن پایا",
+    categoryId: "handi",
+    summary: "Trotters slow-cooked with marrow and whole spices.",
+    description:
+      "Trotters, hoof and shin, scalded clean and simmered with ginger, black cardamom and a little vinegar until the marrow softens and thickens the broth. Eaten with a spoon, the way it should be, and ordered early — it takes all afternoon and all night to get right.",
+    notes: [
+      { label: "Cooking time", value: "Twelve hours" },
+      { label: "Spice", value: "Medium-hot" },
+      { label: "Best with", value: "Tandoori naan" },
+    ],
+    pairings: ["mutton-nihari", "special-naan"],
+    image: IMG.beefPlate,
+    pricePerPlate: 950,
   },
   {
     slug: "palak-paneer",
@@ -222,17 +365,105 @@ export const DISHES: Dish[] = [
     categoryId: "handi",
     summary: "House-made paneer folded through slow-cooked spinach.",
     description:
-      "Spinach is cooked gently so it keeps its colour, then brightened with ginger, garlic and a touch of cream. The paneer is set in our own kitchen each morning and cubed into the gravy just before service.",
+      "Spinach cooked gently so it keeps its colour, then brightened with ginger, garlic and a touch of cream. The paneer is set in our own kitchen each morning and cubed into the gravy just before service.",
     notes: [
       { label: "Paneer", value: "Set in-house each morning" },
       { label: "Spice", value: "Mild" },
       { label: "Best with", value: "Tandoori naan or sheermal" },
     ],
-    pairings: ["mutton-nihari", "chicken-karahi"],
-    image: IMAGES.curry,
+    pairings: ["chicken-karahi", "special-naan"],
+    image: IMG.rice,
+    pricePerPlate: 700,
   },
 
-  /* ------------------------------- Fast Bites ------------------------------ */
+  /* ------------------------------ Tandoor & Naan ---------------------------- */
+  {
+    slug: "special-naan",
+    name: "Special Naan",
+    urdu: "اسپیشل نان",
+    categoryId: "tandoor",
+    summary: "Stuffed, brushed with ghee and blistered in the tandoor.",
+    description:
+      "A hand-knotted naan filled with minced mutton, onion and coriander, sealed and slapped against the inside of the tandoor wall until the top chars in spots and the base stays soft. Brushed with ghee the moment it comes out and torn at the table.",
+    notes: [
+      { label: "Oven", value: "Clay tandoor, 480°C" },
+      { label: "Bake", value: "Ninety seconds" },
+      { label: "Best within", value: "Ten minutes of the oven" },
+    ],
+    pairings: ["mutton-nihari", "chicken-karahi"],
+    image: IMG.breadLoaves,
+    pricePerPlate: 320,
+  },
+  {
+    slug: "tandoori-naan",
+    name: "Tandoori Naan",
+    urdu: "تندوری نان",
+    categoryId: "tandoor",
+    summary: "The everyday bread, pulled to order.",
+    description:
+      "Flour, yoghurt and a little mustard oil, rested overnight so the dough keeps its shape, then slapped onto the tandoor wall. Puffy in the middle, crisp at the edges, and the one every curry on this menu is eaten with.",
+    notes: [
+      { label: "Oven", value: "Clay tandoor, 480°C" },
+      { label: "Bake", value: "Sixty seconds" },
+      { label: "Made with", value: "Yoghurt & mustard oil" },
+    ],
+    pairings: ["chicken-karahi", "mutton-paya"],
+    image: IMG.bakery,
+    pricePerPlate: 130,
+  },
+  {
+    slug: "plain-naan",
+    name: "Plain Naan",
+    urdu: "سادہ نان",
+    categoryId: "tandoor",
+    summary: "The plain one, for the table that likes it simple.",
+    description:
+      "No filling, no ghee, nothing to hide behind — flour, salt, water and a little yeast, blistered until the top freckles. Ordered by the dozen on a table that has run out of everything else, and the correct thing to mop a karahi with.",
+    notes: [
+      { label: "Oven", value: "Clay tandoor, 480°C" },
+      { label: "Bake", value: "Sixty seconds" },
+      { label: "Best with", value: "Karahi & qorma" },
+    ],
+    pairings: ["chicken-karahi", "beef-qorma"],
+    image: IMG.flatbread,
+    pricePerPlate: 80,
+  },
+  {
+    slug: "keema-naan",
+    name: "Keema Naan",
+    urdu: "کیما نان",
+    categoryId: "tandoor",
+    summary: "Spiced minced beef baked inside the bread.",
+    description:
+      "The same stuffed naan technique, filled with slow-cooked minced beef, green chilli and a little tomato, then baked and finished with coriander. Richer and more strongly spiced than the special naan, and the one children fight over.",
+    notes: [
+      { label: "Oven", value: "Clay tandoor, 480°C" },
+      { label: "Spice", value: "Medium" },
+      { label: "Bake", value: "Ninety seconds" },
+    ],
+    pairings: ["grilled-fish", "dahi-baray"],
+    image: IMG.breadBasket,
+    pricePerPlate: 380,
+  },
+  {
+    slug: "lachha-paratha",
+    name: "Lachha Paratha",
+    urdu: "لچھا پراٹھا",
+    categoryId: "tandoor",
+    summary: "Layered, flaky and ghee-soaked.",
+    description:
+      "A hundred and twenty layers folded into the dough by hand, rolled thin and cooked on the griddle until each layer separates and the edges crisp. Served hot with a spoon of white butter and a cup of chai — breakfast, or the perfect ending to a barbecue.",
+    notes: [
+      { label: "Layers", value: "120, folded by hand" },
+      { label: "Cooked on", value: "Flat iron griddle" },
+      { label: "Served with", value: "White butter" },
+    ],
+    pairings: ["kashmiri-chai", "dahi-baray"],
+    image: IMG.flatbread,
+    pricePerPlate: 180,
+  },
+
+  /* ---------------------------- Fast Bites & Chaat -------------------------- */
   {
     slug: "lahori-chana-chaat",
     name: "Lahori Chana Chaat",
@@ -247,7 +478,8 @@ export const DISHES: Dish[] = [
       { label: "Spice", value: "Medium, tangy" },
     ],
     pairings: ["dahi-baray", "samosa-pakora"],
-    image: IMAGES.snacks,
+    image: IMG.chaat,
+    pricePerPlate: 420,
   },
   {
     slug: "dahi-baray",
@@ -263,23 +495,42 @@ export const DISHES: Dish[] = [
       { label: "Spice", value: "Mild" },
     ],
     pairings: ["lahori-chana-chaat", "shahi-kheer"],
-    image: IMAGES.snacks,
+    image: IMG.bowl,
+    pricePerPlate: 420,
   },
   {
     slug: "samosa-pakora",
-    name: "Samosa & Pakora Counter",
+    name: "Samosa & Pakora",
     urdu: "سموسہ اور پکوڑا",
     categoryId: "fast-bites",
     summary: "Fried in small batches so they always arrive crisp.",
     description:
-      "Potato and pea samosas, onion pakoras and spring rolls are fried in small batches through the night so nothing sits under a lamp. Served with imli and mint chutneys, and best eaten while they are still too hot.",
+      "Potato and pea samosas, onion pakoras and bread rolls are fried in small batches through the night so nothing sits under a lamp. Served with imli and mint chutneys, and best eaten while they are still too hot to share politely.",
     notes: [
       { label: "Counter", value: "Fryer, small batches" },
       { label: "Served with", value: "Imli & mint chutney" },
       { label: "Availability", value: "All hours" },
     ],
     pairings: ["chicken-shashlik", "kulfi-falooda"],
-    image: IMAGES.snacks,
+    image: IMG.streetFood,
+    pricePerPlate: 380,
+  },
+  {
+    slug: "chicken-paratha-roll",
+    name: "Chicken Paratha Roll",
+    urdu: "چکن پراٹھا رول",
+    categoryId: "fast-bites",
+    summary: "The lunch everyone orders, wrapped in two minutes.",
+    description:
+      "Shredded chicken tikka folded into a flaky paratha with onion, imli chutney and a line of chilli sauce, rolled tight and pressed on the griddle for a moment so it holds together. Wrapped in paper, eaten on the street.",
+    notes: [
+      { label: "Counter", value: "Roll station" },
+      { label: "Served", value: "Wrapped to go" },
+      { label: "Spice", value: "Medium" },
+    ],
+    pairings: ["mango-lassi", "samosa-pakora"],
+    image: IMG.saladBowl,
+    pricePerPlate: 350,
   },
   {
     slug: "chicken-shashlik",
@@ -292,28 +543,30 @@ export const DISHES: Dish[] = [
     notes: [
       { label: "Counter", value: "Grill station" },
       { label: "Spice", value: "Mild" },
-      { label: "Served", value: "On the skewer" },
+      { label: "Served with", value: "On the skewer" },
     ],
-    pairings: ["chicken-malai-boti", "samosa-pakora"],
-    image: IMAGES.grill,
+    pairings: ["samosa-pakora", "mango-lassi"],
+    image: IMG.kebabPlate,
+    pricePerPlate: 800,
   },
 
-  /* -------------------------------- Desserts ------------------------------- */
+  /* ---------------------------- Desserts & Drinks --------------------------- */
   {
-    slug: "gajar-ka-halwa",
-    name: "Gajar ka Halwa",
-    urdu: "گاجر کا حلوہ",
+    slug: "kulfi-falooda",
+    name: "Kulfi Falooda",
+    urdu: "قلفی فالودہ",
     categoryId: "desserts",
-    summary: "Winter carrots cooked down with khoya and ghee.",
+    summary: "Dense kulfi over falooda, rabri and rose syrup.",
     description:
-      "Grated carrots are cooked slowly in ghee until the moisture lifts, then finished with khoya, sugar and a handful of Pistachio. The halwa is kept warm on the counter and served in thick spoonfuls.",
+      "House-made kulfi is set in metal moulds until dense and slow-melting, then turned out over falooda threads, thickened rabri and a measure of rose syrup. The coldest, richest way to finish a long dinner.",
     notes: [
-      { label: "Cooking time", value: "Three hours, stirred by hand" },
-      { label: "Served", value: "Warm" },
-      { label: "Richness", value: "Khoya and pure ghee" },
+      { label: "Kulfi", value: "Made in-house daily" },
+      { label: "Served", value: "Frozen, with rabri" },
+      { label: "Flavouring", value: "Rose syrup & pistachio" },
     ],
-    pairings: ["shahi-kheer", "kulfi-falooda"],
-    image: IMAGES.sweets,
+    pairings: ["chicken-karahi", "gulab-jamun"],
+    image: IMG.kulfi,
+    pricePerPlate: 550,
   },
   {
     slug: "shahi-kheer",
@@ -328,24 +581,9 @@ export const DISHES: Dish[] = [
       { label: "Served", value: "Chilled" },
       { label: "Flavouring", value: "Saffron & cardamom" },
     ],
-    pairings: ["gulab-jamun", "dahi-baray"],
-    image: IMAGES.sweets,
-  },
-  {
-    slug: "kulfi-falooda",
-    name: "Kulfi Falooda",
-    urdu: "قلفی فالودہ",
-    categoryId: "desserts",
-    summary: "Dense kulfi over falooda, rabri and rose syrup.",
-    description:
-      "House-made kulfi is set in metal moulds until dense and slow-melting, then turned out over falooda threads, thickened rabri and a measure of rose syrup. It is the coldest, richest way to finish a long dinner.",
-    notes: [
-      { label: "Kulfi", value: "Made in-house daily" },
-      { label: "Served", value: "Frozen, with rabri" },
-      { label: "Flavouring", value: "Rose syrup & pistachio" },
-    ],
-    pairings: ["gajar-ka-halwa", "chicken-karahi"],
-    image: IMAGES.bbq,
+    pairings: ["gulab-jamun", "grilled-fish"],
+    image: IMG.mithai,
+    pricePerPlate: 450,
   },
   {
     slug: "gulab-jamun",
@@ -361,7 +599,42 @@ export const DISHES: Dish[] = [
       { label: "Syrup", value: "Cardamom & rose water" },
     ],
     pairings: ["shahi-kheer", "chicken-haleem"],
-    image: IMAGES.sweets,
+    image: IMG.mithai2,
+    pricePerPlate: 420,
+  },
+  {
+    slug: "mango-lassi",
+    name: "Mango Lassi",
+    urdu: "آم کا لاسی",
+    categoryId: "desserts",
+    summary: "Thick, cold and made with the season's mango.",
+    description:
+      "Yoghurt whisked with chilled mango pulp, a little sugar and a pinch of black salt, poured over crushed ice. The glass that goes with everything on this menu, and the one that disappears fastest in summer.",
+    notes: [
+      { label: "Made with", value: "Yoghurt & seasonal mango" },
+      { label: "Served", value: "Over crushed ice" },
+      { label: "Best with", value: "Anything off the grill" },
+    ],
+    pairings: ["chicken-paratha-roll", "samosa-pakora"],
+    image: IMG.juice,
+    pricePerPlate: 420,
+  },
+  {
+    slug: "kashmiri-chai",
+    name: "Kashmiri Chai",
+    urdu: "کشمیری چائے",
+    categoryId: "desserts",
+    summary: "Pink, sweet and pulled until it foams.",
+    description:
+      "Loose-leaf tea boiled with milk, then whisked between two vessels until it turns the colour of rose. Sugar to the house standard, a pinch of cardamom, and a glass rather than a cup — the way it is served at every table in Lahore.",
+    notes: [
+      { label: "Brewed", value: "Loose leaf, pulled to order" },
+      { label: "Served", value: "In a glass" },
+      { label: "Sweetness", value: "House standard" },
+    ],
+    pairings: ["lachha-paratha", "gulab-jamun"],
+    image: IMG.drinks,
+    pricePerPlate: 180,
   },
 ];
 
@@ -391,48 +664,32 @@ export function getPairings(dish: Dish) {
 export const SIGNATURE_LIMIT = 4;
 
 /**
- * The four dishes that ship as signatures, and the fallback shown before the
+ * The dishes that ship as signatures, and the fallback shown before the
  * catalogue has been seeded. Which dishes are actually featured is decided by
  * the `featured` column — this list is only the out-of-the-box default.
  */
 export const SIGNATURE_SLUGS = [
   "beef-seekh-kebab",
+  "chicken-malai-boti",
   "mutton-nihari",
-  "grilled-fish",
-  "kulfi-falooda",
+  "special-naan",
 ] as const;
 
-
 /* ------------------------------------------------------------------ */
-/* Delivery pricing — mirrors the table in convex/delivery.ts, which  */
-/* computes the authoritative total server-side at order time.        */
+/* Delivery pricing                                                     */
+/*                                                                     */
+/* The per-plate price lives on the dish itself, so the guest menu, the */
+/* delivery cart and the server-side total all read one number. The     */
+/* function below is the fallback for a dish the owner has added       */
+/* without pricing yet: the standard plate price, matching the rest of  */
+/* the buffet.                                                         */
 /* ------------------------------------------------------------------ */
 
 export const DELIVERY_FEE = 150;
 export const FREE_DELIVERY_THRESHOLD = 2500;
 
-/** Per-plate delivery prices in whole rupees. */
-const DELIVERY_PRICES: Record<string, number> = {
-  "beef-seekh-kebab": 850,
-  "chicken-malai-boti": 750,
-  "chicken-tikka": 700,
-  "grilled-fish": 1200,
-  "mutton-nihari": 950,
-  "chicken-karahi": 1100,
-  "chicken-haleem": 650,
-  "palak-paneer": 600,
-  "lahori-chana-chaat": 400,
-  "dahi-baray": 400,
-  "samosa-pakora": 350,
-  "chicken-shashlik": 750,
-  "gajar-ka-halwa": 450,
-  "shahi-kheer": 450,
-  "kulfi-falooda": 500,
-  "gulab-jamun": 400,
-};
-
 export function deliveryUnitPrice(slug: string): number {
-  return DELIVERY_PRICES[slug] ?? 600;
+  return DISHES.find((dish) => dish.slug === slug)?.pricePerPlate ?? 600;
 }
 
 /* ------------------------------------------------------------------ */

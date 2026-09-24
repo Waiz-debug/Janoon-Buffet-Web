@@ -51,9 +51,10 @@ export function MenuManager({
   categories: MenuCategoryRow[];
   dishes: MenuDishRow[];
   /**
-   * Writes the built-in catalogue into the two menu tables. Offered only while
-   * the table holds no dishes at all, because that is the one state where the
-   * guest menu has nothing to show and the starter catalogue is the answer.
+   * Writes the built-in demo catalogue into the two menu tables — five counters,
+   * every dish, prices, photos and four signatures. Offered only while the table
+   * holds no dishes at all, because that is the one state where the guest menu
+   * has nothing to show and the demo menu is the answer.
    */
   onLoadStarter?: () => void;
   /** True while a seed is running, so the button cannot be pressed twice. */
@@ -272,7 +273,7 @@ export function MenuManager({
         <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
           <p className="text-sm leading-relaxed text-muted-foreground">
             {dishes.length === 0
-              ? "No dishes are in the database, so the guest menu has nothing to show. Load the starter catalogue, or use Add item to write your first one."
+              ? "No dishes are in the database, so the guest menu has nothing to show. Load the demo menu — five counters, the full catalogue, prices and photos — or use Add item to write your own."
               : "Nothing matches that search."}
           </p>
           {dishes.length === 0 && onLoadStarter ? (
@@ -284,7 +285,7 @@ export function MenuManager({
               {seeding ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : null}
-              Load the starter catalogue
+              Load the demo menu
             </Button>
           ) : null}
         </div>

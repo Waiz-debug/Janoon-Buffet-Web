@@ -38,8 +38,10 @@ export type LiveCategory = MenuCategory & {
 };
 
 /** A menu dish as served to the UI — the live row carries the admin-managed
- *  per-plate price that overrides the static delivery table when present. */
-export type LiveDish = Dish & {
+ *  per-plate price that overrides the built-in price when present, and may carry
+ *  no price at all: a dish the owner added and has not priced yet falls back to
+ *  the standard plate price. */
+export type LiveDish = Omit<Dish, "pricePerPlate"> & {
   pricePerPlate?: number;
   imageStorageId?: string;
   active?: boolean;

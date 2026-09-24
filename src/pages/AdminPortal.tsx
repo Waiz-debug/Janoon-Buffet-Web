@@ -118,10 +118,10 @@ export default function AdminPortal() {
       }
     };
     try {
-      await step("load the starter menu", async () => {
+      await step("load the demo menu", async () => {
         if (!isEmpty && !nothingPublished) return null;
-        await seedMenuCatalog();
-        return "Menu catalogue loaded";
+        const report = await seedMenuCatalog();
+        return `Demo menu loaded — ${report.counters} counters, ${report.dishes} dishes, ${report.featured} signatures`;
       });
       await step("load the add-ons board", async () => {
         const added = await seedAddOns();

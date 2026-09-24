@@ -8,6 +8,7 @@ import {
   type PreOrderCategoryId,
   deliveryUnitPrice,
   type CategoryId,
+  type MenuIcon,
 } from "@/lib/menu";
 import { GALLERY } from "@/lib/restaurant";
 import { MEDIA_BUCKET, TABLES, mediaUrl, supabase } from "@/lib/supabase";
@@ -20,7 +21,9 @@ import { MEDIA_BUCKET, TABLES, mediaUrl, supabase } from "@/lib/supabase";
 export type DeliveryStatus = "placed" | "confirmed" | "delivered";
 export type ReservationStatus = "pending" | "confirmed" | "seated" | "cancelled";
 export type Seating = "outdoor" | "indoor";
-export type CategoryIcon = "flame" | "pot" | "bites" | "dessert";
+/** The badge a counter carries. The same list the demo catalogue is written
+ *  from, so an icon the seed writes is always one the UI can draw. */
+export type CategoryIcon = MenuIcon;
 
 export type DeliveryOrderLine = {
   slug: string;
@@ -513,24 +516,35 @@ export async function fetchSiteMedia(): Promise<SiteMediaRow[]> {
 }
 
 /**
- * Copy the built-in catalogue into Supabase. Runs from the admin portal, so the
- * public menu becomes admin-editable the first time the panel is opened, and can
- * be re-run by hand from the Menu tab whenever the owner wants the starter
- * catalogue back.
+ * Copy the built-in demo catalogue into Supabase. Runs from the admin portal, so
+ * the public menu becomes admin-editable the first time the panel is opened, and
+ * can be re-run by hand from the Menu tab whenever the owner wants the demo
+ * menu back.
+ *
+ * Safe to run repeatedly: every row is written by its own key — a counter's id,
+ * a dish's slug — so a re-run refreshes the demo rows in place and never
+ * duplicates them, and rows the owner added themselves (which have their own
+ * slugs) are left alone.
  *
  * Written one row at a time, and in two passes over the dishes. Both of those
  * are deliberate, and both come from how a single rejected statement used to
  * cost the owner the entire menu:
  *
  *  • **One row at a time.** A batch write is all-or-nothing, so a single row
- *    the database will not take leaves fifteen dishes missing and both admin
- *    boards looking empty. Failures are collected and reported together.
+ *    the database will not take leaves the rest of the menu missing and both
+ *    admin boards looking empty. Failures are collected and reported together.
  *  • **Unfeatured first, signatures after.** The database keeps at most four
  *    signature dishes and its trigger counts them as rows go in, so one write
  *    carrying four of them can trip the limit halfway through. The rows land
  *    plainly, then the four signatures are switched on one by one.
+ *
+ * Returns what it wrote, so the panel can say so instead of claiming success.
  */
-export async function seedMenuCatalog(): Promise<void> {
+export async function seedMenuCatalog(): Promise<{
+  counters: number;
+  dishes: number;
+  featured: number;
+}> {
   const knownCategories = await existingKeys(TABLES.categories, "id");
   for (const [index, category] of MENU_CATEGORIES.entries()) {
     await writeRowBy(
@@ -552,6 +566,7 @@ export async function seedMenuCatalog(): Promise<void> {
 
   const knownDishes = await existingKeys(TABLES.dishes, "slug");
   const failures: string[] = [];
+  let dishesWritten = 0;
 
   for (const [index, dish] of DISHES.entries()) {
     const row: Record<string, unknown> = {
@@ -579,6 +594,7 @@ export async function seedMenuCatalog(): Promise<void> {
         row,
         knownDishes.has(dish.slug),
       );
+      dishesWritten += 1;
     } catch (error) {
       failures.push(
         `${dish.slug}: ${error instanceof Error ? error.message : String(error)}`,
@@ -586,19 +602,23 @@ export async function seedMenuCatalog(): Promise<void> {
     }
   }
 
+  let featured = 0;
   for (const slug of SIGNATURE_SLUGS) {
     const { error } = await supabase
       .from(TABLES.dishes)
       .update({ featured: true, updated_at: Date.now() })
       .eq("slug", slug);
     if (error) failures.push(`${slug}: ${error.message}`);
+    else featured += 1;
   }
 
   if (failures.length > 0) {
     throw new Error(
-      `Supabase rejected ${failures.length} of the ${DISHES.length} starter dishes — ${failures[0]}`,
+      `Supabase rejected ${failures.length} of the ${DISHES.length} demo dishes — ${failures[0]}`,
     );
   }
+
+  return { counters: MENU_CATEGORIES.length, dishes: dishesWritten, featured };
 }
 
 /**

@@ -1,0 +1,267 @@
+-- ============================================================================
+--  JUNOON — demo menu loader
+--
+--  Writes the demo catalogue into the two tables the app reads:
+--  `menu_categories` (the counters) and `menu_dishes` (the items, each filed
+--  under a counter through `category_id`). Five counters, twenty-seven dishes,
+--  per-plate prices in rupees, an Unsplash photo each, and four signature
+--  dishes for the guest page's Signatures strip.
+--
+--  Run it once in the Supabase SQL editor (Database → SQL Editor → paste → Run)
+--  and the guest site shows the whole menu. The admin panel edits these very
+--  rows, so every counter, price, photo and re-mapping is editable afterwards.
+--
+--  Why this file when the app has a button
+--  ---------------------------------------
+--  Admin → Menu → "Load the demo menu" writes the same rows from
+--  src/lib/menu.ts, and is the normal way in. This file is the route for a
+--  project whose *app* writes are being refused — a missing write policy, a
+--  stale trigger — because it runs as the table owner, where row level security
+--  does not apply and no signed-in account can block it. The data below was
+--  generated from that same catalogue, so the two stay in step.
+--
+--  Safe to run more than once
+--  ---------------------------
+--  Counters are written by their primary key and dishes by their slug, so a
+--  re-run refreshes these demo rows in place instead of creating a second set
+--  beside them. A dish the owner added themselves has its own slug and is left
+--  alone. It does overwrite the text and photo of the demo rows themselves —
+--  it is a demo loader, not a migration.
+--
+--  The two schema things the app depends on are (re)created here as well: the
+--  unique index on `menu_dishes.slug`, and the four-signature-dish limit.
+-- ============================================================================
+
+
+-- ---------------------------------------------------------------------------
+--  1. The home counter for items whose counter was removed
+--
+--  Switched off, so guests never see it. `deleteCategory()` in the app parks
+--  items here before deleting a counter, which is why it has to exist.
+-- ---------------------------------------------------------------------------
+insert into public.menu_categories (id, name, urdu, blurb, icon, sort_order, active)
+values (
+  'uncategorized', 'Other', 'دیگر',
+  'Dishes whose counter was removed from the menu.', 'flame', 99, false
+)
+on conflict (id) do nothing;
+
+
+-- ---------------------------------------------------------------------------
+--  2. The five counters
+--
+--  Written by primary key, so re-running renames and re-orders in place.
+-- ---------------------------------------------------------------------------
+insert into public.menu_categories (id, name, urdu, blurb, icon, sort_order, active)
+values
+  ('bbq', 'Barbecue & Grill', 'باریکو اور گرل', 'Charcoal counters that stay lit all night, working from recipes the family has grilled for years.', 'flame', 1),
+  ('handi', 'Traditional Handi', 'روایتی ہانڈی', 'Slow clay-pot cooking that begins before dawn and simmers until the first guests sit down.', 'pot', 2),
+  ('tandoor', 'Tandoor & Naan', 'تندور اور نان', 'A tandoor banked at opening and never let go out — breads pulled to order and blistered in the heat.', 'bread', 3),
+  ('fast-bites', 'Fast Bites & Chaat', 'فاسٹ بائٹس اور چات', 'Lahori street plates and lighter bites, built in front of you so the crunch survives the walk to the table.', 'bites', 4),
+  ('desserts', 'Desserts & Drinks', 'میٹھا اور مشروبات', 'Warm mithai lifted straight from the degh, and the glasses to wash it down — served until the last table leaves.', 'dessert', 5)
+on conflict (id) do update
+   set name       = excluded.name,
+       urdu       = excluded.urdu,
+       blurb      = excluded.blurb,
+       icon       = excluded.icon,
+       sort_order = excluded.sort_order,
+       active     = excluded.active;
+
+
+-- ---------------------------------------------------------------------------
+--  3. `menu_dishes.slug` has to be unique
+--
+--  Every path to a dish — edit it, hide it, move it to another counter, price
+--  it, delete it — looks it up by slug, and step 4 resolves conflicts on it.
+--  `create table if not exists` never adds a constraint to a table that already
+--  exists, so a project created from an older copy of the schema can be missing
+--  it, which is also why the app's own dish writes were being rejected.
+--
+--  Duplicate slugs are reported rather than deleted: which row the owner meant
+--  to keep is their call, not this script's.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (
+    select 1 from public.menu_dishes group by slug having count(*) > 1
+  ) then
+    raise warning
+      'menu_dishes holds duplicate slugs — the unique index was skipped and step 4 will be refused. The duplicates are listed below; rename or delete them, then re-run this file.';
+  else
+    execute
+      'create unique index if not exists menu_dishes_slug_key on public.menu_dishes (slug)';
+    raise notice 'menu_dishes slug index: ready';
+  end if;
+end $$;
+
+select slug, count(*) as rows
+  from public.menu_dishes
+ group by slug
+having count(*) > 1
+ order by slug;
+
+
+-- ---------------------------------------------------------------------------
+--  4. The four-signature-dish limit, paused for the load
+--
+--  The trigger counts featured rows as they go in, so a single statement that
+--  features four dishes can trip the limit halfway through and take the whole
+--  write with it. It is dropped here and re-created in step 6, so the loader
+--  cannot be refused by a copy of the rule that counts differently. Any other
+--  trigger on the table is left alone.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  sig record;
+begin
+  for sig in
+    select t.tgname
+      from pg_trigger t
+     where t.tgrelid = 'public.menu_dishes'::regclass
+       and not t.tgisinternal
+       and t.tgname ilike '%signature%'
+  loop
+    execute format('drop trigger if exists %I on public.menu_dishes', sig.tgname);
+    raise notice 'paused trigger % for the load', sig.tgname;
+  end loop;
+end $$;
+
+
+-- ---------------------------------------------------------------------------
+--  5. The dishes
+--
+--  slug, name, urdu, counter, summary, description, photo, per-plate price,
+--  signature, order. Every dish is published (`active` is set true below), so
+--  the guest menu draws all of them the moment this finishes.
+--
+--  `demo = true` marks the photograph as a placeholder, which is what the admin
+--  panel uses to flag rows worth replacing with the kitchen's own pictures.
+-- ---------------------------------------------------------------------------
+insert into public.menu_dishes
+  (slug, name, urdu, category_id, summary, description, image, price_per_plate,
+   active, featured, demo, sort_order, updated_at)
+select
+  d.slug, d.name, d.urdu, d.category_id, d.summary, d.description, d.image,
+  d.price_per_plate, true, d.featured, true, d.sort_order,
+  (extract(epoch from now()) * 1000)::bigint
+  from (values
+    ('beef-seekh-kebab', 'Beef Seekh Kebab', 'بیف سیخ کباب', 'bbq', 'Hand-pressed minced beef, grilled over open charcoal.', 'Our signature kebab since the first night we opened: finely minced beef worked by hand with green chilli, coriander and toasted spice, pressed onto flat skewers and grilled over open charcoal until the edges catch. Served the traditional way, with mint chutney, sliced onion and tandoor bread straight from the oven.', 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=1200&q=70', 1250, true, 1),
+    ('chicken-malai-boti', 'Chicken Malai Boti', 'چکن ملائی بوٹی', 'bbq', 'Cream-marinated chicken, grilled soft with a faint smoke.', 'Boneless chicken rests overnight in cream, cheddar and white pepper, then meets the coals just long enough to colour without drying. The mildest kebab on our counter — soft, rich and the usual first request from younger guests.', 'https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=1200&q=70', 1150, true, 2),
+    ('grilled-fish', 'Charcoal Grilled Fish', 'گرل شدہ مچھلی', 'bbq', 'Our daily special — whole fish, marinated overnight.', 'A whole freshwater fish is scored, rubbed with ajwain, turmeric and crushed coriander, and left to marinate overnight before an unhurried turn over the coals. It is carved at the counter and served with imli chutney and lemon. Laid out fresh from seven in the evening, while it lasts.', 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&w=1200&q=70', 1800, false, 3),
+    ('chicken-tikka', 'Charcoal Chicken Tikka', 'چکن تکہ', 'bbq', 'Bone-in tikka with a deep red chilli and yoghurt marinade.', 'Whole leg pieces are scored, soaked in a chilli, yoghurt and mustard-oil marinade, and turned slowly over charcoal until the skin blisters. Sharp, smoky and unapologetically Lahori — ask for extra imli chutney.', 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&w=1200&q=70', 950, false, 4),
+    ('lamb-chop', 'Lamb Chops', 'گوشت کے ٹکڑے', 'bbq', 'French-trimmed lamb on the bone, salt-crusted and charred.', 'Lamb racks trimmed to the bone, crusted in coarse salt with rosemary and cracked pepper, then grilled hard on the outside and rested in the foil so the juices stay in the meat. Cut into chops at the counter — two per plate, bread and chutney alongside.', 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=70', 1650, false, 5),
+    ('beher-tikka', 'Beher Tikka', 'بہری ٹکہ', 'bbq', 'Firm river fish in a yoghurt marinade, kissed by the coals.', 'Chunks of firm fish marinated in yoghurt, ginger and green chilli, threaded with onion and capsicum and finished over charcoal so the outside takes colour while the inside stays moist. The lighter of the two fish dishes, and the one to order if you want the smoke without the whole fish.', 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=1200&q=70', 1250, false, 6),
+    ('mutton-nihari', 'Mutton Nihari', 'مٹن نہاری', 'handi', 'Simmered overnight until the meat gives way to the spoon.', 'Bone-in mutton is sealed in its own stock at dawn and left to simmer through the day with a slow-roasted spice blend and marrow. By nightfall the gravy is glossy and the meat collapses at a touch of the spoon — best mopped up with a hot tandoori naan.', 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=1200&q=70', 1450, true, 7),
+    ('chicken-karahi', 'Chicken Karahi', 'چکن کڑاہی', 'handi', 'Tomato, ginger and green chilli, finished in the wok.', 'Cooked to order in a black iron karahi, our chicken is tossed with crushed tomato, julienned ginger and whole green chillies until the oil separates and the sauce turns deep red. Nothing is pre-cooked, so it arrives at the table still catching its breath.', 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=70', 1250, false, 8),
+    ('chicken-haleem', 'Chicken Haleem', 'چکن حلیم', 'handi', 'Wheat, lentils and chicken pounded into a velvet porridge.', 'Cracked wheat and five lentils are cooked down with shredded chicken for hours, then pounded smooth with a wooden masher until the texture turns silken. It is finished with crisp fried onions, ginger and a squeeze of lemon.', 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=1200&q=70', 750, false, 9),
+    ('beef-qorma', 'Beef Shahi Qorma', 'بیف شاہی قورمہ', 'handi', 'Yoghurt and nut gravy, mild enough for the whole table.', 'Beef shank braised until it gives, then folded into a pale gravy of whisked yoghurt, almond and cashew, browned onion and a whisper of cardamom. Finished with cream and silver leaf at the pass — the dish to order when the table wants something gentle and rich at once.', 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&w=1200&q=70', 1150, false, 10),
+    ('mutton-paya', 'Mutton Paya', 'مٹن پایا', 'handi', 'Trotters slow-cooked with marrow and whole spices.', 'Trotters, hoof and shin, scalded clean and simmered with ginger, black cardamom and a little vinegar until the marrow softens and thickens the broth. Eaten with a spoon, the way it should be, and ordered early — it takes all afternoon and all night to get right.', 'https://images.unsplash.com/photo-1606491956689-2ea866880c84?auto=format&fit=crop&w=1200&q=70', 950, false, 11),
+    ('palak-paneer', 'Palak Paneer', 'پالک پنیر', 'handi', 'House-made paneer folded through slow-cooked spinach.', 'Spinach cooked gently so it keeps its colour, then brightened with ginger, garlic and a touch of cream. The paneer is set in our own kitchen each morning and cubed into the gravy just before service.', 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=1200&q=70', 700, false, 12),
+    ('special-naan', 'Special Naan', 'اسپیشل نان', 'tandoor', 'Stuffed, brushed with ghee and blistered in the tandoor.', 'A hand-knotted naan filled with minced mutton, onion and coriander, sealed and slapped against the inside of the tandoor wall until the top chars in spots and the base stays soft. Brushed with ghee the moment it comes out and torn at the table.', 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=1200&q=70', 320, true, 13),
+    ('tandoori-naan', 'Tandoori Naan', 'تندوری نان', 'tandoor', 'The everyday bread, pulled to order.', 'Flour, yoghurt and a little mustard oil, rested overnight so the dough keeps its shape, then slapped onto the tandoor wall. Puffy in the middle, crisp at the edges, and the one every curry on this menu is eaten with.', 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=1200&q=70', 130, false, 14),
+    ('plain-naan', 'Plain Naan', 'سادہ نان', 'tandoor', 'The plain one, for the table that likes it simple.', 'No filling, no ghee, nothing to hide behind — flour, salt, water and a little yeast, blistered until the top freckles. Ordered by the dozen on a table that has run out of everything else, and the correct thing to mop a karahi with.', 'https://images.unsplash.com/photo-1549931319-a545dcf3bc73?auto=format&fit=crop&w=1200&q=70', 80, false, 15),
+    ('keema-naan', 'Keema Naan', 'کیما نان', 'tandoor', 'Spiced minced beef baked inside the bread.', 'The same stuffed naan technique, filled with slow-cooked minced beef, green chilli and a little tomato, then baked and finished with coriander. Richer and more strongly spiced than the special naan, and the one children fight over.', 'https://images.unsplash.com/photo-1608039755401-742074f0548d?auto=format&fit=crop&w=1200&q=70', 380, false, 16),
+    ('lachha-paratha', 'Lachha Paratha', 'لچھا پراٹھا', 'tandoor', 'Layered, flaky and ghee-soaked.', 'A hundred and twenty layers folded into the dough by hand, rolled thin and cooked on the griddle until each layer separates and the edges crisp. Served hot with a spoon of white butter and a cup of chai — breakfast, or the perfect ending to a barbecue.', 'https://images.unsplash.com/photo-1549931319-a545dcf3bc73?auto=format&fit=crop&w=1200&q=70', 180, false, 17),
+    ('lahori-chana-chaat', 'Lahori Chana Chaat', 'لاہوری چنا چاٹ', 'fast-bites', 'Chickpeas, tamarind and yoghurt, built to order.', 'Boiled chickpeas arrive sharp with chaat masala, imli water, mint yoghurt, chopped onion and crisp papri. It is assembled in front of you so the papri never has time to soften.', 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=70', 420, false, 18),
+    ('dahi-baray', 'Dahi Baray', 'دہی بڑے', 'fast-bites', 'Lentil dumplings under cool whipped yoghurt.', 'Soft lentil dumplings are soaked in water until pillowy, then dressed with thick whipped yoghurt, imli chutney and a dusting of roasted cumin. Cool, tangy and the calmest thing on the table.', 'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?auto=format&fit=crop&w=1200&q=70', 420, false, 19),
+    ('samosa-pakora', 'Samosa & Pakora', 'سموسہ اور پکوڑا', 'fast-bites', 'Fried in small batches so they always arrive crisp.', 'Potato and pea samosas, onion pakoras and bread rolls are fried in small batches through the night so nothing sits under a lamp. Served with imli and mint chutneys, and best eaten while they are still too hot to share politely.', 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?auto=format&fit=crop&w=1200&q=70', 380, false, 20),
+    ('chicken-paratha-roll', 'Chicken Paratha Roll', 'چکن پراٹھا رول', 'fast-bites', 'The lunch everyone orders, wrapped in two minutes.', 'Shredded chicken tikka folded into a flaky paratha with onion, imli chutney and a line of chilli sauce, rolled tight and pressed on the griddle for a moment so it holds together. Wrapped in paper, eaten on the street.', 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=70', 350, false, 21),
+    ('chicken-shashlik', 'Chicken Shashlik Sticks', 'چکن شاشلک', 'fast-bites', 'Skewered chicken with peppers, onion and a soy glaze.', 'Cubes of chicken are threaded with onion, capsicum and tomato, grilled quickly and brushed with a light soy and chilli glaze. A straightforward plate that suits children as much as anyone looking for something quick between buffet rounds.', 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=1200&q=70', 800, false, 22),
+    ('kulfi-falooda', 'Kulfi Falooda', 'قلفی فالودہ', 'desserts', 'Dense kulfi over falooda, rabri and rose syrup.', 'House-made kulfi is set in metal moulds until dense and slow-melting, then turned out over falooda threads, thickened rabri and a measure of rose syrup. The coldest, richest way to finish a long dinner.', 'https://images.unsplash.com/photo-1621263764928-df1444c5e859?auto=format&fit=crop&w=1200&q=70', 550, false, 23),
+    ('shahi-kheer', 'Shahi Kheer', 'شاہی کھیر', 'desserts', 'Rice pudding reduced slowly with saffron and nuts.', 'Full-cream milk is reduced with broken rice for hours until it thickens to a pale gold, then perfumed with saffron, cardamom and slivered almonds. Served chilled, in the small bowls it has always been served in.', 'https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=1200&q=70', 450, false, 24),
+    ('gulab-jamun', 'Gulab Jamun & Rabri', 'گلاب جامن', 'desserts', 'Warm milk dumplings under thickened rabri.', 'Khoya dumplings are fried to a deep amber and soaked in cardamom syrup until they double in size, then served warm with a spoon of rabri over the top.', 'https://images.unsplash.com/photo-1488900128323-21503983a07e?auto=format&fit=crop&w=1200&q=70', 420, false, 25),
+    ('mango-lassi', 'Mango Lassi', 'آم کا لاسی', 'desserts', 'Thick, cold and made with the season''s mango.', 'Yoghurt whisked with chilled mango pulp, a little sugar and a pinch of black salt, poured over crushed ice. The glass that goes with everything on this menu, and the one that disappears fastest in summer.', 'https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=1200&q=70', 420, false, 26),
+    ('kashmiri-chai', 'Kashmiri Chai', 'کشمیری چائے', 'desserts', 'Pink, sweet and pulled until it foams.', 'Loose-leaf tea boiled with milk, then whisked between two vessels until it turns the colour of rose. Sugar to the house standard, a pinch of cardamom, and a glass rather than a cup — the way it is served at every table in Lahore.', 'https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=1200&q=70', 180, false, 27)
+  ) as d(slug, name, urdu, category_id, summary, description, image,
+        price_per_plate, featured, sort_order)
+on conflict (slug) do update
+   set name            = excluded.name,
+       urdu            = excluded.urdu,
+       category_id     = excluded.category_id,
+       summary         = excluded.summary,
+       description     = excluded.description,
+       image           = excluded.image,
+       price_per_plate = excluded.price_per_plate,
+       active          = true,
+       featured        = excluded.featured,
+       demo            = true,
+       sort_order      = excluded.sort_order,
+       updated_at      = excluded.updated_at;
+
+
+-- ---------------------------------------------------------------------------
+--  6. The four-signature-dish limit, back on
+--
+--  The guest page's Signatures strip holds exactly four, and this is the rule
+--  that keeps it there. It counts the *other* featured rows, so a dish never
+--  blocks its own save.
+-- ---------------------------------------------------------------------------
+create or replace function public.tribe_limit_signature_dishes()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if not new.featured then
+      return new;
+    end if;
+  else
+    if not new.featured or old.featured then
+      return new;
+    end if;
+  end if;
+
+  if (select count(*) from public.menu_dishes
+       where featured and slug <> new.slug) >= 4 then
+    raise exception
+      'Only four signature dishes are allowed. Clear one before featuring another.';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists menu_dishes_signature_limit on public.menu_dishes;
+create trigger menu_dishes_signature_limit
+  before insert or update of featured on public.menu_dishes
+  for each row execute function public.tribe_limit_signature_dishes();
+
+
+-- ---------------------------------------------------------------------------
+--  7. What landed
+--
+--  Expect five counters and twenty-seven dishes, four of them signatures. The
+--  guest site and both admin boards read these same rows over the shared
+--  realtime channel, so they change the moment this finishes — no redeploy, no
+--  refresh for anyone.
+-- ---------------------------------------------------------------------------
+select
+  'counters' as what,
+  count(*)                        as rows,
+  count(*) filter (where active)  as published
+  from public.menu_categories
+union all
+select
+  'dishes',
+  count(*),
+  count(*) filter (where active)
+  from public.menu_dishes;
+
+select
+  'signatures' as what,
+  count(*)     as rows
+  from public.menu_dishes
+ where featured;
+
+-- Every counter with the number of items filed under it, from the read-only
+-- overview view (created by supabase/counters.sql).
+select
+  c.id,
+  c.name,
+  c.sort_order,
+  c.active,
+  count(d.slug) filter (where d.active) as live_items,
+  count(d.slug)                        as total_items
+  from public.menu_categories c
+  left join public.menu_dishes d on d.category_id = c.id
+ group by c.id, c.name, c.sort_order, c.active
+ order by c.sort_order, c.name;
