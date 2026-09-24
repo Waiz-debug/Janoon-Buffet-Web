@@ -28,12 +28,12 @@ export function AboutVibe() {
   const { mediaOr, content } = useLiveSite();
 
   return (
-    <section id="vibe" className="hearth-texture scroll-mt-24 py-20 sm:py-28">
+    <section id="heritage" className="hearth-texture scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <div className="grid gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div className="flex flex-col gap-10">
             <SectionHeading
-              eyebrow="The Experience"
+              eyebrow="Our heritage"
               title="An open-air table in Lahore, served whenever your family is hungry"
               description="JUNOON was built on a single idea: good desi cooking should not keep office hours. Arrive after a wedding, before a shift, or on a slow Friday night — the coals are always lit."
             />

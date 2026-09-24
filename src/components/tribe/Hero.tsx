@@ -5,28 +5,19 @@ import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
 import { scrollToSection } from "@/lib/scroll";
 import { motion } from "framer-motion";
-import {
-  ArrowRight,
-  Clock,
-  Flame,
-  MapPin,
-  Star,
-  UtensilsCrossed,
-} from "lucide-react";
+import { ArrowRight, CalendarCheck, Clock, Flame } from "lucide-react";
 
+/**
+ * The four claims the house leads with. They are deliberately about method
+ * rather than about the price: the price is on the High Tea band below and is
+ * editable in the admin panel, while these are the reasons it costs what it
+ * costs.
+ */
 const HERO_STATS = [
-  {
-    icon: Star,
-    value: `${RESTAURANT.rating} / 5`,
-    label: `${RESTAURANT.reviewCount}+ Google reviews`,
-  },
-  {
-    icon: UtensilsCrossed,
-    value: RESTAURANT.buffetRange,
-    label: "per person, unlimited"
-  },
-  { icon: Clock, value: "Open 24 hours", label: "seating all night" },
-  { icon: MapPin, value: "Open-air terrace", label: "Gulberg, Lahore" },
+  { value: "16+ hours", label: "Slow-cooked, never rushed" },
+  { value: "100%", label: "Asli desi ghee" },
+  { value: "Kashmir", label: "Single-source saffron" },
+  { value: "Live coal", label: "Angith roast" },
 ] as const;
 
 const container = {
@@ -39,115 +30,139 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: "easeOut" as const } },
 };
 
+/**
+ * The imperial hero: one photograph of the dastarkhwan, the house name in Urdu
+ * over it, and the four claims under a brass rule.
+ *
+ * The backdrop is the admin-managed `hero` media slot, so the photo the owner
+ * uploads in the panel is the photo that greets every guest — no redeploy, and
+ * it changes on the site the moment it is saved.
+ */
 export function Hero() {
-  const { heroImage } = useLiveSite();
+  const { heroImage, content } = useLiveSite();
   const backdrop = heroImage ?? RESTAURANT.heroImage;
+  const highTeaOffer = content["high-tea-offer"];
 
   return (
     <section
       id="top"
-      className="relative isolate flex min-h-[100svh] items-center overflow-hidden pt-24 pb-16 sm:pt-28"
+      className="relative isolate flex min-h-[100svh] flex-col justify-center overflow-hidden pt-28 pb-14 sm:pt-36"
     >
-      {/* Warm hearth backdrop: photo (if available) under the heritage scene art */}
+      {/* The feast itself, under a heavy vignette so the type always reads. */}
       <div aria-hidden className="absolute inset-0 -z-20">
         <SmartImage
           src={backdrop}
           alt=""
           loading="eager"
-          className="h-full w-full object-cover opacity-30"
+          className="h-full w-full object-cover opacity-70"
         />
       </div>
-      <HearthScene className="absolute inset-x-0 bottom-0 -z-10 h-full w-full opacity-80" />
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 bg-gradient-to-b from-background/70 via-background/40 to-background"
+        className="absolute inset-0 -z-10 bg-gradient-to-b from-background/85 via-background/55 to-background"
       />
-      <Embers count={16} />
+      <HearthScene className="absolute inset-x-0 bottom-0 -z-10 h-1/2 w-full opacity-30" />
+      <Embers count={14} />
 
-      <div className="relative mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <div className="relative mx-auto w-full max-w-5xl px-4 text-center sm:px-6">
         <motion.div
           variants={container}
           initial="hidden"
           animate="show"
-          className="flex max-w-3xl flex-col items-start gap-6"
+          className="flex flex-col items-center gap-5"
         >
           <motion.span
             variants={item}
-            className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/60 px-3.5 py-1.5 text-[0.7rem] font-medium tracking-[0.18em] text-gold uppercase backdrop-blur"
+            className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/50 px-3.5 py-1.5 text-[0.65rem] font-medium tracking-[0.24em] text-gold uppercase backdrop-blur"
           >
             <Flame className="size-3.5" aria-hidden />
-            Gulberg · Lahore
+            Mughlai haute cuisine · Gulberg, Lahore
           </motion.span>
+
+          <motion.p
+            variants={item}
+            dir="rtl"
+            className="font-display text-lg text-gold/85 sm:text-xl"
+          >
+            جنون · شاہی دسترخوان
+          </motion.p>
 
           <motion.h1
             variants={item}
             className="font-display text-4xl leading-[1.05] font-semibold text-balance sm:text-5xl lg:text-6xl"
           >
-            Authentic Pakistani BBQ and handi, served around the clock.
+            An Ode to Mughal Gastronomy
           </motion.h1>
 
           <motion.p
             variants={item}
             className="max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
           >
-            {RESTAURANT.name} is Lahore&apos;s open-air, all-you-can-eat buffet:
-            charcoal grills, clay-pot handi and desi desserts, laid out on the
-            terrace in Gulberg. Reserve your table in advance and be seated on
-            arrival.
+            Immerse yourself in the royal pageantry of a shahi dastarkhwan —
+            nihari left to simmer overnight, kebabs roasted over angith coal and
+            saffron-perfumed biryani, served on brass and copper in the open air
+            of Gulberg, Lahore.
           </motion.p>
+
+          {highTeaOffer ? (
+            <motion.span
+              variants={item}
+              className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-gold/20 bg-card/60 px-4 py-1.5 text-xs text-gold/90 backdrop-blur"
+            >
+              <Clock className="size-3.5 shrink-0" aria-hidden />
+              {highTeaOffer}
+            </motion.span>
+          ) : null}
 
           <motion.div
             variants={item}
-            className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center"
+            className="mt-1 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center"
           >
             <Button
               type="button"
               size="lg"
-              onClick={() => scrollToSection("reserve")}
-              className="group h-12 w-full gap-2 shadow-lg shadow-black/30 sm:w-auto"
+              onClick={() => scrollToSection("counters")}
+              className="group h-12 w-full gap-2 shadow-lg shadow-black/40 sm:w-auto"
             >
-              Book Buffet
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+              Explore royal counters
+              <ArrowRight
+                className="size-4 transition-transform group-hover:translate-x-1"
+                aria-hidden
+              />
             </Button>
             <Button
               type="button"
               size="lg"
               variant="outline"
-              onClick={() => scrollToSection("menu")}
-              className="h-12 w-full border-gold/30 bg-background/40 backdrop-blur hover:bg-secondary/60 sm:w-auto"
+              onClick={() => scrollToSection("reserve")}
+              className="h-12 w-full gap-2 border-gold/30 bg-background/40 backdrop-blur hover:bg-secondary/60 sm:w-auto"
             >
-              View Menu
+              <CalendarCheck className="size-4" aria-hidden />
+              Reserve dastarkhwan
             </Button>
           </motion.div>
-
-          <motion.p
-            variants={item}
-            className="text-xs text-muted-foreground/90 sm:text-sm"
-          >
-            Tonight&apos;s special:{" "}
-            <span className="text-gold">charcoal-grilled fish</span> · Children
-            under six dine free · No deposit required
-          </motion.p>
-
-          <motion.dl
-            variants={item}
-            className="mt-4 grid w-full grid-cols-2 gap-3 border-t border-border/70 pt-6 sm:grid-cols-4"
-          >
-            {HERO_STATS.map((stat) => (
-              <div key={stat.label} className="flex items-start gap-2.5">
-                <stat.icon className="mt-0.5 size-4 shrink-0 text-gold" aria-hidden />
-                <div>
-                  <dt className="text-sm font-semibold text-foreground">
-                    {stat.value}
-                  </dt>
-                  <dd className="text-xs leading-snug text-muted-foreground">
-                    {stat.label}
-                  </dd>
-                </div>
-              </div>
-            ))}
-          </motion.dl>
         </motion.div>
+
+        <motion.dl
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.5, ease: "easeOut" }}
+          className="mt-12 grid grid-cols-2 gap-y-6 border-t border-border/60 pt-8 sm:grid-cols-4 sm:divide-x sm:divide-border/60"
+        >
+          {HERO_STATS.map((stat) => (
+            <div
+              key={stat.value}
+              className="flex flex-col items-center gap-1.5 px-2 text-center"
+            >
+              <dt className="font-display text-xl font-semibold text-gold sm:text-2xl">
+                {stat.value}
+              </dt>
+              <dd className="text-[0.65rem] tracking-[0.18em] text-muted-foreground uppercase">
+                {stat.label}
+              </dd>
+            </div>
+          ))}
+        </motion.dl>
       </div>
     </section>
   );

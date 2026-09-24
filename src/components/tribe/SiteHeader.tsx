@@ -10,12 +10,20 @@ import { CalendarCheck, Menu, Phone, ShoppingBag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
+/**
+ * The public nav, in the order the courtyard is walked: the counters first,
+ * then the priced board, the sitting that runs through both, the private
+ * chamber, and the story behind the kitchen.
+ *
+ * Every destination is a section on the restaurant page, and `useGoToSection`
+ * carries a guest there from anywhere in the app.
+ */
 const NAV_LINKS = [
-  { label: "The Experience", id: "vibe" },
-  { label: "Menu & Pricing", id: "menu" },
-  { label: "Offers", id: "offers" },
-  { label: "Reviews", id: "reviews" },
-  { label: "Visit Us", id: "visit" },
+  { label: "Live counters", id: "counters" },
+  { label: "À la carte menu", id: "menu" },
+  { label: "High tea experience", id: "high-tea" },
+  { label: "Private dining", id: "reserve" },
+  { label: "Our heritage", id: "heritage" },
 ];
 
 export function SiteHeader() {
@@ -51,25 +59,24 @@ export function SiteHeader() {
           onClick={() => goTo("top")}
           className="flex items-center gap-3 text-left"
         >
-          <JanoonMark className="size-9" />
+          <JanoonMark className="size-10" />
           <span className="flex flex-col leading-none">
-            <span className="font-display text-[1.05rem] font-semibold tracking-tight">
+            <span className="font-display text-[1.1rem] font-semibold tracking-[0.12em]">
               {RESTAURANT.name}
             </span>
-            <span className="mt-0.5 text-[0.65rem] tracking-[0.2em] text-gold/80 uppercase">
-              Lahore · 24/7
+            <span className="mt-1 text-[0.55rem] tracking-[0.24em] text-gold/80 uppercase">
+              Imperial dining &amp; high tea
             </span>
-            <OpenStatus className="mt-1 hidden text-[0.6rem] lg:inline-flex" />
           </span>
         </button>
 
-        <nav className="hidden items-center gap-1 lg:flex">
+        <nav className="hidden items-center gap-0.5 lg:flex">
           {NAV_LINKS.map((link) => (
             <button
               key={link.id}
               type="button"
               onClick={() => goTo(link.id)}
-              className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+              className="rounded-lg px-3 py-2 text-[0.7rem] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-foreground"
             >
               {link.label}
             </button>
@@ -92,7 +99,7 @@ export function SiteHeader() {
           </button>
           <a
             href={RESTAURANT.phoneHref}
-            className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+            className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground xl:inline-flex"
           >
             <Phone className="size-3.5" aria-hidden />
             {RESTAURANT.phoneDisplay}
@@ -100,10 +107,10 @@ export function SiteHeader() {
           <Button
             type="button"
             onClick={() => goTo("reserve")}
-            className="hidden gap-2 sm:inline-flex"
+            className="hidden h-11 gap-2 bg-accent px-5 text-[0.7rem] tracking-[0.16em] text-accent-foreground uppercase hover:bg-accent/90 sm:inline-flex"
           >
             <CalendarCheck className="size-4" aria-hidden />
-            Book Buffet
+            Reserve a table
           </Button>
           <button
             type="button"
@@ -132,7 +139,7 @@ export function SiteHeader() {
                   key={link.id}
                   type="button"
                   onClick={() => goTo(link.id)}
-                  className="rounded-lg px-3 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                  className="rounded-lg px-3 py-3 text-left text-[0.75rem] tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-foreground"
                 >
                   {link.label}
                 </button>
@@ -141,10 +148,10 @@ export function SiteHeader() {
                 <Button
                   type="button"
                   onClick={() => goTo("reserve")}
-                  className="w-full gap-2"
+                  className="h-11 w-full gap-2"
                 >
                   <CalendarCheck className="size-4" aria-hidden />
-                  Book Buffet
+                  Reserve a table
                 </Button>
                 <Button
                   type="button"
@@ -170,9 +177,10 @@ export function SiteHeader() {
                 >
                   Manage a reservation
                 </Link>
+                <OpenStatus className="mx-auto mt-2" />
                 <Link
                   to="/dashboard"
-                  className="px-1 pt-2 text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  className="px-1 pt-1 text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                 >
                   Staff sign in
                 </Link>

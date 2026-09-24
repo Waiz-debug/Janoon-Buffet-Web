@@ -1,103 +1,69 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  JUNOON emblem — the official restaurant brand mark.
+  JUNOON emblem — the house crest, drawn from the uploaded logo.
 
-  Ornate gold emblem on dark forest green, matching the uploaded logo.
-  Used as the site logo, favicon (via rasterisation), apple-touch-icon,
-  and manifest icon.
+  A gold shield in the Mughal leaf shape: a solid point at the foot, an inner
+  dotted outline, and a leaf standing in the middle of it. Gold on nothing —
+  the tile behind it is whatever the page is, which is what the header, both
+  portals, the auth cards and the 404 all want.
+
+  The wordmark is NOT in this file. "JUNOON", "IMPERIAL DINING & HIGH TEA" and
+  the Urdu line are real text in the header and footer where they can be
+  translated, read by a screen reader and kept crisp at any size.
+
+  The apple-touch icon and the PWA manifest icons are cut from this crest and
+  flattened onto the house's dark tile by `tools/generate-favicons.mjs`, because
+  iOS and Android mask those corners themselves. The browser tab is drawn from
+  `public/favicon.svg` instead: this crest's dotted ring and leaf turn to mush
+  at 16px.
+
+  Regenerate the rasters after any change here:
+
+      bun tools/generate-favicons.mjs
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Junoon Pakistani Restaurant" shape-rendering="geometricPrecision">
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-label="Junoon"
+  shape-rendering="geometricPrecision"
+>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#141008" />
-      <stop offset="1" stop-color="#0a0806" />
-    </linearGradient>
-    <linearGradient id="gold" x1="0.15" y1="0" x2="0.85" y2="1">
-      <stop offset="0" stop-color="#f0cd72" />
+    <linearGradient id="gold" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#f2d47f" />
       <stop offset="0.5" stop-color="#d4a843" />
-      <stop offset="1" stop-color="#b8912e" />
-    </linearGradient>
-    <linearGradient id="goldLight" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f5dc8a" />
-      <stop offset="1" stop-color="#c99530" />
+      <stop offset="1" stop-color="#b8892c" />
     </linearGradient>
   </defs>
 
-  <!-- Background -->
-  <rect width="512" height="512" rx="28" ry="28" fill="url(#bg)" />
+  <!-- Shield outline -->
+  <path
+    d="M32 4 C39 9 50 13 54.5 23 C58 33 53.5 46 32 60 C10.5 46 6 33 9.5 23 C14 13 25 9 32 4 Z"
+    fill="none"
+    stroke="url(#gold)"
+    stroke-width="2.4"
+    stroke-linejoin="round"
+  />
 
-  <!-- Outer ornate border -->
-  <rect x="48" y="48" width="416" height="416" rx="208" ry="208"
-    fill="none" stroke="url(#gold)" stroke-width="2.5" opacity="0.6" />
+  <!-- Inner dotted outline, the same shield drawn inside itself -->
+  <path
+    d="M32 4 C39 9 50 13 54.5 23 C58 33 53.5 46 32 60 C10.5 46 6 33 9.5 23 C14 13 25 9 32 4 Z"
+    fill="none"
+    stroke="url(#gold)"
+    stroke-width="0.9"
+    stroke-dasharray="1.5 2.4"
+    opacity="0.9"
+    transform="translate(32 32) scale(0.84) translate(-32 -32)"
+  />
 
-  <!-- Main oval border -->
-  <ellipse cx="256" cy="256" rx="192" ry="192"
-    fill="none" stroke="url(#gold)" stroke-width="4" />
+  <!-- The leaf -->
+  <path
+    d="M32 16 C38.5 24 38.5 35 32 44.5 C25.5 35 25.5 24 32 16 Z"
+    fill="url(#gold)"
+  />
 
-  <!-- Inner oval border -->
-  <ellipse cx="256" cy="256" rx="176" ry="176"
-    fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.5" />
-
-  <!-- Top decorative arch -->
-  <path d="M128 140 Q256 80 384 140" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.7" />
-  <path d="M148 152 Q256 100 364 152" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.4" />
-
-  <!-- Bottom decorative arch -->
-  <path d="M128 372 Q256 432 384 372" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.7" />
-  <path d="M148 360 Q256 412 364 360" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.4" />
-
-  <!-- Top ornament: diamond -->
-  <path d="M256 108 L264 118 L256 128 L248 118 Z" fill="url(#gold)" opacity="0.8" />
-  <circle cx="256" cy="118" r="3" fill="url(#bg)" />
-
-  <!-- Bottom ornament: diamond -->
-  <path d="M256 384 L264 394 L256 404 L248 394 Z" fill="url(#gold)" opacity="0.8" />
-  <circle cx="256" cy="394" r="3" fill="url(#bg)" />
-
-  <!-- Left ornament -->
-  <path d="M88 256 L98 248 L108 256 L98 264 Z" fill="url(#gold)" opacity="0.6" />
-
-  <!-- Right ornament -->
-  <path d="M404 256 L414 248 L424 256 L414 264 Z" fill="url(#gold)" opacity="0.6" />
-
-  <!-- Horizontal divider lines -->
-  <line x1="130" y1="172" x2="382" y2="172" stroke="url(#gold)" stroke-width="1" opacity="0.35" />
-  <line x1="130" y1="340" x2="382" y2="340" stroke="url(#gold)" stroke-width="1" opacity="0.35" />
-
-  <!-- Top label: PAKISTAN RESTAURANT -->
-  <text x="256" y="158" text-anchor="middle" font-family="'Georgia', 'Times New Roman', serif" font-size="22" font-weight="400" letter-spacing="6" fill="url(#gold)" opacity="0.85">
-    PAKISTAN RESTAURANT
-  </text>
-
-  <!-- Main title: JUNOON -->
-  <text x="256" y="280" text-anchor="middle" font-family="'Georgia', 'Times New Roman', serif" font-size="78" font-weight="700" letter-spacing="10" fill="url(#goldLight)">
-    JUNOON
-  </text>
-
-  <!-- Decorative dots flanking the title -->
-  <circle cx="118" cy="262" r="3.5" fill="url(#gold)" opacity="0.7" />
-  <circle cx="394" cy="262" r="3.5" fill="url(#gold)" opacity="0.7" />
-
-  <!-- Small decorative lines between title and bottom -->
-  <line x1="200" y1="302" x2="312" y2="302" stroke="url(#gold)" stroke-width="1.2" opacity="0.5" />
-
-  <!-- Bottom label: EST 2025 -->
-  <text x="256" y="332" text-anchor="middle" font-family="'Georgia', 'Times New Roman', serif" font-size="16" font-weight="400" letter-spacing="4" fill="url(#gold)" opacity="0.65">
-    EST 2025
-  </text>
-
-  <!-- Corner flourish accents (top-left) -->
-  <path d="M64 100 Q80 80 100 64" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
-
-  <!-- Corner flourish accents (top-right) -->
-  <path d="M448 100 Q432 80 412 64" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
-
-  <!-- Corner flourish accents (bottom-left) -->
-  <path d="M64 412 Q80 432 100 448" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
-
-  <!-- Corner flourish accents (bottom-right) -->
-  <path d="M448 412 Q432 432 412 448" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.4" />
-
-  <!-- Inner decorative circle pattern -->
-  <circle cx="256" cy="256" r="155" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.2" stroke-dasharray="4 8" />
+  <!-- Finial -->
+  <path d="M32 1.4 L33.8 3.8 L32 6.2 L30.2 3.8 Z" fill="url(#gold)" />
 </svg>

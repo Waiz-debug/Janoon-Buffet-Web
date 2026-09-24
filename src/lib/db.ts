@@ -975,6 +975,39 @@ export async function setSiteContent(
 }
 
 /* ------------------------------------------------------------------ */
+/* Royal Dispatch (newsletter)                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Add an address to the Royal Dispatch list in the footer.
+ *
+ * Written through `subscribe_to_dispatch` rather than a table insert: guests
+ * have no policy on the signup table at all, so the address is validated,
+ * lower-cased and throttled in Postgres, and signing up twice quietly keeps the
+ * row it already has. See `supabase/newsletter.sql`.
+ */
+export async function subscribeToDispatch(email: string): Promise<void> {
+  const trimmed = email.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed)) {
+    throw new Error("That email address does not look right.");
+  }
+
+  const { error } = await supabase.rpc("subscribe_to_dispatch", {
+    p_email: trimmed,
+  });
+  if (!error) return;
+
+  // The table and the function live in their own file, so a project that has
+  // not run it yet gets told which file to run instead of a Postgres string.
+  if (/schema cache|does not exist|Could not find the function/i.test(error.message)) {
+    throw new Error(
+      "The dispatch list is not set up on this project yet. Run supabase/newsletter.sql in the Supabase SQL editor, then try again.",
+    );
+  }
+  throw new Error(error.message || "Could not add you to the dispatch.");
+}
+
+/* ------------------------------------------------------------------ */
 /* Traditional add-ons                                                 */
 /* ------------------------------------------------------------------ */
 

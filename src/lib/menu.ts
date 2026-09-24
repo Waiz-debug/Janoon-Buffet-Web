@@ -164,6 +164,31 @@ export const MENU_CATEGORIES: MenuCategory[] = [
   { id: "drinks", name: "Drinks", urdu: "مشروبات", blurb: "Chilled water, soft drinks and house refreshers for the à la carte table.", icon: "drink" },
 ];
 
+/**
+ * The nine live High Tea stations, in service order — what the guest site shows
+ * under "Live Imperial Counters".
+ *
+ * The seven à la carte sections are everything else in `MENU_CATEGORIES`, split
+ * from that one list rather than typed out a second time, so a section can
+ * never end up in both places or in neither.
+ */
+export const HIGH_TEA_COUNTER_IDS: readonly CategoryId[] = [
+  "welcome-drinks",
+  "soup-counter",
+  "junooni-special-counter",
+  "chinese-counter",
+  "italian-continental",
+  "salad-chaat",
+  "street-food",
+  "variety-naans-meetha",
+  "beverages-counter",
+];
+
+/** The seven chapters of the à la carte board, in menu order. */
+export const MAIN_MENU_IDS: readonly CategoryId[] = MENU_CATEGORIES.map(
+  (category) => category.id,
+).filter((id) => !HIGH_TEA_COUNTER_IDS.includes(id));
+
 type DishSeed = readonly [slug: string, name: string, urdu: string, categoryId: CategoryId, summary: string, image: string, price: number | null];
 
 const makeDish = ([slug, name, urdu, categoryId, summary, image, price]: DishSeed): Dish => ({
@@ -336,4 +361,13 @@ export const DEFAULT_WEIGHTS: WeightOption[] = [
 ];
 export function formatRupees(amount: number): string {
   return `Rs ${amount.toLocaleString("en-PK")}`;
+}
+
+/**
+ * `3250` → `PKR 3,250` — the currency as the printed à la carte board reads it.
+ * The delivery side of the app keeps `formatRupees`, which is the shorter form
+ * a cart line and an order total want.
+ */
+export function formatPkr(amount: number): string {
+  return `PKR ${amount.toLocaleString("en-PK")}`;
 }

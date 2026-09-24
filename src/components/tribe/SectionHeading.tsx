@@ -2,6 +2,23 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 
+/**
+ * The brass rule that closes a heading, with a small centred word on it —
+ * "Dastarkhwan", "Mughlai", the house reminder that this is a table, not a
+ * menu list. Used where a section runs long enough to need a second beat.
+ */
+export function SectionDivider({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-3">
+      <span className="brass-rule h-px flex-1" aria-hidden />
+      <span className="text-[0.6rem] tracking-[0.28em] text-gold/70 uppercase">
+        {label}
+      </span>
+      <span className="brass-rule h-px flex-1" aria-hidden />
+    </span>
+  );
+}
+
 /** Small brass eyebrow label that opens every section. */
 export function SectionEyebrow({ children }: { children: ReactNode }) {
   return (

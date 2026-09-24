@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { Check, Plus, UtensilsCrossed } from "lucide-react";
+import { ArrowUpRight, Check, Plus, UtensilsCrossed } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -77,10 +77,23 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
   );
 }
 
-export function FullMenuDialog() {
+type FullMenuDialogProps = {
+  /**
+   * Open the dialog already filtered to one counter. A counter card on the
+   * site uses this to open its own section rather than the whole spread.
+   */
+  initialCounter?: string | null;
+  /** `link` renders a quiet inline trigger for a counter card's footer. */
+  variant?: "button" | "link";
+};
+
+export function FullMenuDialog({
+  initialCounter = null,
+  variant = "button",
+}: FullMenuDialogProps = {}) {
   const { counters, menuItemCount, unitPrice } = useLiveSite();
   /** `null` shows every counter — what the guest sees on opening. */
-  const [only, setOnly] = useState<string | null>(null);
+  const [only, setOnly] = useState<string | null>(initialCounter);
   /**
    * Counters that actually hold a published dish, and the dishes on show.
    * A counter the owner has created but not filled yet is not offered as a
@@ -93,26 +106,40 @@ export function FullMenuDialog() {
     (total, counter) => total + counter.items.length,
     0,
   );
+  /** What the trigger offers to show: one section's dishes, or the whole menu. */
+  const triggerCount = initialCounter
+    ? (groups.find((counter) => counter.id === initialCounter)?.items.length ?? 0)
+    : menuItemCount;
 
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button
-          type="button"
-          size="lg"
-          className="h-12 gap-2 shadow-lg shadow-black/30"
-        >
-          <UtensilsCrossed className="size-4" aria-hidden />
-          View Full Menu
-          {/* The count is the live one, and is left off entirely while the
-              owner has nothing published — a button reading "0 dishes" looks
-              broken next to a menu that is simply still being set up. */}
-          {menuItemCount > 0 ? (
-            <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
-              {menuItemCount} {menuItemCount === 1 ? "dish" : "dishes"}
-            </span>
-          ) : null}
-        </Button>
+        {variant === "link" ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:text-gold"
+          >
+            See all {triggerCount} {triggerCount === 1 ? "dish" : "dishes"}
+            <ArrowUpRight className="size-3.5" aria-hidden />
+          </button>
+        ) : (
+          <Button
+            type="button"
+            size="lg"
+            className="h-12 gap-2 shadow-lg shadow-black/30"
+          >
+            <UtensilsCrossed className="size-4" aria-hidden />
+            View Full Menu
+            {/* The count is the live one, and is left off entirely while the
+                owner has nothing published — a button reading "0 dishes" looks
+                broken next to a menu that is simply still being set up. */}
+            {menuItemCount > 0 ? (
+              <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
+                {menuItemCount} {menuItemCount === 1 ? "dish" : "dishes"}
+              </span>
+            ) : null}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="flex max-h-[88vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
         <DialogHeader className="gap-1.5 border-b border-border/70 px-6 py-5 text-left">
