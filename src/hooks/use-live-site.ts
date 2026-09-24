@@ -42,7 +42,7 @@ export type LiveCategory = MenuCategory & {
  *  no price at all: a dish the owner added and has not priced yet falls back to
  *  the standard plate price. */
 export type LiveDish = Omit<Dish, "pricePerPlate"> & {
-  pricePerPlate?: number;
+  pricePerPlate?: number | null;
   imageStorageId?: string;
   active?: boolean;
   featured?: boolean;
@@ -202,7 +202,7 @@ export function useLiveSite() {
 
   /** Price shown for a plate: the admin-managed price when set, otherwise
    *  the static delivery table. Mirrors the rule used at order time. */
-  const unitPrice = (dish: { slug: string; pricePerPlate?: number }): number =>
+  const unitPrice = (dish: { slug: string; pricePerPlate?: number | null }): number =>
     dish.pricePerPlate && dish.pricePerPlate > 0
       ? dish.pricePerPlate
       : deliveryUnitPrice(dish.slug);

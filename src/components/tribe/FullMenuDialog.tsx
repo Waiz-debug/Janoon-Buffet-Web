@@ -36,25 +36,35 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
           <h4 className="font-display text-sm font-semibold leading-snug">
             {dish.name}
           </h4>
-          <span className="shrink-0 text-xs font-medium text-gold tabular-nums">
-            {formatRupees(price)}
-          </span>
+          {price > 0 ? (
+            <span className="shrink-0 text-xs font-medium text-gold tabular-nums">
+              {formatRupees(price)}
+            </span>
+          ) : (
+            <span className="shrink-0 text-[0.65rem] text-gold/80">High Tea</span>
+          )}
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
           {dish.summary}
         </p>
         <div className="mt-auto flex items-center gap-2 pt-3">
-          <button
-            type="button"
-            onClick={() =>
-              add({ slug: dish.slug, name: dish.name, unitPrice: price })
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/20"
-            aria-label={`Add ${dish.name} to delivery order`}
-          >
-            <Plus className="size-3.5" aria-hidden />
-            Add to cart
-          </button>
+          {price > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                add({ slug: dish.slug, name: dish.name, unitPrice: price })
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/20"
+              aria-label={`Add ${dish.name} to delivery order`}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              Add to cart
+            </button>
+          ) : (
+            <span className="text-[0.7rem] tracking-[0.12em] text-muted-foreground uppercase">
+              Included in High Tea
+            </span>
+          )}
           <Link
             to={`/menu/${dish.slug}`}
             className="text-[0.7rem] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-gold"
@@ -110,7 +120,7 @@ export function FullMenuDialog() {
             The complete menu
           </DialogTitle>
           <DialogDescription>
-            Every dish across our five live High Tea stations and six main-menu
+            Every dish across our nine live High Tea stations and seven main-menu
             sections — all included in the dine-in buffet, or available for
             Lahore delivery at the prices shown.
           </DialogDescription>

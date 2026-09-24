@@ -18,7 +18,7 @@ function DishRow({
   add,
 }: {
   dish: { slug: string; name: string; summary: string; weights?: { id: string; label: string; priceDelta: number }[] };
-  unitPrice: (dish: { slug: string; pricePerPlate?: number }) => number;
+  unitPrice: (dish: { slug: string; pricePerPlate?: number | null }) => number;
   add: (item: { slug: string; name: string; unitPrice: number; weight?: string }) => void;
 }) {
   const base = unitPrice(dish);
@@ -48,22 +48,28 @@ function DishRow({
           </span>
           <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-gold" />
         </Link>
-        <button
-          type="button"
-          onClick={() =>
-            add({
-              slug: dish.slug,
-              name: dish.name,
-              unitPrice: price,
-              weight: selectedWeight,
-            })
-          }
-          className="my-1 inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold/25 px-2 py-1 text-xs font-medium text-gold transition-colors hover:bg-gold/10"
-          aria-label={`Add ${dish.name} to delivery order`}
-        >
-          <Plus className="size-3" aria-hidden />
-          {formatRupees(price)}
-        </button>
+        {price > 0 ? (
+          <button
+            type="button"
+            onClick={() =>
+              add({
+                slug: dish.slug,
+                name: dish.name,
+                unitPrice: price,
+                weight: selectedWeight,
+              })
+            }
+            className="my-1 inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold/25 px-2 py-1 text-xs font-medium text-gold transition-colors hover:bg-gold/10"
+            aria-label={`Add ${dish.name} to delivery order`}
+          >
+            <Plus className="size-3" aria-hidden />
+            {formatRupees(price)}
+          </button>
+        ) : (
+          <span className="my-1 shrink-0 rounded-lg border border-gold/20 px-2 py-1 text-[0.65rem] text-gold/80">
+            High Tea included
+          </span>
+        )}
       </div>
       {hasWeights ? (
         <div className="flex items-center gap-2 pl-0">
@@ -117,7 +123,7 @@ export function MenuSection() {
         <SectionHeading
           eyebrow="Menu & Pricing"
           title="One price, every counter, served without limit"
-          description="Every seat includes the full spread — welcome drinks, live Chinese, chaat, street food, tandoor and dessert from the station counters. The official à la carte menu follows below, with chef specials and house favourites ordered by the table. Select any dish to read how it is prepared."
+          description="Seasons Special High Tea is Rs 1,895 + tax, served 03:30–05:00 pm and 05:15–06:45 pm across nine live counters. The official à la carte menu follows below, prepared with home-made desi ghee and ordered by the table."
           align="center"
         />
 

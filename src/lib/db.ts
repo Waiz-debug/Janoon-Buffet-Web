@@ -6,7 +6,6 @@ import {
   SIGNATURE_LIMIT,
   SIGNATURE_SLUGS,
   type PreOrderCategoryId,
-  deliveryUnitPrice,
   type CategoryId,
   type MenuIcon,
 } from "@/lib/menu";
@@ -599,7 +598,7 @@ export async function seedMenuCatalog(): Promise<{
       notes: dish.notes,
       pairings: dish.pairings,
       image: dish.image,
-      price_per_plate: deliveryUnitPrice(dish.slug),
+      price_per_plate: dish.pricePerPlate ?? null,
       active: true,
       featured: false,
       demo: true,

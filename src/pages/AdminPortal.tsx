@@ -72,7 +72,7 @@ export default function AdminPortal() {
   // "Fresh" means no dishes at all. An older starter can leave its five
   // counters active while `menu_dishes` is empty; that must still be allowed to
   // load the official menu, which retires those obsolete ids and publishes the
-  // five live stations plus six main-menu sections.
+  // nine live stations plus seven main-menu sections.
   const nothingPublished = dishes.length === 0;
   /**
    * Every starter-content seed, each reported on its own.
@@ -222,8 +222,8 @@ export default function AdminPortal() {
               Counters &amp; menu sections
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Counters are the five live High Tea stations. The same board also
-              manages the six official main-menu sections — chef specials,
+              Counters are the nine live High Tea stations. The same board also
+              manages the seven official main-menu sections — chef specials,
               starters, vegetables, tandoor breads, salads and desserts, plus
               drinks — so every item is mapped to the right place in the guest
               menu and can be switched live.

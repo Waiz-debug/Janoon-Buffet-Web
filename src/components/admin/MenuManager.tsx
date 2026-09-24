@@ -51,8 +51,8 @@ export function MenuManager({
   categories: MenuCategoryRow[];
   dishes: MenuDishRow[];
   /**
-   * Writes the built-in official catalogue into the two menu tables — five live
-   * counters, six main-menu sections, 52 dishes, prices, photos and four
+   * Writes the built-in official catalogue into the two menu tables — nine live
+   * counters, seven main-menu sections, 90 dishes, prices, photos and four
    * signatures. Offered only while the table holds no dishes at all, because
    * that is the one state where the guest menu has nothing to show and the
    * official menu is the answer.
@@ -274,7 +274,7 @@ export function MenuManager({
         <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
           <p className="text-sm leading-relaxed text-muted-foreground">
             {dishes.length === 0
-              ? "No dishes are in the database, so the guest menu has nothing to show. Load the official menu — five live counters, six main-menu sections, 52 dishes, prices and photos — or use Add item to write your own."
+              ? "No dishes are in the database, so the guest menu has nothing to show. Load the official menu — nine live counters, seven main-menu sections, 90 dishes, prices and photos — or use Add item to write your own."
               : "Nothing matches that search."}
           </p>
           {dishes.length === 0 && onLoadStarter ? (
