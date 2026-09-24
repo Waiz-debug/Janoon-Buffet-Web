@@ -94,16 +94,29 @@ function DishRow({
 
 export function MenuSection() {
   const { add } = useCart();
-  const { counters, getDish, signatures, unitPrice } = useLiveSite();
+  const { counters, getDish, hasPublishedMenu, signatures, unitPrice } =
+    useLiveSite();
 
   const special = getDish("grilled-fish");
+
+  /**
+   * The counters with something to show. A counter the owner has created but
+   * not filled yet is left off the page entirely — an empty card under a
+   * heading reads as a broken menu. Filtered here rather than inside the map so
+   * the empty state below can tell "nothing is published yet" from "this one
+   * counter is still being set up".
+   */
+  const visibleCounters = counters.filter((counter) =>
+    counter.items.some((dish) => !dish.featured),
+  );
+  const counterCount = visibleCounters.length;
 
   return (
     <section id="menu" className="scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <SectionHeading
           eyebrow="Menu & Pricing"
-          title="One price, four counters, served without limit"
+          title="One price, every counter, served without limit"
           description="Every seat includes the full spread — live charcoal BBQ, slow-cooked handi, Lahori fast bites and dessert straight from the degh. Weekend and festive nights add further cuts, including our charcoal-grilled fish. Select any dish to read how it is prepared."
           align="center"
         />
@@ -175,7 +188,9 @@ export function MenuSection() {
           </div>
           {signatures.length === 0 ? (
             <p className="mt-5 rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-              Our signature dishes are being updated. The full spread is below.
+              {hasPublishedMenu
+                ? "Our signature dishes are being updated. The counters below hold the full spread."
+                : "The menu is being updated — please check back shortly."}
             </p>
           ) : null}
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -239,19 +254,30 @@ export function MenuSection() {
           </div>
         </div>
 
-        {/* Counters */}
-        <div className="mt-16 grid gap-5 md:grid-cols-2">
-          {counters.map((counter, index) => {
+        {/* Counters — one section per counter, straight from Supabase */}
+        <div className="mt-16 flex items-end justify-between gap-4">
+          <h3 className="font-display text-2xl font-semibold">The counters</h3>
+          {counterCount > 0 ? (
+            <span className="hidden text-xs tracking-[0.18em] text-muted-foreground uppercase sm:block">
+              {counterCount} station{counterCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </div>
+        {counterCount === 0 ? (
+          <p className="mt-5 rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm leading-relaxed text-muted-foreground">
+            Tonight&apos;s counters are being updated. Every counter and dish
+            published in the admin panel appears here — and refreshes on its own
+            — the moment it is saved.
+          </p>
+        ) : null}
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          {visibleCounters.map((counter, index) => {
             const Icon = CATEGORY_ICONS[counter.icon];
             // Signature dishes are shown once, in the section above, and are
             // deliberately kept out of the counters so nothing appears twice.
             // The items themselves come straight from the counter, so a dish
             // sits under the section it was filed on in the admin panel.
             const dishes = counter.items.filter((dish) => !dish.featured);
-            // A counter with nothing to show is left off the page entirely. An
-            // empty card under a heading reads as a broken menu, and a counter
-            // the owner is still setting up has nothing to order from yet.
-            if (dishes.length === 0) return null;
             return (
               <motion.article
                 key={counter.id}

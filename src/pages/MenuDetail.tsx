@@ -4,21 +4,25 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { Button } from "@/components/ui/button";
 import { useGoToSection } from "@/hooks/use-go-to-section";
-import {
-  DISHES,
-  getCategory,
-} from "@/lib/menu";
 import { useLiveSite } from "@/hooks/use-live-site";
 import { BUFFET_TIERS, RESTAURANT } from "@/lib/restaurant";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowUpRight, CalendarCheck, Check, Phone } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  CalendarCheck,
+  Check,
+  Loader2,
+  Phone,
+} from "lucide-react";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router";
 
 export default function MenuDetail() {
   const { slug } = useParams<{ slug: string }>();
   const goToSection = useGoToSection();
-  const { getDish, dishesByCategory } = useLiveSite();
+  const { getDish, getCounter, dishes, dishesByCategory, menuReady } =
+    useLiveSite();
   const dish = slug ? getDish(slug) : undefined;
 
   useEffect(() => {
@@ -26,6 +30,25 @@ export default function MenuDetail() {
       ? `${dish.name} · ${RESTAURANT.name}`
       : `Menu · ${RESTAURANT.name}`;
   }, [dish]);
+
+  // The first paint carries the built-in catalogue, so a dish the owner has
+  // published may not be in it yet. Telling a guest "that dish is not on the
+  // menu tonight" before the live read has answered would be wrong — and a
+  // shared dish link is exactly where that happens.
+  if (!dish && !menuReady) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteHeader />
+        <main className="mx-auto flex w-full max-w-3xl items-center justify-center gap-2 px-4 py-32 sm:px-6">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden />
+          <span className="text-sm text-muted-foreground">
+            Loading the menu…
+          </span>
+        </main>
+        <ContactFooter />
+      </div>
+    );
+  }
 
   if (!dish) {
     return (
@@ -54,7 +77,7 @@ export default function MenuDetail() {
     );
   }
 
-  const category = getCategory(dish.categoryId as never);
+  const category = getCounter(dish.categoryId);
   const Icon = category ? CATEGORY_ICONS[category.icon] : undefined;
   const pairings = (dish.pairings ?? [])
     .map((paired) => getDish(paired))
@@ -293,7 +316,7 @@ export default function MenuDetail() {
             className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-gold"
           >
             <ArrowLeft className="size-4" aria-hidden />
-            Back to the full menu ({DISHES.length} dishes)
+            Back to the full menu ({dishes.length} dishes)
           </Link>
         </section>
       </main>

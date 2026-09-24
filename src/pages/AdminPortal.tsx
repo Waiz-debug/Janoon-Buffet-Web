@@ -22,6 +22,7 @@ import {
   useAdminPreOrderItems,
 } from "@/hooks/use-live-db";
 import {
+  UNCATEGORIZED_COUNTER,
   ensureSignatureDishes,
   seedAddOns,
   seedDemoGallery,
@@ -66,12 +67,27 @@ export default function AdminPortal() {
   // and gallery photos across so the admin panel lists exactly the assets the
   // public site renders, then publish a sample promotional banner. Every seed
   // is idempotent and skips anything the team has already replaced.
+  //
+  // "Fresh" has to mean "no menu at all", not "an empty categories table".
+  // `supabase/counters.sql` seeds one `uncategorized` row to hold items whose
+  // counter was deleted, and that single row was enough to make `isEmpty`
+  // false — so the catalogue was never copied, `menu_dishes` stayed empty, and
+  // the guest site fell back to its built-in list with nothing in the panel to
+  // edit. Ask about published content instead.
+  const nothingPublished =
+    dishes.length === 0 &&
+    categories.every(
+      // `MenuCategoryRow.id` is typed as the four built-in counters, but the
+      // owner's own counters and the `uncategorized` placeholder are plain
+      // strings at runtime, so the comparison is made on the string.
+      (c) => !c.active || (c.id as string) === UNCATEGORIZED_COUNTER,
+    );
   useEffect(() => {
     if (!loaded || seeding.current) return;
     seeding.current = true;
     void (async () => {
       try {
-        if (isEmpty) {
+        if (isEmpty || nothingPublished) {
           await seedMenuCatalog();
           toast.success("Menu catalogue loaded");
         }
@@ -107,7 +123,7 @@ export default function AdminPortal() {
         });
       }
     })();
-  }, [loaded, isEmpty]);
+  }, [loaded, isEmpty, nothingPublished]);
 
   if (!loaded) {
     return (

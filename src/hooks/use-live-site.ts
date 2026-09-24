@@ -108,9 +108,17 @@ function toDish(row: MenuDishRow): LiveDish {
 
 /**
  * Live site content. Subscribes to the admin-managed menu and media slots in
- * Supabase; every admin save appears here without a reload. While the first
- * read is in flight — or before the menu has ever been seeded — the static
- * catalogue is returned so the public site always paints instantly.
+ * Supabase; every admin save appears here without a reload.
+ *
+ * The built-in catalogue is a first-paint placeholder and nothing more. The
+ * moment both published tables have been read, Supabase is the whole truth for
+ * the guest site — including when it is empty. Returning the hardcoded menu
+ * whenever the published result set happened to come back empty was the bug:
+ * the admin panel edits `menu_categories` and `menu_dishes`, so a project whose
+ * counters are all switched off — or whose only category row is the
+ * `uncategorized` placeholder — fell back to the built-in list, and the guest
+ * page showed a menu the owner could not edit while their panel showed the real
+ * thing.
  */
 export function useLiveSite() {
   const { categories: liveCategories, dishes: liveDishes } = usePublicMenu();
@@ -130,17 +138,13 @@ export function useLiveSite() {
   }, [mediaRows]);
 
   const data = useMemo(() => {
-    const staticFallback = {
+    const firstPaint = {
       categories: STATIC_CATEGORIES as LiveCategory[],
       dishes: STATIC_DISHES as LiveDish[],
       isLive: false,
     };
-    if (!liveCategories || !liveDishes) return staticFallback;
-    // Nothing seeded yet — keep showing the built-in catalogue rather than an
-    // empty menu on a fresh deployment.
-    if (liveCategories.length === 0 && liveDishes.length === 0) {
-      return staticFallback;
-    }
+    // Only until the first read resolves — see the note above this hook.
+    if (!liveCategories || !liveDishes) return firstPaint;
     return {
       categories: liveCategories.map(toCategory),
       dishes: liveDishes.map(toDish),
@@ -160,6 +164,15 @@ export function useLiveSite() {
     data.dishes.filter((dish) => dish.categoryId === categoryId);
 
   /**
+   * The counter a dish is filed under, named and iconed exactly as the owner
+   * set it up. The dish page reads its station badge from here, so a counter
+   * created in the admin panel appears there too instead of falling back to the
+   * built-in four.
+   */
+  const getCounter = (categoryId: string): LiveCategory | undefined =>
+    data.categories.find((category) => category.id === categoryId);
+
+  /**
    * The counters, each with the items filed under it, in menu order.
    *
    * Built from the same two lists the page renders, so a section can never be
@@ -174,6 +187,16 @@ export function useLiveSite() {
 
   /** Menu items the counters above actually show — the honest total. */
   const menuItemCount = useMemo(() => groupedItemCount(counters), [counters]);
+
+  /**
+   * True once both published tables have been read, so "nothing is published"
+   * (an empty menu, reported honestly) can be told apart from "not read yet"
+   * (the built-in first paint).
+   */
+  const menuReady = data.isLive;
+
+  /** True when the published counters hold at least one dish to show. */
+  const hasPublishedMenu = menuItemCount > 0;
 
   /** Price shown for a plate: the admin-managed price when set, otherwise
    *  the static delivery table. Mirrors the rule used at order time. */
@@ -216,8 +239,9 @@ export function useLiveSite() {
   /**
    * The Signature strip: exactly the dishes marked `featured`, capped at four.
    * Those same dishes are withheld from the category counters below, so a
-   * signature dish appears once on the page. Before the catalogue has been
-   * seeded the built-in four stand in.
+   * signature dish appears once on the page. While the first read is in flight
+   * the built-in four stand in; after that the strip is exactly what is featured
+   * in Supabase.
    */
   const signatures = useMemo<LiveDish[]>(() => {
     if (data.isLive) {
@@ -301,6 +325,8 @@ export function useLiveSite() {
     ...data,
     counters,
     menuItemCount,
+    menuReady,
+    hasPublishedMenu,
     media,
     heroImage: media[HERO_MEDIA.slot]?.url,
     mediaOr,
@@ -311,6 +337,7 @@ export function useLiveSite() {
     signatures,
     bySlug,
     getDish,
+    getCounter,
     dishesByCategory,
     unitPrice,
   };

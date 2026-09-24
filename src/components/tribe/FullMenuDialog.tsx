@@ -94,9 +94,14 @@ export function FullMenuDialog() {
         >
           <UtensilsCrossed className="size-4" aria-hidden />
           View Full Menu
-          <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
-            {menuItemCount} dishes
-          </span>
+          {/* The count is the live one, and is left off entirely while the
+              owner has nothing published — a button reading "0 dishes" looks
+              broken next to a menu that is simply still being set up. */}
+          {menuItemCount > 0 ? (
+            <span className="rounded-full bg-background/20 px-2 py-0.5 text-xs font-medium">
+              {menuItemCount} {menuItemCount === 1 ? "dish" : "dishes"}
+            </span>
+          ) : null}
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[88vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
