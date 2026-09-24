@@ -3,14 +3,9 @@ import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { Button } from "@/components/ui/button";
 import { usePromotions } from "@/hooks/use-live-db";
-import { useStaffAuth } from "@/hooks/use-staff-auth";
 import { motion } from "framer-motion";
-import { ArrowUpRight, CalendarClock, Sparkles, Tag, Ticket } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Sparkles, Tag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
-
-/** Where the admin panel's promotions manager lives. */
-const MANAGE_HREF = "/admin?tab=promos";
 
 /**
  * The offers board — every live promotion, in one place.
@@ -21,14 +16,16 @@ const MANAGE_HREF = "/admin?tab=promos";
  * publishing an entry in the admin panel puts it on the strip *and* on this
  * board with no redeploy and no refresh on the guest's side.
  *
- * Nothing here is an admin surface: the manage link only appears for an account
- * whose `staff_members` row says `role = 'admin'`, and the route behind it is
- * guarded by the database as well.
+ * This is a guest surface and nothing else. It used to hide a "Manage
+ * promotions" link behind an admin check, which put an editing control on the
+ * public page for anyone who happened to be signed in as staff — the wrong place
+ * for it, and one more thing to reason about on every page that renders this.
+ * Promotions are now created and retired in the admin panel's Promotions tab
+ * (Admin → Promotions) and nowhere else, so this component is purely a reader:
+ * no session, no staff role, no link into the portal.
  */
 export function PromotionsSection() {
   const promotions = usePromotions(true);
-  const { session } = useStaffAuth();
-  const isAdmin = session?.role === "admin";
 
   // Expiry is checked on the guest's clock, so an offer whose time runs out
   // while the page is open leaves the board instead of sitting there until the
@@ -50,77 +47,20 @@ export function PromotionsSection() {
   // Still loading: say nothing rather than flash an empty board.
   if (promotions === undefined) return null;
 
-  // Nothing published, and no reason for a guest to know that. The owner does
-  // get told, with a way straight to the manager.
-  if (live.length === 0) {
-    if (!isAdmin) return null;
-    return (
-      <section id="offers" className="scroll-mt-24 px-4 py-16 sm:px-6 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <SectionHeading
-            eyebrow="Offers & specials"
-            title="No offers are running right now"
-            description="Promotions you publish appear on this board and on the offer strip further up the page. Each one can carry its own graphic and an expiry time that removes it automatically."
-          />
-          <div className="mt-8 flex flex-wrap items-center gap-4 rounded-2xl border border-dashed border-border/70 bg-card/40 p-6">
-            <span className="flex size-11 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
-              <Ticket className="size-5" aria-hidden />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-base font-semibold">
-                Add the first offer
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upload a banner graphic, write the headline, set the end time.
-              </p>
-            </div>
-            <Button
-              asChild
-              variant="outline"
-              className="gap-2 border-gold/30 hover:border-gold/60"
-            >
-              <Link to={MANAGE_HREF}>
-                Manage promotions
-                <ArrowUpRight className="size-4" aria-hidden />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  // Nothing running: the board is simply not on the page. There is no call to
+  // action here — a guest is not the one publishing offers, and an empty
+  // "add the first offer" panel with a link into the admin portal belongs in
+  // the admin portal.
+  if (live.length === 0) return null;
 
   return (
     <section id="offers" className="scroll-mt-24 px-4 py-16 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <SectionHeading
-            eyebrow="Offers & specials"
-            title="What's on this week"
-            description="Family deals, seasonal platters and the late-night specials running at the terrace — each one live, and each one gone once its clock runs out."
-          />
-
-          {isAdmin ? (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4 }}
-            >
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="gap-2 border-gold/30 hover:border-gold/60"
-              >
-                <Link to={MANAGE_HREF}>
-                  Manage promotions
-                  <ArrowUpRight className="size-3.5" aria-hidden />
-                </Link>
-              </Button>
-            </motion.div>
-          ) : null}
-        </div>
+        <SectionHeading
+          eyebrow="Offers & specials"
+          title="What's on this week"
+          description="Family deals, seasonal platters and the late-night specials running at the terrace — each one live, and each one gone once its clock runs out."
+        />
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {live.map((promo, index) => (

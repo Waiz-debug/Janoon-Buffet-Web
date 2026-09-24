@@ -15,6 +15,7 @@ import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { refreshAllLive } from "@/lib/live-sync";
 import {
   useAdminAddOnCategories,
   useAdminAddOns,
@@ -30,7 +31,7 @@ import {
   seedMenuCatalog,
 } from "@/lib/db";
 import { Loader2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -57,6 +58,7 @@ export default function AdminPortal() {
   const addonCategories = useAdminAddOnCategories();
   const preOrderItems = useAdminPreOrderItems();
   const seeding = useRef(false);
+  const [seedingNow, setSeedingNow] = useState(false);
   const [searchParams] = useSearchParams();
   // `?tab=promos` opens the panel the public offers board links to. Anything
   // unrecognised falls back to the overview rather than an empty tab.
@@ -82,48 +84,75 @@ export default function AdminPortal() {
       // strings at runtime, so the comparison is made on the string.
       (c) => !c.active || (c.id as string) === UNCATEGORIZED_COUNTER,
     );
-  useEffect(() => {
-    if (!loaded || seeding.current) return;
+  /**
+   * Every starter-content seed, each reported on its own.
+   *
+   * This is a function rather than the body of an effect for two reasons. One
+   * refusal from the database must not hide the other seeds — a menu that will
+   * not write is a different problem from a missing gallery, and the owner needs
+   * the database's own words for the one that failed. And the owner needs a
+   * button to try again: these seeds are the only way the two menu tables ever
+   * get their first rows, so "reload the page" was the entire recovery.
+   *
+   * `refreshAllLive()` at the end pulls every cached table once. Realtime is
+   * what normally updates the boards after a write, but a project whose
+   * publication is missing a table would otherwise sit on a stale snapshot with
+   * the rows already in the database.
+   */
+  const runSeeds = useCallback(async () => {
+    if (seeding.current) return;
     seeding.current = true;
-    void (async () => {
+    setSeedingNow(true);
+    const step = async (label: string, work: () => Promise<string | null>) => {
       try {
-        if (isEmpty || nothingPublished) {
-          await seedMenuCatalog();
-          toast.success("Menu catalogue loaded");
-        }
-        const newAddOns = await seedAddOns();
-        if (newAddOns > 0) {
-          toast.success(`Add-ons board loaded — ${newAddOns} items`);
-        }
-        const restored = await ensureSignatureDishes();
-        if (restored > 0) {
-          toast.success(
-            `Signature section topped up to 4 dishes (+${restored})`,
-          );
-        }
-        const tiles = await seedDemoGallery();
-        if (tiles > 0) {
-          toast.success(
-            `Demo gallery loaded — ${tiles} ${tiles === 1 ? "tile" : "tiles"}`,
-          );
-        }
-        if (await seedDemoPromotion()) {
-          toast.success("Demo promotion published");
-        }
+        const message = await work();
+        if (message) toast.success(message);
       } catch (error) {
-        // Nearly always the schema has not been applied yet. Reporting it beats
-        // leaving the owner staring at an empty panel that silently does
-        // nothing — see the setup panel at the top of this page.
-        toast.error("Could not load the demo content", {
+        toast.error(`Could not ${label}`, {
           description:
             error instanceof Error
               ? error.message.split("\n")[0]
-              : "Run supabase/schema.sql, then reopen this panel.",
+              : "Run supabase/schema.sql, then try again.",
           duration: 12000,
         });
       }
-    })();
-  }, [loaded, isEmpty, nothingPublished]);
+    };
+    try {
+      await step("load the starter menu", async () => {
+        if (!isEmpty && !nothingPublished) return null;
+        await seedMenuCatalog();
+        return "Menu catalogue loaded";
+      });
+      await step("load the add-ons board", async () => {
+        const added = await seedAddOns();
+        return added > 0 ? `Add-ons board loaded — ${added} items` : null;
+      });
+      await step("top up the signature dishes", async () => {
+        const restored = await ensureSignatureDishes();
+        return restored > 0
+          ? `Signature section topped up to 4 dishes (+${restored})`
+          : null;
+      });
+      await step("load the demo gallery", async () => {
+        const tiles = await seedDemoGallery();
+        return tiles > 0
+          ? `Demo gallery loaded — ${tiles} ${tiles === 1 ? "tile" : "tiles"}`
+          : null;
+      });
+      await step("publish the sample banner", async () =>
+        (await seedDemoPromotion()) ? "Demo promotion published" : null,
+      );
+      refreshAllLive();
+    } finally {
+      setSeedingNow(false);
+      seeding.current = false;
+    }
+  }, [isEmpty, nothingPublished]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    void runSeeds();
+  }, [loaded, runSeeds]);
 
   if (!loaded) {
     return (
@@ -189,7 +218,12 @@ export default function AdminPortal() {
               the guest site updates the moment you save.
             </p>
           </div>
-          <MenuManager categories={categories} dishes={dishes} />
+          <MenuManager
+            categories={categories}
+            dishes={dishes}
+            onLoadStarter={() => void runSeeds()}
+            seeding={seedingNow}
+          />
         </TabsContent>
 
         <TabsContent value="counters" className="flex flex-col gap-4">

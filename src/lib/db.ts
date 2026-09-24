@@ -361,6 +361,20 @@ function fail(error: { message: string } | null, fallback: string): never {
       "A Supabase table or column is missing. Run supabase/schema.sql in the Supabase SQL editor, then try again.",
     );
   }
+  // The two refusals the menu workflow actually runs into. Postgres words are
+  // technical and do not say what to do about them, so each becomes the next
+  // step instead — this is the message the admin panel puts in front of the
+  // owner, and "row-level security policy" on its own tells them nothing.
+  if (/row-level security|permission denied|not authorized/i.test(message)) {
+    throw new Error(
+      "Supabase refused the write. Sign in to the admin panel as staff and try again — if you are already signed in, re-run supabase/schema.sql to restore the staff write policies.",
+    );
+  }
+  if (/signature dishes/i.test(message)) {
+    throw new Error(
+      "Only four signature dishes are allowed — turn one of the current four off before featuring another.",
+    );
+  }
   throw new Error(message || fallback);
 }
 
@@ -376,6 +390,46 @@ function fail(error: { message: string } | null, fallback: string): never {
 function required<T>(value: T | null | undefined, message: string): T {
   if (value === null || value === undefined) throw new Error(message);
   return value;
+}
+
+/**
+ * Write one row by a unique key column, without leaning on `on conflict`.
+ *
+ * PostgREST implements an upsert as `insert … on conflict (cols) do update`,
+ * and Postgres refuses that whole statement when the table carries no unique or
+ * exclusion constraint on the named column — a table created by an older copy of
+ * the schema has exactly that gap, because `create table if not exists` never
+ * adds a constraint to a table that is already there. The failure is silent
+ * from the app's point of view (one rejected statement, sixteen dishes never
+ * written), so the write is done the long way: one existence check, then a
+ * plain insert or a plain update. Same result, no dependency on a constraint
+ * the app cannot see.
+ */
+async function writeRowBy(
+  table: string,
+  keyColumn: string,
+  key: string,
+  row: Record<string, unknown>,
+  exists: boolean,
+): Promise<void> {
+  const payload = { ...row, [keyColumn]: key };
+  const { error } = exists
+    ? await supabase.from(table).update(payload).eq(keyColumn, key)
+    : await supabase.from(table).insert(payload);
+  fail(error, `Could not save to "${table}".`);
+}
+
+/** Every key currently stored in a table, for a bulk write that decides per row. */
+async function existingKeys(
+  table: string,
+  keyColumn: string,
+): Promise<Set<string>> {
+  const rows = await selectRows<Record<string, unknown>>(
+    table,
+    undefined,
+    keyColumn,
+  );
+  return new Set(rows.map((row) => String(row[keyColumn])));
 }
 
 /* ------------------------------------------------------------------ */
@@ -459,45 +513,92 @@ export async function fetchSiteMedia(): Promise<SiteMediaRow[]> {
 }
 
 /**
- * Copy the built-in catalogue into Supabase. Runs once, from the admin portal,
- * so the public menu becomes admin-editable the first time it is opened.
+ * Copy the built-in catalogue into Supabase. Runs from the admin portal, so the
+ * public menu becomes admin-editable the first time the panel is opened, and can
+ * be re-run by hand from the Menu tab whenever the owner wants the starter
+ * catalogue back.
+ *
+ * Written one row at a time, and in two passes over the dishes. Both of those
+ * are deliberate, and both come from how a single rejected statement used to
+ * cost the owner the entire menu:
+ *
+ *  • **One row at a time.** A batch write is all-or-nothing, so a single row
+ *    the database will not take leaves fifteen dishes missing and both admin
+ *    boards looking empty. Failures are collected and reported together.
+ *  • **Unfeatured first, signatures after.** The database keeps at most four
+ *    signature dishes and its trigger counts them as rows go in, so one write
+ *    carrying four of them can trip the limit halfway through. The rows land
+ *    plainly, then the four signatures are switched on one by one.
  */
 export async function seedMenuCatalog(): Promise<void> {
-  const categories = MENU_CATEGORIES.map((category, index) => ({
-    id: category.id,
-    name: category.name,
-    urdu: category.urdu,
-    blurb: category.blurb,
-    icon: category.icon,
-    sort_order: index + 1,
-    active: true,
-  }));
-  const { error: categoryError } = await supabase
-    .from(TABLES.categories)
-    .upsert(categories, { onConflict: "id" });
-  fail(categoryError, "Could not seed the menu counters.");
+  const knownCategories = await existingKeys(TABLES.categories, "id");
+  for (const [index, category] of MENU_CATEGORIES.entries()) {
+    await writeRowBy(
+      TABLES.categories,
+      "id",
+      category.id,
+      {
+        id: category.id,
+        name: category.name,
+        urdu: category.urdu,
+        blurb: category.blurb,
+        icon: category.icon,
+        sort_order: index + 1,
+        active: true,
+      },
+      knownCategories.has(category.id),
+    );
+  }
 
-  const dishes = DISHES.map((dish, index) => ({
-    slug: dish.slug,
-    name: dish.name,
-    urdu: dish.urdu,
-    category_id: dish.categoryId,
-    summary: dish.summary,
-    description: dish.description,
-    notes: dish.notes,
-    pairings: dish.pairings,
-    image: dish.image,
-    price_per_plate: deliveryUnitPrice(dish.slug),
-    active: true,
-    featured: (SIGNATURE_SLUGS as readonly string[]).includes(dish.slug),
-    demo: true,
-    sort_order: index + 1,
-    updated_at: Date.now(),
-  }));
-  const { error: dishError } = await supabase
-    .from(TABLES.dishes)
-    .upsert(dishes, { onConflict: "slug" });
-  fail(dishError, "Could not seed the menu dishes.");
+  const knownDishes = await existingKeys(TABLES.dishes, "slug");
+  const failures: string[] = [];
+
+  for (const [index, dish] of DISHES.entries()) {
+    const row: Record<string, unknown> = {
+      slug: dish.slug,
+      name: dish.name,
+      urdu: dish.urdu,
+      category_id: dish.categoryId,
+      summary: dish.summary,
+      description: dish.description,
+      notes: dish.notes,
+      pairings: dish.pairings,
+      image: dish.image,
+      price_per_plate: deliveryUnitPrice(dish.slug),
+      active: true,
+      featured: false,
+      demo: true,
+      sort_order: index + 1,
+      updated_at: Date.now(),
+    };
+    try {
+      await writeRowBy(
+        TABLES.dishes,
+        "slug",
+        dish.slug,
+        row,
+        knownDishes.has(dish.slug),
+      );
+    } catch (error) {
+      failures.push(
+        `${dish.slug}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  for (const slug of SIGNATURE_SLUGS) {
+    const { error } = await supabase
+      .from(TABLES.dishes)
+      .update({ featured: true, updated_at: Date.now() })
+      .eq("slug", slug);
+    if (error) failures.push(`${slug}: ${error.message}`);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Supabase rejected ${failures.length} of the ${DISHES.length} starter dishes — ${failures[0]}`,
+    );
+  }
 }
 
 /**
@@ -607,7 +708,10 @@ export async function upsertCategory(
       )
     : [];
 
-  const { error } = await supabase.from(TABLES.categories).upsert(
+  await writeRowBy(
+    TABLES.categories,
+    "id",
+    id,
     {
       id,
       name,
@@ -617,9 +721,8 @@ export async function upsertCategory(
       sort_order: input.sortOrder ?? 0,
       active: input.active,
     },
-    { onConflict: "id" },
+    existing.length > 0,
   );
-  fail(error, "Could not save the counter.");
   return { id, created: existing.length === 0 };
 }
 
@@ -701,10 +804,7 @@ export async function upsertDish(
     row.image = input.image || null;
   }
 
-  const { error } = await supabase
-    .from(TABLES.dishes)
-    .upsert(row, { onConflict: "slug" });
-  fail(error, "Could not save the dish.");
+  await writeRowBy(TABLES.dishes, "slug", slug, row, existing.length > 0);
   return { slug, updated: existing.length > 0 };
 }
 

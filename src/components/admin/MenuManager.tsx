@@ -29,8 +29,12 @@ import { toast } from "sonner";
  * and whether it is **available**. Everything else (photo, description, Urdu
  * name) is one press away in the item form.
  *
- * The list is the live table, filtered in the browser, so a change made here or
- * on the Counters board shows up in both without a reload.
+ * The rows are the `menu_dishes` table and the columns beside them the
+ * `menu_categories` rows they are filed under, both read through the shared
+ * live cache — hidden rows and unpublished items included, nothing filtered out
+ * of the list. So this board is the whole of what the guest site draws, and any
+ * row on it can be edited, re-mapped, hidden or deleted here; a change made on
+ * the Counters board, or by another device, appears without a reload.
  */
 /**
  * The filter's "no filter" value. It cannot be an empty string: Radix refuses
@@ -41,9 +45,19 @@ const EVERY_COUNTER = "all-counters";
 export function MenuManager({
   categories,
   dishes,
+  onLoadStarter,
+  seeding = false,
 }: {
   categories: MenuCategoryRow[];
   dishes: MenuDishRow[];
+  /**
+   * Writes the built-in catalogue into the two menu tables. Offered only while
+   * the table holds no dishes at all, because that is the one state where the
+   * guest menu has nothing to show and the starter catalogue is the answer.
+   */
+  onLoadStarter?: () => void;
+  /** True while a seed is running, so the button cannot be pressed twice. */
+  seeding?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [counterFilter, setCounterFilter] = useState(EVERY_COUNTER);
@@ -255,11 +269,25 @@ export function MenuManager({
 
       {/* -------------------------------------------------------- table --- */}
       {visible.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-          {dishes.length === 0
-            ? "The menu is empty — use Add item to put the first dish on a counter."
-            : "Nothing matches that search."}
-        </p>
+        <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {dishes.length === 0
+              ? "No dishes are in the database, so the guest menu has nothing to show. Load the starter catalogue, or use Add item to write your first one."
+              : "Nothing matches that search."}
+          </p>
+          {dishes.length === 0 && onLoadStarter ? (
+            <Button
+              className="mt-4 gap-2"
+              onClick={onLoadStarter}
+              disabled={seeding}
+            >
+              {seeding ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : null}
+              Load the starter catalogue
+            </Button>
+          ) : null}
+        </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border/70">
           <table className="w-full text-sm">
