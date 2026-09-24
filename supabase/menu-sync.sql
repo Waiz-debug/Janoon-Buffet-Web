@@ -25,10 +25,10 @@
 --  idempotent: safe to run as often as you like, and a no-op on a database that
 --  is already right.
 --
---  This script never inserts menu data. The starter catalogue lives in
---  src/lib/menu.ts and is written by the admin panel ("Load the starter
---  catalogue" in the Menu tab), so there is one place that decides what the
---  menu is, and this file never becomes a second, drifting copy of it.
+--  This script never inserts menu data. The official catalogue lives in
+--  src/lib/menu.ts and is written by the admin panel ("Load the official menu"
+--  in the Menu tab), so there is one place that decides what the menu is, and
+--  this file never becomes a second, drifting copy of it.
 -- ============================================================================
 
 
@@ -290,11 +290,11 @@ create trigger menu_dishes_signature_limit
 --  5. Then, in the app
 --
 --  Open the admin panel's **Menu** tab. With an empty `menu_dishes` it offers
---  "Load the starter catalogue", which writes the counters and the built-in
---  dishes into the two tables and refreshes both admin boards and the guest
---  menu from the same rows. If the panel reports a refusal, its message is now
---  the database's own wording — paste that back and the cause is one step
---  further along.
+--  "Load the official menu", which writes the five live counters, six main-menu
+--  sections and 52 built-in dishes into the two tables and refreshes both admin
+--  boards and the guest menu from the same rows. If the panel reports a refusal,
+--  its message is now the database's own wording — paste that back and the cause
+--  is one step further along.
 -- ---------------------------------------------------------------------------
 select
   'counters' as what,

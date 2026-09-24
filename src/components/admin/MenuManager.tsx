@@ -51,10 +51,11 @@ export function MenuManager({
   categories: MenuCategoryRow[];
   dishes: MenuDishRow[];
   /**
-   * Writes the built-in demo catalogue into the two menu tables — five counters,
-   * every dish, prices, photos and four signatures. Offered only while the table
-   * holds no dishes at all, because that is the one state where the guest menu
-   * has nothing to show and the demo menu is the answer.
+   * Writes the built-in official catalogue into the two menu tables — five live
+   * counters, six main-menu sections, 52 dishes, prices, photos and four
+   * signatures. Offered only while the table holds no dishes at all, because
+   * that is the one state where the guest menu has nothing to show and the
+   * official menu is the answer.
    */
   onLoadStarter?: () => void;
   /** True while a seed is running, so the button cannot be pressed twice. */
@@ -239,7 +240,7 @@ export function MenuManager({
         </div>
         <CounterSelect
           value={counterFilter}
-          counters={[{ id: EVERY_COUNTER, name: "Every counter" }, ...choices]}
+          counters={[{ id: EVERY_COUNTER, name: "Every section" }, ...choices]}
           onChange={setCounterFilter}
           className="w-[13rem]"
         />
@@ -264,8 +265,8 @@ export function MenuManager({
 
       <p className="text-sm text-muted-foreground">
         {visible.length} of {dishes.length} items
-        {counterFilter !== EVERY_COUNTER ? ` on ${counterName(counterFilter)}` : ""} ·
-        price, availability and counter save as you change them
+        {counterFilter !== EVERY_COUNTER ? ` in ${counterName(counterFilter)}` : ""} ·
+        price, availability and section save as you change them
       </p>
 
       {/* -------------------------------------------------------- table --- */}
@@ -273,7 +274,7 @@ export function MenuManager({
         <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
           <p className="text-sm leading-relaxed text-muted-foreground">
             {dishes.length === 0
-              ? "No dishes are in the database, so the guest menu has nothing to show. Load the demo menu — five counters, the full catalogue, prices and photos — or use Add item to write your own."
+              ? "No dishes are in the database, so the guest menu has nothing to show. Load the official menu — five live counters, six main-menu sections, 52 dishes, prices and photos — or use Add item to write your own."
               : "Nothing matches that search."}
           </p>
           {dishes.length === 0 && onLoadStarter ? (
@@ -285,7 +286,7 @@ export function MenuManager({
               {seeding ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : null}
-              Load the demo menu
+              Load the official menu
             </Button>
           ) : null}
         </div>
@@ -295,7 +296,7 @@ export function MenuManager({
             <thead className="bg-card/60 text-left text-xs tracking-[0.14em] text-muted-foreground uppercase">
               <tr>
                 <th className="px-4 py-3 font-medium">Item</th>
-                <th className="px-4 py-3 font-medium">Counter</th>
+                <th className="px-4 py-3 font-medium">Section</th>
                 <th className="px-4 py-3 font-medium">Price</th>
                 <th className="hidden px-4 py-3 font-medium sm:table-cell">
                   Available

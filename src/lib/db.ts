@@ -564,6 +564,26 @@ export async function seedMenuCatalog(): Promise<{
     );
   }
 
+  // The previous starter catalogue used these five ids. When the owner opens
+  // the panel against that old, empty menu, leave the rows in place for any
+  // historical item but switch the obsolete sections off so the official
+  // eleven-section structure is the only published menu.
+  const officialCategoryIds = new Set(MENU_CATEGORIES.map((category) => category.id));
+  const supersededCategoryIds = [
+    "bbq",
+    "handi",
+    "tandoor",
+    "fast-bites",
+    "desserts",
+  ].filter((id) => !officialCategoryIds.has(id as (typeof MENU_CATEGORIES)[number]["id"]));
+  if (supersededCategoryIds.length > 0) {
+    const { error } = await supabase
+      .from(TABLES.categories)
+      .update({ active: false, updated_at: Date.now() })
+      .in("id", supersededCategoryIds);
+    fail(error, "Could not retire the previous starter counters.");
+  }
+
   const knownDishes = await existingKeys(TABLES.dishes, "slug");
   const failures: string[] = [];
   let dishesWritten = 0;

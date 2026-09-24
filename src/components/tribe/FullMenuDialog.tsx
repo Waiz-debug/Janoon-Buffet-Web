@@ -110,8 +110,9 @@ export function FullMenuDialog() {
             The complete menu
           </DialogTitle>
           <DialogDescription>
-            Every dish across our counters — all included in the dine-in
-            buffet, or available for Lahore delivery at the prices shown.
+            Every dish across our five live High Tea stations and six main-menu
+            sections — all included in the dine-in buffet, or available for
+            Lahore delivery at the prices shown.
           </DialogDescription>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {BUFFET_TIERS.map((tier) => (
@@ -139,7 +140,7 @@ export function FullMenuDialog() {
                   : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
               )}
             >
-              All counters
+              All sections
             </button>
             {groups.map((counter) => (
               <button
@@ -196,7 +197,7 @@ export function FullMenuDialog() {
             <p className="py-16 text-center text-sm text-muted-foreground">
               {menuItemCount === 0
                 ? "The menu is being updated — please check back shortly."
-                : "Nothing is published at this counter yet."}
+                : "Nothing is published in this section yet."}
             </p>
           ) : null}
         </div>

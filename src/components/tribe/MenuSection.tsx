@@ -97,7 +97,7 @@ export function MenuSection() {
   const { counters, getDish, hasPublishedMenu, signatures, unitPrice } =
     useLiveSite();
 
-  const special = getDish("grilled-fish");
+  const special = getDish("junooni-royal-platter");
 
   /**
    * The counters with something to show. A counter the owner has created but
@@ -117,7 +117,7 @@ export function MenuSection() {
         <SectionHeading
           eyebrow="Menu & Pricing"
           title="One price, every counter, served without limit"
-          description="Every seat includes the full spread — live charcoal BBQ, slow-cooked handi, Lahori fast bites and dessert straight from the degh. Weekend and festive nights add further cuts, including our charcoal-grilled fish. Select any dish to read how it is prepared."
+          description="Every seat includes the full spread — welcome drinks, live Chinese, chaat, street food, tandoor and dessert from the station counters. The official à la carte menu follows below, with chef specials and house favourites ordered by the table. Select any dish to read how it is prepared."
           align="center"
         />
 
@@ -256,18 +256,17 @@ export function MenuSection() {
 
         {/* Counters — one section per counter, straight from Supabase */}
         <div className="mt-16 flex items-end justify-between gap-4">
-          <h3 className="font-display text-2xl font-semibold">The counters</h3>
+          <h3 className="font-display text-2xl font-semibold">The official menu</h3>
           {counterCount > 0 ? (
             <span className="hidden text-xs tracking-[0.18em] text-muted-foreground uppercase sm:block">
-              {counterCount} station{counterCount === 1 ? "" : "s"}
+              {counterCount} section{counterCount === 1 ? "" : "s"}
             </span>
           ) : null}
         </div>
         {counterCount === 0 ? (
-          <p className="mt-5 rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm leading-relaxed text-muted-foreground">
-            Tonight&apos;s counters are being updated. Every counter and dish
-            published in the admin panel appears here — and refreshes on its own
-            — the moment it is saved.
+          <p className="mt-5 rounded-2xl border border-dashed border-border/70 p-8 text-center text-sm leading-relaxed text-muted-foreground">              Tonight&apos;s counters are being updated. Every section and dish
+              published in the admin panel appears here — and refreshes on its own
+              — the moment it is saved.
           </p>
         ) : null}
         <div className="mt-5 grid gap-5 md:grid-cols-2">
@@ -313,7 +312,7 @@ export function MenuSection() {
           })}
         </div>
 
-        {/* Daily special — highlights the charcoal-grilled fish when live */}
+        {/* Chef's table — highlights the full platter when it is live */}
         {special ? (
           <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-gold/25 bg-gold/[0.06] p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-4">
@@ -322,7 +321,7 @@ export function MenuSection() {
               </span>
               <div>
                 <h3 className="font-display text-lg font-semibold">
-                  Daily special · {special.name}
+                  Chef&apos;s table · {special.name}
                 </h3>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   {special.summary}

@@ -23,7 +23,6 @@ import {
   useAdminPreOrderItems,
 } from "@/hooks/use-live-db";
 import {
-  UNCATEGORIZED_COUNTER,
   ensureSignatureDishes,
   seedAddOns,
   seedDemoGallery,
@@ -65,25 +64,16 @@ export default function AdminPortal() {
   const requestedTab = searchParams.get("tab") ?? "overview";
   const tab = TAB_VALUES.has(requestedTab) ? requestedTab : "overview";
 
-  // First run against a fresh Supabase project: copy the built-in catalogue
+  // First run against a fresh Supabase project: copy the built-in official menu
   // and gallery photos across so the admin panel lists exactly the assets the
   // public site renders, then publish a sample promotional banner. Every seed
   // is idempotent and skips anything the team has already replaced.
   //
-  // "Fresh" has to mean "no menu at all", not "an empty categories table".
-  // `supabase/counters.sql` seeds one `uncategorized` row to hold items whose
-  // counter was deleted, and that single row was enough to make `isEmpty`
-  // false — so the catalogue was never copied, `menu_dishes` stayed empty, and
-  // the guest site fell back to its built-in list with nothing in the panel to
-  // edit. Ask about published content instead.
-  const nothingPublished =
-    dishes.length === 0 &&
-    categories.every(
-      // `MenuCategoryRow.id` is typed as the four built-in counters, but the
-      // owner's own counters and the `uncategorized` placeholder are plain
-      // strings at runtime, so the comparison is made on the string.
-      (c) => !c.active || (c.id as string) === UNCATEGORIZED_COUNTER,
-    );
+  // "Fresh" means no dishes at all. An older starter can leave its five
+  // counters active while `menu_dishes` is empty; that must still be allowed to
+  // load the official menu, which retires those obsolete ids and publishes the
+  // five live stations plus six main-menu sections.
+  const nothingPublished = dishes.length === 0;
   /**
    * Every starter-content seed, each reported on its own.
    *
@@ -118,10 +108,10 @@ export default function AdminPortal() {
       }
     };
     try {
-      await step("load the demo menu", async () => {
+      await step("load the official menu", async () => {
         if (!isEmpty && !nothingPublished) return null;
         const report = await seedMenuCatalog();
-        return `Demo menu loaded — ${report.counters} counters, ${report.dishes} dishes, ${report.featured} signatures`;
+        return `Official menu loaded — ${report.counters} sections, ${report.dishes} dishes, ${report.featured} signatures`;
       });
       await step("load the add-ons board", async () => {
         const added = await seedAddOns();
@@ -229,13 +219,14 @@ export default function AdminPortal() {
         <TabsContent value="counters" className="flex flex-col gap-4">
           <div>
             <h3 className="font-display text-base font-semibold">
-              Counters &amp; their items
+              Counters &amp; menu sections
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              A counter is one station in the kitchen — Barbecue &amp; Grill,
-              Charcoal Counter, Traditional Handi. Create one, add its items,
-              and put them in guest order: the public menu draws one section per
-              counter, in this order.
+              Counters are the five live High Tea stations. The same board also
+              manages the six official main-menu sections — chef specials,
+              starters, vegetables, tandoor breads, salads and desserts, plus
+              drinks — so every item is mapped to the right place in the guest
+              menu and can be switched live.
             </p>
           </div>
           <CountersManager categories={categories} dishes={dishes} />
