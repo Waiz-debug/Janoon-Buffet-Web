@@ -151,7 +151,10 @@ const {
   claimFirstAdmin,
   classifySignInError,
   portalPathFor,
+  resendConfirmationEmail,
   staffLookup,
+  CONFIRMATION_RATE_LIMITED_MESSAGE,
+  CONFIRMATION_UNDELIVERABLE_MESSAGE,
   EMAIL_UNCONFIRMED_MESSAGE,
   INCORRECT_CREDENTIALS_MESSAGE,
   NOT_ADMIN_MESSAGE,
@@ -641,6 +644,82 @@ describe("sign-in refusals", () => {
     // rather than the fallback for every refusal the service can make.
     expect(src).toContain("signInMessage(result.reason");
   });
+
+  test("a mail provider that cannot deliver is told apart from a spent allowance", async () => {
+    // The allowance for the hour is gone: waiting is the right advice.
+    authReplies.resend = {
+      data: null,
+      error: {
+        code: "over_email_send_rate_limit",
+        message: "Email rate limit exceeded",
+      },
+    };
+    expect((await resendConfirmationEmail("owner@janoon.pk")).reason).toBe(
+      "rate-limited",
+    );
+
+    // No working mail provider: waiting would never help, so the card must not
+    // say to try again in a moment.
+    authReplies.resend = {
+      data: null,
+      error: {
+        code: "unexpected_failure",
+        message: "Error sending confirmation email",
+      },
+    };
+    expect((await resendConfirmationEmail("owner@janoon.pk")).reason).toBe(
+      "provider",
+    );
+
+    // The shared testing mail server only delivers to the project's own team
+    // addresses and refuses every other address outright — the answer a
+    // restaurant domain like owner@janoon.pk normally gets. Classified as a
+    // provider problem, because retrying will never clear it.
+    authReplies.resend = {
+      data: null,
+      error: {
+        code: "email_address_not_authorized",
+        message: "Email address not authorized",
+      },
+    };
+    expect((await resendConfirmationEmail("owner@janoon.pk")).reason).toBe(
+      "provider",
+    );
+
+    // A link really on its way is the success case, and says so.
+    authReplies.resend = { data: null, error: null };
+    expect(await resendConfirmationEmail("owner@janoon.pk")).toEqual({
+      ok: true,
+    });
+  });
+
+  test("the two undeliverable messages are different sentences, and neither blames the account", () => {
+    expect(CONFIRMATION_RATE_LIMITED_MESSAGE).not.toBe(
+      CONFIRMATION_UNDELIVERABLE_MESSAGE,
+    );
+    for (const message of [
+      CONFIRMATION_RATE_LIMITED_MESSAGE,
+      CONFIRMATION_UNDELIVERABLE_MESSAGE,
+    ]) {
+      expect(message).not.toMatch(/supabase|smtp|sql|token|PGRST/i);
+      // The account and its password are untouched in both cases — that has to
+      // be said plainly, because the earlier bug taught people otherwise.
+      expect(message).toMatch(/unchanged|still not confirmed/);
+    }
+  });
+
+  test("the confirmation link prefers the configured restaurant address", () => {
+    const src = readFileSync(
+      new URL("../src/hooks/use-staff-auth.ts", import.meta.url),
+      "utf8",
+    );
+
+    // Supabase rewrites a redirect it does not recognise to the project's Site
+    // URL, so the address the link is built from has to be configurable rather
+    // than "whatever origin the preview happens to be on".
+    expect(src).toContain("VITE_SITE_URL");
+    expect(src).toContain("/?unlock=admin");
+  });
 });
 
 /* ------------------------------------------------------- first admin setup --- */
@@ -925,6 +1004,62 @@ describe("the admin route", () => {
         false,
       ]);
     }
+  });
+});
+
+/* --------------------------------------- manual confirmation fallback --- */
+
+/**
+ * The SQL fallback exists for the case the app cannot fix: mail that never
+ * arrives. It has to confirm one address without switching verification off for
+ * everyone — those are very different changes, and only the first one is safe.
+ */
+describe("the manual confirmation fallback", () => {
+  const sql = readFileSync(
+    new URL("../supabase/confirm-admin-email.sql", import.meta.url),
+    "utf8",
+  );
+
+  /**
+   * The file's statements only. The header explains the setting by name, and a
+   * mention in prose is not the same as a statement that changes it — which is
+   * exactly the difference these guards are about.
+   */
+  const statements = sql
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+
+  test("confirms one address instead of turning verification off for the project", () => {
+    expect(statements).toContain(
+      "set email_confirmed_at = coalesce(email_confirmed_at, now())",
+    );
+    // The project-wide switch is never touched, so every other account still
+    // has to confirm its address.
+    expect(statements).not.toMatch(/autoconfirm/i);
+    expect(statements).not.toMatch(/alter\s+role/i);
+    expect(statements).not.toMatch(/create\s+user/i);
+    expect(statements).not.toMatch(/update\s+auth\.config|alter\s+database/i);
+  });
+
+  test("never rewrites a password, a role or an existing confirmation", () => {
+    expect(statements).not.toMatch(/encrypted_password/i);
+    expect(statements).not.toMatch(/update\s+public\.staff_members/i);
+    expect(statements).not.toMatch(/insert\s+into\s+public\.staff_members/i);
+    expect(statements).not.toMatch(/delete\s+from/i);
+    // Already-confirmed addresses keep their original timestamp.
+    expect(statements).toContain("coalesce(email_confirmed_at, now())");
+  });
+
+  test("stays confined to the SQL editor — the website cannot call it", () => {
+    expect(statements).toContain(
+      "revoke all on function public.confirm_staff_email(text) from public",
+    );
+    expect(statements).toContain(
+      "revoke all on function public.staff_login_state(text) from public",
+    );
+    // Nothing is handed to `anon` or `authenticated` in its place.
+    expect(statements).not.toMatch(/grant execute/i);
   });
 });
 

@@ -20,6 +20,42 @@
 --  file is the fallback for when the mail never arrives: it reports what the
 --  database actually holds, and can mark a staff address confirmed.
 --
+--  WHY THE MAIL OFTEN CANNOT BE SENT AT ALL  (check this before anything else)
+--  -------------------------------------------------------------------------
+--  Supabase's shared testing mail server will only deliver to the email
+--  addresses that belong to the project's own organisation team. Every other
+--  address is refused with "Email address not authorized", and the allowance is
+--  2 messages per hour. A restaurant domain such as owner@janoon.pk is almost
+--  never on that team list, so the confirmation mail is refused before a single
+--  message leaves Supabase.
+--
+--  THE PROPER FIX — a dashboard setting, not a code change:
+--
+--    1. Dashboard → Authentication → Emails → SMTP Settings
+--       Enable Custom SMTP and enter the host, port, user, password and From
+--       address from a real sending service (Resend, SendGrid, AWS SES,
+--       Postmark, Brevo). This is what makes confirmation mail deliver to any
+--       address. It is the only setting that actually fixes delivery.
+--
+--    2. Dashboard → Authentication → Rate Limits
+--       Raise "Rate limit for sending emails". A project that has just added
+--       custom SMTP is held at 30 messages per hour until it is changed.
+--
+--    3. Dashboard → Authentication → URL Configuration
+--       Site URL       — the deployed restaurant address, e.g.
+--                        https://your-project.vly.sh
+--       Redirect URLs  — add https://your-project.vly.sh/** and
+--                        http://localhost:5173/**
+--       A redirect Supabase does not recognise is silently rewritten to the
+--       Site URL, so both have to be set for the confirmation link to come back
+--       to the admin door.
+--
+--  DO NOT set "Confirm email" off to get past this. That would drop the check
+--  for every account on the project. Confirm the one address below instead, or
+--  use the Team tab of the organisation's settings to add the address to the
+--  team, which lets the shared mail server deliver to it without loosening
+--  anything for anyone else.
+--
 --  It never creates a user, never changes a password, never grants a role and
 --  never touches a business table. Confirming an address is the same change the
 --  confirmation link makes — nothing more.

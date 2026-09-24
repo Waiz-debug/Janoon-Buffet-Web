@@ -23,6 +23,8 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { HearthScene } from "@/components/tribe/HearthScene";
 import { Button } from "@/components/ui/button";
 import {
+  CONFIRMATION_RATE_LIMITED_MESSAGE,
+  CONFIRMATION_UNDELIVERABLE_MESSAGE,
   EMAIL_UNCONFIRMED_MESSAGE,
   INCORRECT_CREDENTIALS_MESSAGE,
   NOT_ADMIN_MESSAGE,
@@ -30,6 +32,7 @@ import {
   RATE_LIMITED_MESSAGE,
   SETUP_REQUIRED_MESSAGE,
   UNCONFIGURED_MESSAGE,
+  UNREACHABLE_MESSAGE,
   portalPathFor,
   resendConfirmationEmail,
   useStaffAuth,
@@ -83,7 +86,7 @@ function signInMessage(reason: SignInRefusal, claimOpen: boolean): string {
     case "unconfigured":
       return UNCONFIGURED_MESSAGE;
     case "unreachable":
-      return "Could not reach the sign-in service. Check your connection and try again.";
+      return UNREACHABLE_MESSAGE;
     default:
       return INCORRECT_CREDENTIALS_MESSAGE;
   }
@@ -235,9 +238,15 @@ export default function AuthLanding() {
     if (result.reason === "email-unconfirmed") {
       const sent = await resendConfirmationEmail(email);
       setError(
-        sent
+        sent.ok
           ? EMAIL_UNCONFIRMED_MESSAGE
-          : "That email address has not been confirmed yet, and the confirmation email could not be sent just now. Please try again in a moment.",
+          : // A spent mail allowance and a broken mail provider need opposite
+            // advice, and "try again in a moment" is only true for one of them.
+            sent.reason === "rate-limited"
+            ? CONFIRMATION_RATE_LIMITED_MESSAGE
+            : sent.reason === "unreachable"
+              ? UNREACHABLE_MESSAGE
+              : CONFIRMATION_UNDELIVERABLE_MESSAGE,
       );
       return;
     }

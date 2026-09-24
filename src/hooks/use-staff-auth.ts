@@ -57,10 +57,47 @@ export const EMAIL_UNCONFIRMED_MESSAGE =
 export const RATE_LIMITED_MESSAGE =
   "Too many sign-in attempts just now. Please wait a minute and try again.";
 
-/** Where a confirmation link lands: back on the admin door, signed in. */
+/** The sign-in service could not be reached at all — a connection problem. */
+export const UNREACHABLE_MESSAGE =
+  "Could not reach the sign-in service. Check your connection and try again.";
+
+/**
+ * The address is unconfirmed and a new link was just sent, so the mail allowance
+ * for the hour is the thing standing in the way — not the account.
+ */
+export const CONFIRMATION_RATE_LIMITED_MESSAGE =
+  "That email address is still not confirmed. A confirmation link was sent a moment ago — open it, or wait a few minutes and ask for another.";
+
+/**
+ * The address is unconfirmed and nothing can be delivered.
+ *
+ * Deliberately not "try again in a moment": that would send the owner round a
+ * loop that cannot end. Nothing technical is named here — the console carries
+ * the service's own words — but the sentence points at the one thing that has to
+ * change, which is the project's mail settings rather than the account.
+ */
+export const CONFIRMATION_UNDELIVERABLE_MESSAGE =
+  "That email address is still not confirmed, and the confirmation email could not be delivered. Your account and password are unchanged — ask whoever manages the restaurant's sign-in settings to check the email setup, or confirm the address directly.";
+
+/**
+ * Where a confirmation link should land: back on the admin door, signed in.
+ *
+ * The deployed address is read from `VITE_SITE_URL` before falling back to
+ * whatever origin the page happens to be on. That matters because Supabase
+ * rewrites a redirect it does not recognise to the project's Site URL, so a
+ * link generated on a preview or local origin can be delivered pointing
+ * somewhere the admin flow cannot finish. Setting `VITE_SITE_URL` to the real
+ * restaurant address keeps the link correct no matter where the email is
+ * opened, and the same address belongs in Supabase's own Site URL setting as
+ * the fallback for links that carry no redirect at all.
+ */
 export function confirmationRedirect(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  return `${window.location.origin}/?unlock=admin`;
+  const configured = (
+    import.meta.env?.VITE_SITE_URL as string | undefined
+  )?.replace(/\/+$/, "");
+  const origin = configured || window.location.origin;
+  return `${origin}/?unlock=admin`;
 }
 
 export const UNCONFIGURED_MESSAGE =
@@ -228,6 +265,23 @@ export function classifySignInError(error: {
 }
 
 /**
+ * Why a confirmation email did not go out.
+ *
+ * `rate-limited` means "try again shortly" — the project's mail allowance for
+ * the hour is spent. `provider` is the opposite: nothing will be delivered
+ * until somebody configures an email provider for the project, and telling the
+ * owner to "try again in a moment" would leave them retrying forever.
+ */
+export type ConfirmationSend =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "rate-limited" | "provider" | "unreachable" | "unknown";
+      /** The service's own words. Logged, never rendered. */
+      detail: string;
+    };
+
+/**
  * Send the confirmation link again.
  *
  * Called when the sign-in service says the address is unconfirmed, so the way
@@ -235,18 +289,54 @@ export function classifySignInError(error: {
  * session, and the account signs itself in. A failure is reported, never
  * swallowed — telling somebody a link is on its way when it is not is the same
  * class of mistake as blaming their password.
+ *
+ * The two failures worth telling apart are separated here because the advice is
+ * opposite: a spent mail allowance wants patience, a missing email provider
+ * wants somebody to configure one. Everything the service said is logged either
+ * way, so the console names the cause even when the card cannot.
  */
-export async function resendConfirmationEmail(email: string): Promise<boolean> {
+export async function resendConfirmationEmail(
+  email: string,
+): Promise<ConfirmationSend> {
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: email.trim(),
     options: { emailRedirectTo: confirmationRedirect() },
   });
-  if (error) {
-    console.warn(`[JUNOON] confirmation email not sent: ${error.message}`);
-    return false;
+  if (!error) return { ok: true };
+
+  const detail = error.message ?? "";
+  const both = `${error.code ?? ""} ${detail}`.toLowerCase();
+  console.warn(`[JUNOON] confirmation email not sent: ${detail}`);
+
+  if (
+    both.includes("rate") ||
+    both.includes("too many") ||
+    both.includes("security purposes")
+  ) {
+    return { ok: false, reason: "rate-limited", detail };
   }
-  return true;
+  // Supabase's own wording when the project has no working mail provider, or
+  // when the one configured is refusing the credentials.
+  //
+  // "Email address not authorized" is the one that actually bites here: a
+  // project still on Supabase's shared testing server will only deliver to the
+  // email addresses on its own organisation team, and refuses every other
+  // address outright. The account is fine and the password is fine — the mail
+  // simply cannot be sent to that address.
+  if (
+    both.includes("smtp") ||
+    both.includes("error sending") ||
+    both.includes("provider") ||
+    both.includes("not configured") ||
+    both.includes("not authorized")
+  ) {
+    return { ok: false, reason: "provider", detail };
+  }
+  if (/fetch|network|failed to fetch|load failed/.test(both)) {
+    return { ok: false, reason: "unreachable", detail };
+  }
+  return { ok: false, reason: "unknown", detail };
 }
 
 /**
