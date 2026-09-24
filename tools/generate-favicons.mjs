@@ -1,9 +1,17 @@
 /**
- * Generates every browser icon from `public/logo.svg`.
+ * Generates every browser icon from the two brand marks in `public/`.
  *
- * One source of truth: the tab, the iOS home-screen tile and the PWA manifest
- * icon are all cut from the same brand mark the header renders, so the favicon
- * can never drift away from the logo again. Regenerate after the mark changes:
+ * Two sources, one rule each:
+ *
+ *   `public/favicon.svg` — the tab. A bold gold ring and monogram on nothing,
+ *     rasterised onto transparency. `public/logo.svg` cannot be used here: it
+ *     paints a near-black tile that reads as a dark block at 16px and hides the
+ *     gold, which is the whole reason the tab has its own mark.
+ *   `public/logo.svg` — the iOS home-screen tile and the PWA manifest icons.
+ *     Those are large and masked by the OS, so the full emblem on its opaque
+ *     full-bleed tile is right for them.
+ *
+ * Regenerate after either mark changes:
  *
  *     bun tools/generate-favicons.mjs
  *
@@ -17,19 +25,22 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 
-/** The mark itself, read once and rendered at every size. */
+/** The tab mark, drawn on transparency. */
+const tabMark = readFileSync("public/favicon.svg");
+
+/** The full emblem, painted on its own dark tile. */
 const logo = readFileSync("public/logo.svg");
 
 /**
- * The background the SVG paints its tile with. iOS and Android apply their own
- * mask to home-screen icons, so the full-bleed sizes are flattened onto it
+ * The background the emblem paints its tile with. iOS and Android apply their
+ * own mask to home-screen icons, so the full-bleed sizes are flattened onto it
  * rather than left with transparent corners the mask would reveal as black.
  */
 const TILE_BG = "#141008";
 
-/** Rasterise the mark. `flat` fills the corners for the masked sizes. */
-async function png(size, { flat = false } = {}) {
-  const pipeline = sharp(logo, { density: 512 }).resize(size, size, {
+/** Rasterise a mark. `flat` fills the corners for the masked sizes. */
+async function png(source, size, { flat = false } = {}) {
+  const pipeline = sharp(source, { density: 512 }).resize(size, size, {
     fit: "contain",
     background: { r: 0, g: 0, b: 0, alpha: 0 },
   });
@@ -74,12 +85,12 @@ function write(path, data) {
 
 const [favicon16, favicon32, favicon48, touch180, icon192, icon512] =
   await Promise.all([
-    png(16),
-    png(32),
-    png(48),
-    png(180, { flat: true }),
-    png(192, { flat: true }),
-    png(512, { flat: true }),
+    png(tabMark, 16),
+    png(tabMark, 32),
+    png(tabMark, 48),
+    png(logo, 180, { flat: true }),
+    png(logo, 192, { flat: true }),
+    png(logo, 512, { flat: true }),
   ]);
 
 write("public/favicon-16x16.png", favicon16);

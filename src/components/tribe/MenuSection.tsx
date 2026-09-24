@@ -32,7 +32,7 @@ function DishRow({
   const price = base + (weightOption?.priceDelta ?? 0);
 
   return (
-    <li className="flex flex-col gap-2 py-3">
+    <li className="flex flex-col gap-2 py-3 last:pb-0">
       <div className="flex items-center gap-3">
         <Link
           to={`/menu/${dish.slug}`}
@@ -275,7 +275,11 @@ export function MenuSection() {
               — the moment it is saved.
           </p>
         ) : null}
-        <div className="mt-5 grid gap-5 md:grid-cols-2">
+        {/* `items-start` keeps a short counter — a two-dish station beside a
+            twelve-dish one — wrapped tight around its own dishes instead of
+            being stretched to the height of the row and left hanging over a
+            pocket of empty space. */}
+        <div className="mt-5 grid items-start gap-5 md:grid-cols-2">
           {visibleCounters.map((counter, index) => {
             const Icon = CATEGORY_ICONS[counter.icon];
             // Signature dishes are shown once, in the section above, and are
@@ -290,7 +294,7 @@ export function MenuSection() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.2 }}
                 transition={{ duration: 0.5, delay: (index % 2) * 0.08, ease: "easeOut" }}
-                className="flex flex-col rounded-2xl border border-border/70 bg-card/50 p-6"
+                className="flex h-fit flex-col rounded-2xl border border-border/70 bg-card/50 p-5"
               >
                 <header className="flex items-center gap-3">
                   <span className="flex size-11 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">

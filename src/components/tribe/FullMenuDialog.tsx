@@ -22,7 +22,7 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
   const { add } = useCart();
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/50 transition-colors hover:border-gold/35">
+    <div className="group flex h-fit flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/50 transition-colors hover:border-gold/35">
       <div className="relative aspect-[5/3] overflow-hidden">
         <SmartImage
           src={dish.image}
@@ -190,7 +190,10 @@ export function FullMenuDialog() {
                       <p className="text-xs text-gold/70">{counter.urdu}</p>
                     </div>
                   </header>
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {/* `items-start` so a card ends with its own content — a
+                      one-line summary does not leave a gap above the footer
+                      just because the dish beside it has a longer one. */}
+                  <div className="mt-4 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {catDishes.map((dish) => (
                       <DishCard
                         key={dish.slug}

@@ -704,7 +704,8 @@ function SignInModal({
 
         {/*
           The house mark, so the door is unmistakably JUNOON's — the same
-          artwork as the favicon and the apple-touch tile, not a stand-in icon.
+          artwork as the apple-touch tile and the manifest icons, not a
+          stand-in icon.
         */}
         <div className="relative flex flex-col items-center text-center">
           <JanoonMark className="size-14 rounded-lg" alt="JUNOON" />

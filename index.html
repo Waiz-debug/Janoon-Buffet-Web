@@ -3,25 +3,27 @@
 
 <head>
   <meta charset="UTF-8" />
-  <!-- JUNOON brand emblem — the same mark the header renders.
+  <!-- JUNOON brand marks, both rasterised by `tools/generate-favicons.mjs`.
 
-       Every icon here is rasterised from `public/logo.svg` by
-       `tools/generate-favicons.mjs`, so the tab, the iOS home-screen tile, the
-       manifest icon and the in-app logo are all one and the same artwork.
+       The tab icons come from `public/favicon.svg` — the gold ring and monogram
+       drawn on transparency, so the tab keeps its own colour and the gold reads
+       on light and dark chrome alike. The full emblem in `public/logo.svg`
+       paints a near-black tile, which at 16px is just a dark block, so it is
+       kept for the sizes where a solid tile is wanted: the iOS home-screen icon
+       and the manifest icons, both of which the OS masks itself.
 
        The `?v=` suffix is deliberate. Browsers cache favicons by URL and will
        keep showing an old one for a long time, so every icon path is versioned:
-       bump it whenever the mark changes and the tab refreshes by itself.
+       bump it whenever a mark changes and the tab refreshes by itself.
 
        The ICO and PNGs come first so every browser has a raster it can draw,
-       with the SVG offered after them for the ones that scale it crisply. The
-       apple-touch icon is the same mark on an opaque, full-bleed tile. -->
-  <link rel="icon" href="/favicon.ico?v=5" sizes="any" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5" />
-  <link rel="icon" type="image/svg+xml" href="/logo.svg?v=5" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5" />
-  <link rel="manifest" href="/manifest.webmanifest?v=5" />
+       with the SVG offered after them for the ones that scale it crisply. -->
+  <link rel="icon" href="/favicon.ico?v=6" sizes="any" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=6" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=6" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6" />
+  <link rel="manifest" href="/manifest.webmanifest?v=6" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0f1a10" />
   <meta
