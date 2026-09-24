@@ -71,7 +71,18 @@ export function FullMenuDialog() {
   const { counters, menuItemCount, unitPrice } = useLiveSite();
   /** `null` shows every counter — what the guest sees on opening. */
   const [only, setOnly] = useState<string | null>(null);
-  const shown = only ? counters.filter((counter) => counter.id === only) : counters;
+  /**
+   * Counters that actually hold a published dish, and the dishes on show.
+   * A counter the owner has created but not filled yet is not offered as a
+   * filter and not drawn as a heading: an empty section under a station's name
+   * reads as a broken menu rather than as a counter still being set up.
+   */
+  const groups = counters.filter((counter) => counter.items.length > 0);
+  const shown = only ? groups.filter((counter) => counter.id === only) : groups;
+  const shownCount = shown.reduce(
+    (total, counter) => total + counter.items.length,
+    0,
+  );
 
   return (
     <Dialog>
@@ -125,7 +136,7 @@ export function FullMenuDialog() {
             >
               All counters
             </button>
-            {counters.map((counter) => (
+            {groups.map((counter) => (
               <button
                 key={counter.id}
                 type="button"
@@ -176,9 +187,11 @@ export function FullMenuDialog() {
               );
             })}
           </div>
-          {menuItemCount === 0 ? (
+          {shownCount === 0 ? (
             <p className="py-16 text-center text-sm text-muted-foreground">
-              The menu is being updated — please check back shortly.
+              {menuItemCount === 0
+                ? "The menu is being updated — please check back shortly."
+                : "Nothing is published at this counter yet."}
             </p>
           ) : null}
         </div>

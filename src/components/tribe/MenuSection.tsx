@@ -248,6 +248,10 @@ export function MenuSection() {
             // The items themselves come straight from the counter, so a dish
             // sits under the section it was filed on in the admin panel.
             const dishes = counter.items.filter((dish) => !dish.featured);
+            // A counter with nothing to show is left off the page entirely. An
+            // empty card under a heading reads as a broken menu, and a counter
+            // the owner is still setting up has nothing to order from yet.
+            if (dishes.length === 0) return null;
             return (
               <motion.article
                 key={counter.id}
@@ -277,11 +281,6 @@ export function MenuSection() {
                   {dishes.map((dish) => (
                     <DishRow key={dish.slug} dish={dish} unitPrice={unitPrice} add={add} />
                   ))}
-                  {dishes.length === 0 ? (
-                    <li className="py-3 text-xs text-muted-foreground">
-                      Every dish at this counter is featured in Signatures above.
-                    </li>
-                  ) : null}
                 </ul>
               </motion.article>
             );
