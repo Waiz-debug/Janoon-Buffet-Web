@@ -57,6 +57,97 @@ create index if not exists menu_dishes_category_sort_idx
 create index if not exists menu_dishes_sort_idx
   on public.menu_dishes (sort_order);
 
+-- ---------------------------------------------------------------------------
+-- 1a. An earlier revision of this project. Its tables are the same shape apart
+--     from requirements the app has never written, and one missing table.
+--     Left as they are, the seed below is refused outright: a NOT NULL on a
+--     counter's old `slug` column rejects every official section, and a dish
+--     key with no default rejects every official dish.
+--
+--     Nothing here rewrites a row or drops a column — only requirements are
+--     lifted, missing columns are added, and the counter hero-image table is
+--     created when it is not there yet.
+-- ---------------------------------------------------------------------------
+alter table public.menu_categories
+  add column if not exists urdu       text,
+  add column if not exists blurb      text,
+  add column if not exists icon       text not null default 'flame',
+  add column if not exists sort_order integer not null default 0,
+  add column if not exists active     boolean not null default true;
+
+alter table public.menu_dishes
+  add column if not exists urdu            text,
+  add column if not exists summary         text,
+  add column if not exists description     text,
+  add column if not exists notes           jsonb,
+  add column if not exists pairings        jsonb,
+  add column if not exists image           text,
+  add column if not exists image_path      text,
+  add column if not exists price_per_plate integer,
+  add column if not exists active          boolean not null default true,
+  add column if not exists featured        boolean not null default false,
+  add column if not exists demo            boolean not null default false,
+  add column if not exists sort_order      integer not null default 0,
+  add column if not exists updated_at      bigint;
+
+-- One hero photograph per counter: uploaded from the admin panel's Counters
+-- tab, rendered on that counter's card on the guest site. Same storage model
+-- as the gallery — `url` for a demo image, `image_path` for an uploaded object
+-- that owns the graphic outright.
+create table if not exists public.counter_media (
+  slot       text primary key,
+  caption    text,
+  url        text,
+  image_path text,
+  demo       boolean not null default false,
+  updated_at bigint not null default 0
+);
+
+do $$
+declare
+  legacy  record;
+  id_type text;
+begin
+  for legacy in
+    select c.table_name, c.column_name
+      from information_schema.columns c
+     where c.table_schema = 'public'
+       and c.is_nullable = 'NO'
+       and c.column_default is null
+       and (
+         (c.table_name = 'menu_categories'
+           and c.column_name in ('slug', 'description', 'display_order'))
+         or
+         (c.table_name = 'menu_dishes'
+           and c.column_name in ('image_url', 'is_active', 'price',
+                                 'is_available', 'is_signature', 'display_order'))
+       )
+  loop
+    execute format('alter table public.%I alter column %I drop not null',
+                   legacy.table_name, legacy.column_name);
+  end loop;
+
+  -- The dish key. An early loader numbered the rows `dish-1`, `dish-2`, … and
+  -- the app has never written the column, so a key with no default refuses
+  -- every dish saved from the admin panel. Added only when there really is
+  -- none, and typed to match the column the project actually has.
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'menu_dishes'
+       and column_name = 'id' and column_default is not null
+  ) then
+    select data_type into id_type
+      from information_schema.columns
+     where table_schema = 'public' and table_name = 'menu_dishes'
+       and column_name = 'id';
+    if id_type = 'uuid' then
+      execute 'alter table public.menu_dishes alter column id set default gen_random_uuid()';
+    elsif id_type is not null then
+      execute 'alter table public.menu_dishes alter column id set default gen_random_uuid()::text';
+    end if;
+  end if;
+end $$;
+
 -- Keep the High Tea offer and both service slots in the same admin-managed
 -- content table used by the guest site.
 create table if not exists public.site_content (
@@ -86,6 +177,14 @@ on conflict (id) do nothing;
 update public.menu_categories
 set active = false
 where id in ('bbq', 'handi', 'tandoor', 'fast-bites', 'desserts', 'street-tandoor', 'meetha-station', 'salads-desserts');
+
+-- The anonymous ids a first-pass loader invented (`cat-1`, `cat-2`, …). Their
+-- rows stay for the record, but a retired counter is not published, so the
+-- guest menu holds exactly the sixteen official sections above and no dish
+-- appears twice.
+update public.menu_categories
+set active = false
+where id like 'cat-%';
 
 -- ---------------------------------------------------------------------------
 -- 2. Official active sections: nine live counters followed by seven main-menu

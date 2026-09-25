@@ -1,6 +1,11 @@
 -- ============================================================================
 --  Janoon — Supabase schema
 --  Paste this whole file into the Supabase SQL editor and run it once.
+--
+--  A project created by an earlier copy of this file is repaired by
+--  supabase/official-menu.sql: its section 1a lifts the requirements those
+--  revisions left on columns the app has never written, gives the dish key a
+--  default, and creates the counter hero-image table.
 --  It is idempotent: re-running it will not drop or duplicate anything.
 --
 --  Timestamps are stored as milliseconds since the epoch (bigint) so the

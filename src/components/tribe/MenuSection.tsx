@@ -4,8 +4,9 @@ import {
   SectionDivider,
   SectionHeading,
 } from "@/components/tribe/SectionHeading";
+import { SmartImage } from "@/components/tribe/SmartImage";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
-import { MAIN_MENU_IDS, formatPkr } from "@/lib/menu";
+import { MAIN_MENU_IDS, formatPkr, photoThumb } from "@/lib/menu";
 import { motion } from "framer-motion";
 import { Link } from "react-router";
 
@@ -117,35 +118,53 @@ export function MenuSection() {
                       const price = unitPrice(dish);
                       const tags = tagsFor(dish, price);
                       return (
-                        <li key={dish.slug} className="flex flex-col gap-1.5 py-4">
-                          <div className="flex items-baseline justify-between gap-4">
-                            <Link
-                              to={`/menu/${dish.slug}`}
-                              className="font-display text-base leading-snug font-medium transition-colors hover:text-gold"
-                            >
-                              {dish.name}
-                            </Link>
-                            <span className="shrink-0 text-sm font-medium text-gold tabular-nums">
-                              {price > 0 ? formatPkr(price) : "Included"}
-                            </span>
-                          </div>
-                          {dish.summary ? (
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              {dish.summary}
-                            </p>
-                          ) : null}
-                          {tags.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                              {tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="rounded-full border border-gold/20 bg-gold/[0.06] px-2 py-0.5 text-[0.6rem] tracking-[0.14em] text-gold/80 uppercase"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
+                        <li key={dish.slug} className="flex items-start gap-3.5 py-4">
+                          {/* The dish's own photograph, rounded down to a brass
+                              thumbnail. `photoThumb` pulls the seeded demo photo
+                              back to a small width; a dish the kitchen has not
+                              photographed yet gets SmartImage's maroon-and-gold
+                              tile rather than a hole in the list. */}
+                          <span
+                            aria-hidden
+                            className="size-12 shrink-0 overflow-hidden rounded-xl border border-border/60"
+                          >
+                            <SmartImage
+                              src={photoThumb(dish.image, 160)}
+                              alt=""
+                              glyphClassName="size-4"
+                              className="size-full object-cover"
+                            />
+                          </span>
+                          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                            <div className="flex items-baseline justify-between gap-4">
+                              <Link
+                                to={`/menu/${dish.slug}`}
+                                className="font-display text-base leading-snug font-medium transition-colors hover:text-gold"
+                              >
+                                {dish.name}
+                              </Link>
+                              <span className="shrink-0 text-sm font-medium text-gold tabular-nums">
+                                {price > 0 ? formatPkr(price) : "Included"}
+                              </span>
                             </div>
-                          ) : null}
+                            {dish.summary ? (
+                              <p className="text-xs leading-relaxed text-muted-foreground">
+                                {dish.summary}
+                              </p>
+                            ) : null}
+                            {tags.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {tags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="rounded-full border border-gold/20 bg-gold/[0.06] px-2 py-0.5 text-[0.6rem] tracking-[0.14em] text-gold/80 uppercase"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
                         </li>
                       );
                     })}

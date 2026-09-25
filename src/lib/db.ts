@@ -563,24 +563,43 @@ export async function seedMenuCatalog(): Promise<{
     );
   }
 
-  // The previous starter catalogue used these five ids. When the owner opens
-  // the panel against that old, empty menu, leave the rows in place for any
-  // historical item but switch the obsolete sections off so the official
-  // eleven-section structure is the only published menu.
-  const officialCategoryIds = new Set(MENU_CATEGORIES.map((category) => category.id));
+  // Sections a previous catalogue published that this one does not. They are
+  // switched off rather than deleted, so an item that lived under one keeps
+  // its row — and a counter the owner made themselves is never touched: the
+  // list is exact ids plus the anonymous `cat-1`, `cat-2`, … a first-pass
+  // loader invented, never "everything that is not official".
+  const officialCategoryIds = new Set<string>(
+    MENU_CATEGORIES.map((category) => category.id),
+  );
+  const legacyCategoryIds = [...knownCategories].filter((id) =>
+    /^cat-\d+$/.test(id),
+  );
   const supersededCategoryIds = [
     "bbq",
     "handi",
     "tandoor",
     "fast-bites",
     "desserts",
-  ].filter((id) => !officialCategoryIds.has(id as (typeof MENU_CATEGORIES)[number]["id"]));
-  if (supersededCategoryIds.length > 0) {
+  ].filter((id) => !officialCategoryIds.has(id));
+  const retiringCategoryIds = [...supersededCategoryIds, ...legacyCategoryIds];
+
+  if (retiringCategoryIds.length > 0) {
     const { error } = await supabase
       .from(TABLES.categories)
       .update({ active: false, updated_at: Date.now() })
-      .in("id", supersededCategoryIds);
+      .in("id", retiringCategoryIds);
     fail(error, "Could not retire the previous starter counters.");
+  }
+
+  // A dish still sitting in a retired section must not hold a place in the
+  // Signature strip, which reads every featured row whatever counter it is
+  // under. Its own row is left exactly as it is.
+  if (legacyCategoryIds.length > 0) {
+    const { error } = await supabase
+      .from(TABLES.dishes)
+      .update({ featured: false, updated_at: Date.now() })
+      .in("category_id", legacyCategoryIds);
+    fail(error, "Could not clear the signatures off the retired counters.");
   }
 
   const knownDishes = await existingKeys(TABLES.dishes, "slug");
