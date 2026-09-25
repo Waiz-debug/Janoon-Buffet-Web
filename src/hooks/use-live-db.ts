@@ -2,6 +2,7 @@ import {
   fetchAddOnCategories,
   fetchAddOns,
   fetchCategories,
+  fetchCounterMedia,
   fetchDeliveryOrder,
   fetchDeliveryOrders,
   fetchDishes,
@@ -19,6 +20,7 @@ import {
   fetchAllPreOrderItems,
   type AddOnCategoryRow,
   type AddOnRow,
+  type CounterMediaRow,
   type DeliveryOrder,
   type MenuCategoryRow,
   type MenuDishRow,
@@ -125,6 +127,19 @@ export function usePublicMenu() {
 
 export function useSiteMedia(): SiteMediaRow[] | undefined {
   return useLiveTable<SiteMediaRow>(TABLES.siteMedia, fetchSiteMedia, "public");
+}
+
+/**
+ * The hero image attached to each counter. Subscribes to the same realtime
+ * channel as the rest of the admin-managed catalogue, so a replacement uploaded
+ * from the admin panel shows up on the guest site without a reload.
+ */
+export function useCounterMedia(): CounterMediaRow[] | undefined {
+  return useLiveTable<CounterMediaRow>(
+    TABLES.counterMedia,
+    fetchCounterMedia,
+    "public",
+  );
 }
 
 /** The published add-on board for the public site. */

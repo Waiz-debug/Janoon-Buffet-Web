@@ -37,6 +37,7 @@ export const TABLES = {
   /** Admin-created headings for the Traditional Add-ons board. */
   addonCategories: "addon_categories",
   siteMedia: "site_media",
+  counterMedia: "counter_media",
   siteContent: "site_content",
   deliveryOrders: "delivery_orders",
   reservations: "reservations",

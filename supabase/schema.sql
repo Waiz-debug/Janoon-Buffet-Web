@@ -55,6 +55,19 @@ create table if not exists public.site_media (
   updated_at  bigint not null default 0
 );
 
+-- Hero image attached to a counter (one row per counter id).
+-- Used by the admin Counters tab and the public counter section.
+-- Same storage model as site_media: `url` for a legacy/demo image, `image_path`
+-- for an uploaded object that owns the graphic outright.
+create table if not exists public.counter_media (
+  slot        text primary key,
+  caption     text,
+  url         text,
+  image_path  text,
+  demo        boolean not null default false,
+  updated_at  bigint not null default 0
+);
+
 -- Editable copy that is not a photo — the seating counter under "The
 -- Experience", and room for any future headline or note the owner wants to
 -- change without a redeploy. One row per key; `key` is the stable identifier
@@ -284,8 +297,8 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
-    'site_media', 'site_content', 'delivery_orders', 'reservations',
-    'promotions', 'preorders', 'pre_order_items'
+    'site_media', 'counter_media', 'site_content', 'delivery_orders',
+    'reservations', 'promotions', 'preorders', 'pre_order_items'
   ]
   loop
     begin
@@ -1088,7 +1101,8 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
-    'site_media', 'site_content', 'promotions', 'pre_order_items'
+    'site_media', 'counter_media', 'site_content', 'promotions',
+    'pre_order_items'
   ]
   loop
     -- Legacy catch-all (PIN era).

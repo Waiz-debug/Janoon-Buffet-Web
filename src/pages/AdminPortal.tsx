@@ -259,6 +259,7 @@ export default function AdminPortal() {
         </TabsContent>
 
         <TabsContent value="photos" className="flex flex-col gap-8">
+          <CounterHeroManager />
           <HeroPhotoManager />
           <ExperienceManager />
           <SignaturePhotoManager

@@ -950,6 +950,129 @@ export async function clearSiteMedia(slot: string): Promise<void> {
   fail(error, "Could not clear the slot.");
 }
 
+/* ------------------------------------------------------------------ */
+/* Counter media                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One hero image per counter, stored the same way as the gallery and the promo
+ * banners — one row per stable slot, with `url` for a demo/legacy image and
+ * `image_path` for an uploaded object that owns the graphic outright.
+ *
+ * The slot is the counter id, so a counter has exactly one hero image and
+ * replacing it overwrites that one row rather than leaving the old one behind.
+ */
+export type CounterMediaRow = {
+  _id: string;
+  slot: string;
+  caption?: string;
+  url?: string;
+  imageStorageId?: string;
+  demo: boolean;
+};
+
+type CounterMediaDb = {
+  slot: string;
+  caption: string | null;
+  url: string | null;
+  image_path: string | null;
+  demo: boolean | null;
+};
+
+function toCounterMedia(row: CounterMediaDb): CounterMediaRow {
+  return {
+    _id: row.slot,
+    slot: row.slot,
+    caption: row.caption ?? undefined,
+    url: row.url || mediaUrl(row.image_path) || undefined,
+    imageStorageId: row.image_path ?? undefined,
+    demo: row.demo ?? false,
+  };
+}
+
+/** The hero image attached to each counter, if any. */
+export async function fetchCounterMedia(): Promise<CounterMediaRow[]> {
+  const rows = await selectRows<CounterMediaDb>(
+    TABLES.counterMedia,
+    undefined,
+    "slot, caption, url, image_path, demo",
+  );
+  return rows.map(toCounterMedia);
+}
+
+/**
+ * Attach a hero image to a counter. An upload clears any legacy `url` and
+ * takes over, so the row the guest site reads back always prefers the uploaded
+ * object once one exists.
+ */
+export async function setCounterImage(
+  counterId: string,
+  imagePath: string,
+  caption?: string,
+): Promise<string> {
+  const { error } = await supabase
+    .from(TABLES.counterMedia)
+    .upsert(
+      {
+        slot: counterId,
+        caption: caption ?? null,
+        url: null,
+        image_path: imagePath,
+        demo: false,
+        updated_at: Date.now(),
+      },
+      { onConflict: "slot" },
+    );
+  fail(error, "Could not publish the counter image.");
+  return mediaUrl(imagePath) ?? "";
+}
+
+/** Replace a counter's hero image, cleaning up the previous upload first. */
+export async function replaceCounterImage(
+  counterId: string,
+  imagePath: string,
+  caption?: string,
+): Promise<string> {
+  const previous = await selectRows<{ image_path: string | null }>(
+    TABLES.counterMedia,
+    (q) => q.eq("slot", counterId).limit(1),
+    "image_path",
+  );
+  await removeStoredObject(previous[0]?.image_path);
+
+  const { error } = await supabase
+    .from(TABLES.counterMedia)
+    .upsert(
+      {
+        slot: counterId,
+        caption: caption ?? null,
+        url: null,
+        image_path: imagePath,
+        demo: false,
+        updated_at: Date.now(),
+      },
+      { onConflict: "slot" },
+    );
+  fail(error, "Could not update the counter image.");
+  return mediaUrl(imagePath) ?? "";
+}
+
+/** Remove a counter's hero image and the uploaded file behind it. */
+export async function removeCounterImage(counterId: string): Promise<void> {
+  const previous = await selectRows<{ image_path: string | null }>(
+    TABLES.counterMedia,
+    (q) => q.eq("slot", counterId).limit(1),
+    "image_path",
+  );
+  await removeStoredObject(previous[0]?.image_path);
+
+  const { error } = await supabase
+    .from(TABLES.counterMedia)
+    .delete()
+    .eq("slot", counterId);
+  fail(error, "Could not clear the counter image.");
+}
+
 /**
  * Editable copy (the seating counter and anything similar). Read as a list of
  * rows rather than a map so it can ride the same realtime table subscription
