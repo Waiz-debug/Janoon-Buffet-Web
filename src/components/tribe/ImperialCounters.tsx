@@ -38,7 +38,7 @@ const STATION_BADGE: Record<MenuIcon, string> = {
  * without scrolling the spread.
  */
 export function ImperialCounters() {
-  const { counters, unitPrice, content, menuReady } = useLiveSite();
+  const { counters, unitPrice, content, menuReady, counterImage } = useLiveSite();
   const { add } = useCart();
   /** `null` shows every counter — what the guest sees on opening. */
   const [only, setOnly] = useState<string | null>(null);
@@ -124,6 +124,12 @@ export function ImperialCounters() {
               const dishes = counter.items.filter((dish) => !dish.featured);
               const face: LiveDish | undefined = dishes[0];
               const price = face ? unitPrice(face) : 0;
+              // The station's own photograph when the owner uploaded one from
+              // the admin panel; otherwise the face of the first dish on it, so
+              // a counter is never shown as an empty tile.
+              const hero =
+                counterImage(counter.id) ||
+                (face ? photoThumb(face.image ?? "", 800) : "");
 
               return (
                 <motion.article
@@ -140,7 +146,7 @@ export function ImperialCounters() {
                 >
                   <div className="relative aspect-[16/10] overflow-hidden">
                     <SmartImage
-                      src={photoThumb(face?.image ?? "", 800)}
+                      src={hero}
                       alt={face?.name ?? counter.name}
                       className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />

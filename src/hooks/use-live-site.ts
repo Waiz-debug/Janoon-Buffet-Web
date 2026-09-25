@@ -1,4 +1,5 @@
 import {
+  useCounterMedia,
   usePublicAddOnCategories,
   usePublicAddOns,
   usePublicMenu,
@@ -125,6 +126,7 @@ function toDish(row: MenuDishRow): LiveDish {
 export function useLiveSite() {
   const { categories: liveCategories, dishes: liveDishes } = usePublicMenu();
   const mediaRows = useSiteMedia();
+  const counterMediaRows = useCounterMedia();
   const contentRows = useSiteContent();
   const addonRows = usePublicAddOns();
   const addonCategoryRows = usePublicAddOnCategories();
@@ -138,6 +140,24 @@ export function useLiveSite() {
     }
     return map;
   }, [mediaRows]);
+
+  /**
+   * The hero image the owner uploaded for each counter, keyed by counter id.
+   *
+   * One row per counter in `counter_media` — the slot *is* the counter id — so
+   * the guest counter widget shows the photograph the kitchen chose for that
+   * station, and replacing it in the panel swaps the picture on the next render
+   * instead of leaving a stale one behind.
+   */
+  const counterImages = useMemo<LiveMedia>(() => {
+    const map: LiveMedia = {};
+    for (const row of counterMediaRows ?? []) {
+      const url = row.url || mediaUrl(row.imageStorageId);
+      if (!url) continue;
+      map[row.slot] = { url, caption: row.caption };
+    }
+    return map;
+  }, [counterMediaRows]);
 
   const data = useMemo(() => {
     const firstPaint = {
@@ -210,6 +230,16 @@ export function useLiveSite() {
   /** The admin-uploaded photo for a slot, or the built-in default. */
   const mediaOr = (slot: string, fallback: string): string =>
     media[slot]?.url ?? fallback;
+
+  /**
+   * The admin-uploaded hero for one counter, or the fallback it was handed.
+   *
+   * Read by the counter widget on the guest site, so a station the owner gave a
+   * photograph to shows that photograph — and one they have not photographed
+   * yet falls back to the face of its first dish rather than an empty tile.
+   */
+  const counterImage = (counterId: string, fallback = ""): string =>
+    counterImages[counterId]?.url ?? fallback;
 
   /**
    * The gallery strip — a fixed six tiles, one per `gallery-N` slot. Each tile
@@ -330,8 +360,10 @@ export function useLiveSite() {
     menuReady,
     hasPublishedMenu,
     media,
+    counterImages,
     heroImage: media[HERO_MEDIA.slot]?.url,
     mediaOr,
+    counterImage,
     addons,
     addonGroups,
     content,

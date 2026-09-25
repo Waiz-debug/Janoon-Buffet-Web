@@ -227,7 +227,9 @@ export default function AdminPortal() {
               manages the seven official main-menu sections — chef specials,
               starters, vegetables, tandoor breads, salads and desserts, plus
               drinks — so every item is mapped to the right place in the guest
-              menu and can be switched live.
+              menu and can be switched live. Each counter's own hero photo is
+              uploaded and replaced from the Photos tab, and it is the picture
+              its card wears on the guest site.
             </p>
           </div>
           <CountersManager categories={categories} dishes={dishes} />

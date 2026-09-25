@@ -138,8 +138,8 @@ export function SetupNotice() {
 
       {!status.storageReady ? (
         <p className="rounded-xl border border-border/70 bg-background/40 p-4 text-sm text-muted-foreground">
-          The <span className="font-mono text-xs">tribe-media</span> storage
-          bucket is not reachable either, so image uploads will fail.{" "}
+          The photo storage is not reachable either, so image uploads will
+          fail.{" "}
           {status.storageMessage ? (
             <span className="opacity-80">({status.storageMessage})</span>
           ) : null}
