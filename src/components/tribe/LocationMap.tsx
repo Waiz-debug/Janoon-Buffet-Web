@@ -16,7 +16,7 @@ const INFO_ITEMS = [
   {
     icon: MapPin,
     title: "Find us",
-    // Both courtyards, named as the brand sheet names them.
+    // The house, named as the brand sheet names it.
     lines: LOCATIONS.map((venue) => `${venue.name} · ${venue.address}`),
     action: {
       label: "Open in Google Maps",
@@ -58,7 +58,7 @@ export function LocationMap() {
           {/* Map embed */}
           <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card/40">
             <iframe
-              title="Janoon location on Google Maps"
+              title="Junoon location on Google Maps"
               src={MAPS_EMBED_URL}
               width="100%"
               height="400"
@@ -90,7 +90,7 @@ export function LocationMap() {
                   Visit us in {LOCATIONS.map((venue) => venue.city).join(" & ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Open-air courtyards with parking alongside
+                  Open-air courtyard with parking alongside
                 </p>
               </div>
             </div>

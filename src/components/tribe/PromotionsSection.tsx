@@ -3,6 +3,7 @@ import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { Button } from "@/components/ui/button";
 import { usePromotions } from "@/hooks/use-live-db";
+import { PROMO_PLACEHOLDER_PHOTOS } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import { ArrowUpRight, CalendarClock, Sparkles, Tag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -76,11 +77,17 @@ export function PromotionsSection() {
               }}
               className="group flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/60 transition-colors duration-300 hover:border-gold/40"
             >
-              {/* Graphic. An entry without one still gets a themed tile and the
-                  same layout, so the board never looks half-built. */}
+              {/* Graphic. The owner's uploaded artwork wins; an entry that has
+                  not been given one yet shows a fine-dining house photo, so
+                  the board of offers always looks finished. */}
               <div className="relative aspect-[16/10] overflow-hidden">
                 <SmartImage
-                  src={promo.imageUrl ?? ""}
+                  src={
+                    promo.imageUrl ??
+                    PROMO_PLACEHOLDER_PHOTOS[
+                      index % PROMO_PLACEHOLDER_PHOTOS.length
+                    ]
+                  }
                   alt={promo.headline}
                   className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                 />
@@ -144,7 +151,7 @@ export function PromotionsSection() {
                       className="gap-1.5 text-gold hover:text-gold"
                     >
                       <a href="#reserve">
-                        Book buffet
+                        Book Buffet
                         <Sparkles className="size-3.5" aria-hidden />
                       </a>
                     </Button>

@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — post-migration verification
+--  Junoon — post-migration verification
 --
 --  Run this in the Supabase SQL editor immediately AFTER supabase/schema.sql.
 --  It changes nothing; it only reports what exists.

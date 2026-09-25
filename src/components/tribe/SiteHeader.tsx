@@ -110,7 +110,7 @@ export function SiteHeader() {
             className="hidden h-11 gap-2 bg-accent px-5 text-[0.7rem] tracking-[0.16em] text-accent-foreground uppercase hover:bg-accent/90 sm:inline-flex"
           >
             <CalendarCheck className="size-4" aria-hidden />
-            Reserve a table
+            Reserve a Table
           </Button>
           <button
             type="button"
@@ -151,7 +151,7 @@ export function SiteHeader() {
                   className="h-11 w-full gap-2"
                 >
                   <CalendarCheck className="size-4" aria-hidden />
-                  Reserve a table
+                  Reserve a Table
                 </Button>
                 <Button
                   type="button"

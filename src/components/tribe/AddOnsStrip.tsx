@@ -1,9 +1,13 @@
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite, type LiveAddOn } from "@/hooks/use-live-site";
-import { formatRupees } from "@/lib/menu";
+import {
+  ADDON_GROUP_PHOTOS,
+  DEFAULT_DISH_PHOTO,
+  formatRupees,
+} from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { Check, Plus, Snowflake } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -77,6 +81,13 @@ export function AddOnsStrip() {
                 <div className="flex flex-wrap gap-2">
                   {items.map((addon, index) => {
                     const justAdded = addedIds.has(addon.id);
+                    // The item's own photo, or the photo of the group it sits
+                    // in, or the house plate — so every pill carries a picture
+                    // of food and none of them is an empty square.
+                    const photo =
+                      addon.image ||
+                      ADDON_GROUP_PHOTOS[addon.group] ||
+                      DEFAULT_DISH_PHOTO;
                     return (
                       <motion.button
                         key={addon.id}
@@ -87,32 +98,20 @@ export function AddOnsStrip() {
                         transition={{ duration: 0.3, delay: index * 0.04 }}
                         onClick={() => handleAdd(addon)}
                         className={cn(
-                          "inline-flex items-center gap-2 rounded-xl border py-2.5 pr-4 text-sm transition-all",
-                          addon.image ? "pl-2" : "pl-4",
+                          "inline-flex items-center gap-2 rounded-xl border py-2.5 pr-4 pl-2 text-sm transition-all",
                           justAdded
                             ? "border-gold/40 bg-gold/10 text-gold"
                             : "border-border/70 bg-card/40 text-foreground hover:border-gold/30 hover:bg-gold/[0.06]",
                         )}
                       >
-                        {addon.image ? (
-                          <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-background/60">
-                            <img
-                              src={addon.image}
-                              alt=""
-                              className="size-full object-cover"
-                              loading="lazy"
-                            />
-                          </span>
-                        ) : justAdded ? (
-                          <Check className="size-3.5" aria-hidden />
-                        ) : addon.chilled ? (
-                          <Snowflake
-                            className="size-3.5 text-gold/60"
-                            aria-hidden
+                        <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-background/60">
+                          <img
+                            src={photo}
+                            alt=""
+                            className="size-full object-cover"
+                            loading="lazy"
                           />
-                        ) : (
-                          <Plus className="size-3.5" aria-hidden />
-                        )}
+                        </span>
                         <span className="font-medium">{addon.name}</span>
                         <span className="text-xs text-muted-foreground">
                           {formatRupees(addon.price)}

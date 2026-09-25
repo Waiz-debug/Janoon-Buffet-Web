@@ -141,10 +141,8 @@ export function ContactFooter() {
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
               An intimate sanctuary of Mughal gastronomy — brass and copper
-              kitchens, angith coal and a dastarkhwan that never empties, kept in
-              the open air of              {RESTAURANT.cityNames}.
-            
-            
+              kitchens, angith coal and a dastarkhwan that never empties, kept
+              in the open air of {RESTAURANT.cityNames}.
             </p>
             <p dir="rtl" className="font-display text-base text-gold/80">
               {RESTAURANT.urdu}
@@ -165,15 +163,16 @@ export function ContactFooter() {
             </div>
           </div>
 
-          {/* The sanctuaries */}
+          {/* The house */}
           <div className="flex flex-col gap-5">
             <h3 className="font-display text-sm font-semibold tracking-[0.18em] text-gold uppercase">
-              Imperial sanctuaries
+              Find the house
             </h3>
             <div className="flex flex-col gap-3 text-sm">
-              {/* Both courtyards, straight from `LOCATIONS` — the address and
-                  the map pin a guest reads here are the same values the
-                  reservation desk and the map section use. */}
+              {/* Straight from `LOCATIONS` — the address and the map pin a
+                  guest reads here are the same values the reservation desk and
+                  the map section use, so a second house would appear in all
+                  three without touching a component. */}
               {LOCATIONS.map((venue, index) => (
                 <div
                   key={venue.id}
@@ -222,7 +221,7 @@ export function ContactFooter() {
                   onClick={() => goToSection("reserve")}
                   className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-gold underline-offset-4 hover:underline"
                 >
-                  Reserve the chamber
+                  Reserve the Chamber
                   <ArrowRight className="size-3.5" aria-hidden />
                 </button>
               </div>

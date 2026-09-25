@@ -119,7 +119,7 @@ export function ReservationSection() {
               <header className="mb-6 flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[0.6rem] tracking-[0.28em] text-gold/80 uppercase">
-                    Dastarkhwan reservation
+                    Table reservation
                   </p>
                   <h3 className="mt-1 font-display text-xl font-semibold">
                     Secure your courtly table

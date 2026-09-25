@@ -404,7 +404,7 @@ export default function AuthLanding() {
             className="mt-6 font-display text-5xl leading-[1.02] font-semibold tracking-tight text-balance sm:text-7xl"
           >
             <span className="bg-gradient-to-r from-gold via-gold to-ember bg-clip-text text-transparent">
-              Janoon
+              Junoon
             </span>
           </motion.h1>
 
@@ -565,7 +565,7 @@ export default function AuthLanding() {
           </div>
 
           <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
-            © {new Date().getFullYear()} Janoon · Pakistani Restaurant
+            © {new Date().getFullYear()} Junoon · Pakistani Restaurant
           </p>
         </motion.div>
       </footer>
@@ -703,12 +703,12 @@ function SignInModal({
         />
 
         {/*
-          The house mark, so the door is unmistakably Janoon's — the same
+          The house mark, so the door is unmistakably Junoon's — the same
           artwork as the apple-touch tile and the manifest icons, not a
           stand-in icon.
         */}
         <div className="relative flex flex-col items-center text-center">
-          <JanoonMark className="size-14 rounded-lg" alt="Janoon" />
+          <JanoonMark className="size-14 rounded-lg" alt="Junoon" />
           <span className="mt-3 inline-flex items-center gap-2 text-gold/80">
             <RoleIcon className="size-3.5" aria-hidden />
             <span className="text-[0.62rem] font-medium tracking-[0.26em] uppercase">

@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — Supabase schema
+--  Junoon — Supabase schema
 --  Paste this whole file into the Supabase SQL editor and run it once.
 --
 --  A project created by an earlier copy of this file is repaired by

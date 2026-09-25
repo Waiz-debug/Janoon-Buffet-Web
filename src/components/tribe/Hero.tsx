@@ -138,7 +138,7 @@ export function Hero() {
               className="h-12 w-full gap-2 border-gold/30 bg-background/40 backdrop-blur hover:bg-secondary/60 sm:w-auto"
             >
               <CalendarCheck className="size-4" aria-hidden />
-              Reserve dastarkhwan
+              Reserve a Table
             </Button>
           </motion.div>
         </motion.div>

@@ -105,11 +105,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <div className="mb-4 mt-4 flex justify-center">
                   <button
                     type="button"
-                    aria-label="Back to the Janoon website"
+                    aria-label="Back to the Junoon website"
                     onClick={() => navigate("/")}
                     className="flex cursor-pointer items-center justify-center rounded-lg transition-opacity hover:opacity-85"
                   >
-                    <JanoonMark className="size-14" alt="Janoon" />
+                    <JanoonMark className="size-14" alt="Junoon" />
                   </button>
                 </div>
                 <p className="text-[0.65rem] font-medium tracking-[0.24em] text-gold/80 uppercase">

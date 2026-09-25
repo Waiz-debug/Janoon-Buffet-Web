@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — reset every staff and admin account
+--  Junoon — reset every staff and admin account
 --
 --  THIS IS THE VISIBLE COPY OF supabase/reset-staff-accounts.sql
 --  (the file index in this project hides .sql files, so this .txt twin exists

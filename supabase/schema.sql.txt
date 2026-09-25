@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — Supabase schema
+--  Junoon — Supabase schema
 --
 --  NOTE: this file differs from supabase/schema.sql only by the SQL-Editor-only
 --  `factory_reset_staff()` block at the very end, whose comment is out of date:

@@ -237,7 +237,7 @@ export default function ManageBooking() {
                   <Button asChild className="gap-2">
                     <Link to="/#reserve">
                       <CalendarCheck className="size-4" aria-hidden />
-                      Book another table
+                      Book Another Table
                     </Link>
                   </Button>
                   <Button

@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — admin recovery runbook
+--  Junoon — admin recovery runbook
 --
 --  The Admin Portal decides whether to offer "Create Admin Account" from one
 --  database fact and nothing else:

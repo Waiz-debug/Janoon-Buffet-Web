@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — claim_admin_for_email migration
+--  Junoon — claim_admin_for_email migration
 --
 --  Run this ENTIRE file in the Supabase SQL Editor (Dashboard → SQL Editor).
 --  It adds a single function that lets the "Create Admin Account" flow work

@@ -34,7 +34,7 @@ export function LogoDropdown() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-10 w-10">
-          <JanoonMark className="size-8" alt="Janoon" />
+          <JanoonMark className="size-8" alt="Junoon" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">

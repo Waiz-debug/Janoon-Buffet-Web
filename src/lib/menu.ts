@@ -197,7 +197,7 @@ const makeDish = ([slug, name, urdu, categoryId, summary, image, price]: DishSee
   urdu,
   categoryId,
   summary,
-  description: `${summary} Prepared fresh by the Janoon kitchen and served with the care befitting the house.`,
+  description: `${summary} Prepared fresh by the Junoon kitchen and served with the care befitting the house.`,
   notes: [],
   pairings: [],
   image,
@@ -343,12 +343,40 @@ export const ADDONS: AddOn[] = [
   { id: "water-bottle", name: "Mineral Water", urdu: "منرل واٹر", price: 60, group: "cold", chilled: true },
 ];
 
+/**
+ * The fine-dining placeholder every item falls back to when it has no photo of
+ * its own.
+ *
+ * The admin panel can upload a real photo for any dish, add-on or pre-order
+ * item; until it does, the item shows the photo of the food it belongs to
+ * rather than an empty tile, so a freshly seeded site looks finished and a
+ * guest is never shown a blank card.
+ */
+export const DEFAULT_DISH_PHOTO = IMG.grillPlate;
+
+/** One placeholder per add-on group — naan for breads, tea for drinks, … */
+export const ADDON_GROUP_PHOTOS: Record<string, string> = {
+  bread: IMG.breadBasket,
+  side: IMG.salad,
+  drink: IMG.tea,
+  cold: IMG.lemonade,
+};
+
 export const PREORDER_CATEGORIES = [
   { id: "slow-cooked", label: "Slow-cooked & Handi", urdu: "دم پخت و ہانڈی" },
   { id: "grills", label: "Grills & Roast", urdu: "گرل و روسٹ" },
   { id: "platters", label: "Party Platters", urdu: "پارٹی پلیٹر" },
   { id: "sweets", label: "Desserts & Sweets", urdu: "میٹھا" },
 ] as const;
+/** One placeholder per pre-order category — a handi, a roast, a platter, a
+ *  sweet — until the kitchen uploads the real photograph. */
+export const PREORDER_CATEGORY_PHOTOS: Record<string, string> = {
+  "slow-cooked": IMG.karahi,
+  grills: IMG.grilled,
+  platters: IMG.meatBoard,
+  sweets: IMG.mithai,
+};
+
 export type PreOrderCategoryId = (typeof PREORDER_CATEGORIES)[number]["id"];
 export function preOrderCategoryLabel(id: string): string {
   return PREORDER_CATEGORIES.find((category) => category.id === id)?.label ?? "Pre-order";

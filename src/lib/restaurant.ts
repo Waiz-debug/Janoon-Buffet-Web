@@ -2,13 +2,15 @@
  * JUNOON — single source of truth for public site content.
  *
  * Identity, in one place: the house name, its descriptor, the Urdu line and
- * both venues. Every heading, footer, page title and meta tag in the app reads
+ * the Gulberg address. Every heading, footer, page title and meta tag reads
  * from here, so correcting the business means editing this block and nothing
  * else.
  *
- * Photos: swap these Unsplash placeholders for real photos of the seating area
- * and live counters. Every image degrades to a themed tile if it fails to load,
- * so the layout never breaks.
+ * Photos: the Unsplash photos below are the fine-dining placeholders every
+ * image slot falls back to, so a fresh install still looks like a finished
+ * restaurant — swap them for real photos of the seating area and live counters
+ * whenever they are ready. Every image degrades to a themed tile if it fails
+ * to load, so the layout never breaks.
  */
 
 const unsplash = (id: string, width = 1000) =>
@@ -28,9 +30,9 @@ const PHONE_HREF = "tel:+923334363996";
  * kitchen actually works to.
  */
 export const RESTAURANT = {
-  name: "Janoon",
-  fullName: "Janoon — Imperial Dining & High Tea",
-  legalName: "Janoon Imperial Dining Ltd.",
+  name: "Junoon",
+  fullName: "Junoon — Imperial Dining & High Tea",
+  legalName: "Junoon Imperial Dining Ltd.",
   descriptor: "Imperial dining & high tea",
   /** The house's own line, kept in the singular for sentence use. */
   tagline: "Imperial dining & high tea",
@@ -44,10 +46,10 @@ export const RESTAURANT = {
   whatsappDisplay: PHONE_DISPLAY,
   /** This restaurant's address — keep exact; cover art prints it. */
   address: "487-B, Mangam Chowk, Gulberg III, Lahore",
-  /** Both dining houses, as one line for the eyebrow and page titles. */
-  cityLine: "Lahore · Islamabad",
-  /** The same two houses as prose, for sentences. */
-  cityNames: "Lahore and Islamabad",
+  /** The one house, as a line for the eyebrow and page titles. */
+  cityLine: "Gulberg III, Lahore",
+  /** The same house as prose, for sentences. */
+  cityNames: "Lahore",
   hours: "12:00 pm – 12:00 am, every day",
   /** The three sittings the floor runs to. Read by the footer and the hero. */
   service: {
@@ -58,27 +60,26 @@ export const RESTAURANT = {
   rating: 4.6,
   reviewCount: 72,
   buffetRange: "Rs 2,000 – 3,000",
-  instagramHandle: "@janoon.pk",
-  instagramUrl:
-    "https://www.instagram.com/janoon.pk",
-  facebookUrl: "https://www.facebook.com/janoon.pk/",
-  tiktokUrl: "https://www.tiktok.com/@janoon.pk",
+  instagramHandle: "@junoon.pk",
+  instagramUrl: "https://www.instagram.com/junoon.pk",
+  facebookUrl: "https://www.facebook.com/junoon.pk/",
+  tiktokUrl: "https://www.tiktok.com/@junoon.pk",
   mapsUrl:
-    "https://www.google.com/maps/search/?api=1&query=Janoon+Gulberg+III+Lahore",
+    "https://www.google.com/maps/search/?api=1&query=Junoon+Gulberg+III+Lahore",
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
 } as const;
 
 /**
- * Both imperial sanctuaries.
+ * The one imperial sanctuary.
  *
- * Taken from the brand sheet: the house cooks in Lahore (Gulberg) and Islamabad
- * (F-7). The street line is the part to double-check — a courier, a taxi driver
- * and a new guest all read this — so it is spelled out here once instead of
- * being repeated across the header, the footer and the map.
+ * The house cooks in Lahore only, at Gulberg III. The street line is the part
+ * to double-check — a courier, a taxi driver and a new guest all read this —
+ * so it is spelled out here once instead of being repeated across the header,
+ * the footer and the map.
  *
- * A venue with no line of its own falls back to the central reservations
- * number, which is why Islamabad carries none: one hotline answers for the
- * house until the second one is published.
+ * The list is kept as a list so a second house could be added without touching
+ * a single component: every venue name, address and map link on the site is
+ * drawn from these entries.
  */
 export type Venue = {
   id: string;
@@ -96,27 +97,18 @@ export type Venue = {
 export const LOCATIONS: readonly Venue[] = [
   {
     id: "lahore",
-    name: "Lahore Court",
+    name: "Gulberg Courtyard",
     city: "Lahore",
     address: "487-B, Mangam Chowk, Gulberg III, Lahore",
-    note: "Flagship courtyard · dastarkhwan & High Tea",
+    note: "Open-air courtyard · dastarkhwan & High Tea",
     phoneDisplay: PHONE_DISPLAY,
     phoneHref: PHONE_HREF,
     mapsUrl:
-      "https://www.google.com/maps/search/?api=1&query=Janoon+Gulberg+III+Lahore",
-  },
-  {
-    id: "islamabad",
-    name: "Islamabad Pavilions",
-    city: "Islamabad",
-    address: "F-7, Islamabad",
-    note: "Pavilion dining · dastarkhwan & High Tea",
-    mapsUrl:
-      "https://www.google.com/maps/search/?api=1&query=Janoon+F-7+Islamabad",
+      "https://www.google.com/maps/search/?api=1&query=Junoon+Gulberg+III+Lahore",
   },
 ];
 
-/** The flagship venue — the one a booking is taken at. */
+/** The house a booking is taken at. */
 export const PRIMARY_VENUE = LOCATIONS[0];
 
 export const BUFFET_TIERS = [
@@ -175,6 +167,19 @@ export const GALLERY = [
   { caption: "Open-air family seating", image: unsplash("photo-1414235077428-338989a2e8c0", 700) },
   { caption: "Gulab jamun & kheer", image: unsplash("photo-1563379091339-03b21ab4a4f8", 700) },
   { caption: "Kulfi falooda", image: unsplash("photo-1544025162-d76694265947", 700) },
+] as const;
+
+/**
+ * Fine-dining placeholders for an offer that has no artwork of its own, in
+ * order, so a board of offers reads as several different offers rather than
+ * the same photo repeated. An upload in the admin panel's Promotions tab
+ * always wins over these.
+ */
+export const PROMO_PLACEHOLDER_PHOTOS = [
+  unsplash("photo-1555939594-58d7cb561ad1", 900),
+  unsplash("photo-1414235077428-338989a2e8c0", 900),
+  unsplash("photo-1517248135467-4c7edcad34c4", 900),
+  unsplash("photo-1600891964092-4316c288032e", 900),
 ] as const;
 
 /**

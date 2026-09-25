@@ -14,6 +14,7 @@ import {
 import {
   ADDONS as STATIC_ADDONS,
   ADDON_GROUPS,
+  DEFAULT_DISH_PHOTO,
   DISHES as STATIC_DISHES,
   MENU_CATEGORIES as STATIC_CATEGORIES,
   SIGNATURE_LIMIT,
@@ -95,11 +96,13 @@ function toDish(row: MenuDishRow): LiveDish {
     description: row.description || staticDish?.description || "",
     notes: row.notes?.length ? row.notes : (staticDish?.notes ?? []),
     pairings: row.pairings?.length ? row.pairings : (staticDish?.pairings ?? []),
-    // The row owns the photo outright — seeded placeholders are copied into
-    // the row at seed time, so clearing it in the admin panel actually clears
-    // it on the site instead of resurrecting the demo image. Empty falls
-    // through to SmartImage's themed tile.
-    image: row.image || "",
+    // The row's own photo wins, always. A row without one — a demo database
+    // seeded before the photos existed, or an item the panel has not been
+    // given a picture for yet — falls back to the built-in catalogue photo for
+    // its slug, so a card on the guest site is never an empty tile. Only a
+    // slug that is not in the catalogue at all (a dish the owner invented)
+    // falls through to SmartImage's themed tile.
+    image: row.image || staticDish?.image || DEFAULT_DISH_PHOTO,
     imageStorageId: row.imageStorageId,
     pricePerPlate: row.pricePerPlate,
     active: row.active,

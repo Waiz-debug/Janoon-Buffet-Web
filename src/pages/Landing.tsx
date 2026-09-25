@@ -64,7 +64,7 @@ export default function Landing() {
             onClick={() => goToSection("reserve")}
           >
             <CalendarCheck className="size-4" aria-hidden />
-            Reserve a table
+            Reserve a Table
           </Button>
           <Button asChild variant="outline" className="h-11 shrink-0 gap-2">
             <a href={RESTAURANT.phoneHref} aria-label="Call the restaurant">

@@ -341,7 +341,7 @@ async function selectRows<Row>(
   const query = configure ? configure(base) : base;
   const { data, error } = await query;
   if (error) {
-    console.warn(`[Janoon] "${table}" read failed: ${error.message}`);
+    console.warn(`[Junoon] "${table}" read failed: ${error.message}`);
     return [];
   }
   return Array.isArray(data) ? (data as Row[]) : [];
@@ -1453,7 +1453,7 @@ export async function fetchDeliveryOrder(
     p_phone: phone,
   });
   if (error) {
-    console.warn(`[Janoon] order lookup failed: ${error.message}`);
+    console.warn(`[Junoon] order lookup failed: ${error.message}`);
     return null;
   }
   const row = (Array.isArray(data) ? data[0] : data) as
@@ -1590,7 +1590,7 @@ export async function fetchReservation(
     p_phone: phone,
   });
   if (error) {
-    console.warn(`[Janoon] reservation lookup failed: ${error.message}`);
+    console.warn(`[Junoon] reservation lookup failed: ${error.message}`);
     return null;
   }
   const row = (Array.isArray(data) ? data[0] : data) as ReservationDb | undefined;

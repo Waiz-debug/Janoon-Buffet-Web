@@ -251,7 +251,7 @@ insert into public.menu_dishes as md
   (slug, name, urdu, category_id, summary, description, notes, pairings, image,
    image_path, price_per_plate, active, featured, demo, sort_order, updated_at)
 select d.slug, d.name, d.urdu, d.category_id, d.summary,
-       d.summary || ' Prepared fresh by the Janoon kitchen and served with the care befitting the house.',
+       d.summary || ' Prepared fresh by the Junoon kitchen and served with the care befitting the house.',
        '[]'::jsonb, '[]'::jsonb,
        'https://images.unsplash.com/' || d.photo || '?auto=format&fit=crop&w=1200&q=70',
        null, d.price, true, d.featured, true, d.sort_order,

@@ -35,7 +35,7 @@ export function AboutVibe() {
             <SectionHeading
               eyebrow="Our heritage"
               title="An open-air table in Lahore, served whenever your family is hungry"
-              description="Janoon was built on a single idea: good desi cooking should not keep office hours. Arrive after a wedding, before a shift, or on a slow Friday night — the coals are always lit."
+              description="Junoon was built on a single idea: good desi cooking should not keep office hours. Arrive after a wedding, before a shift, or on a slow Friday night — the coals are always lit."
             />
 
             <div className="flex flex-col gap-4">
@@ -78,7 +78,7 @@ export function AboutVibe() {
                   EXPERIENCE_MEDIA.ambiance.slot,
                   EXPERIENCE_MEDIA.ambiance.url,
                 )}
-                alt="Open-air seating at Janoon"
+                alt="Open-air seating at Junoon"
                 className="col-span-5 h-52 w-full rounded-3xl border border-border/70 object-cover sm:h-64"
               />
               <SmartImage

@@ -4,7 +4,12 @@ import { Label } from "@/components/ui/label";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { usePublicPreOrderItems } from "@/hooks/use-live-db";
 import { createPreorder } from "@/lib/db";
-import { formatRupees, preOrderCategoryLabel } from "@/lib/menu";
+import {
+  DEFAULT_DISH_PHOTO,
+  PREORDER_CATEGORY_PHOTOS,
+  formatRupees,
+  preOrderCategoryLabel,
+} from "@/lib/menu";
 import { RESTAURANT, dayKeyFromMs } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -103,9 +108,18 @@ export function PreOrderSection() {
           price: item.price,
           category: item.category,
           serves: item.serves ?? "",
-          image: item.image,
+          // The kitchen's own photo when there is one, otherwise the photo of
+          // the category it belongs to — a handi, a roast, a platter, a sweet
+          // — so every card on the board carries food, never an empty tile.
+          image:
+            item.image ||
+            PREORDER_CATEGORY_PHOTOS[item.category] ||
+            DEFAULT_DISH_PHOTO,
         }))
-      : FALLBACK_DISHES.map((dish) => ({ ...dish, image: undefined }));
+      : FALLBACK_DISHES.map((dish) => ({
+          ...dish,
+          image: PREORDER_CATEGORY_PHOTOS[dish.category] ?? DEFAULT_DISH_PHOTO,
+        }));
 
   const slots = getSlots();
   const selectedDish = dishes.find((dish) => dish.id === selectedId);
@@ -200,16 +214,14 @@ export function PreOrderSection() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    {dish.image ? (
-                      <span className="size-12 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-background/60">
-                        <img
-                          src={dish.image}
-                          alt=""
-                          className="size-full object-cover"
-                          loading="lazy"
-                        />
-                      </span>
-                    ) : null}
+                    <span className="size-12 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-background/60">
+                      <img
+                        src={dish.image}
+                        alt=""
+                        className="size-full object-cover"
+                        loading="lazy"
+                      />
+                    </span>
                     <div className="min-w-0">
                       <h4 className="font-display text-base font-semibold">
                         {dish.name}

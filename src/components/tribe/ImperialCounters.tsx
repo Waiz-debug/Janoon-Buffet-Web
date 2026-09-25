@@ -104,7 +104,7 @@ export function ImperialCounters() {
             className="h-11 shrink-0 gap-2"
           >
             <CalendarCheck className="size-4" aria-hidden />
-            Reserve a High Tea table
+            Reserve a High Tea Table
           </Button>
         </div>
 

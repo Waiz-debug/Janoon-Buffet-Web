@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 /**
- * Supabase client for Janoon.
+ * Supabase client for Junoon.
  *
  * The URL and publishable (anon) key are inlined so the app runs on a fresh
  * checkout; both can be overridden per environment with `VITE_SUPABASE_URL`

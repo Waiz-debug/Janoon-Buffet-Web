@@ -256,7 +256,7 @@ function ConfirmationPanel({
           className="flex-1 border-border/70"
           onClick={onBookAnother}
         >
-          Book another table
+          Book Another Table
         </Button>
         <Button asChild variant="outline" className="flex-1 border-border/70">
           <Link to="/manage">Manage this booking</Link>
@@ -610,7 +610,7 @@ export function ReservationForm() {
         ) : (
           <>
             <CalendarClock className="size-4" aria-hidden />
-            Reserve my table
+            Book Reservation
           </>
         )}
       </Button>

@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — authorization & admin setup rules (copy-paste, idempotent)
+--  Junoon — authorization & admin setup rules (copy-paste, idempotent)
 --
 --  Run this whole file in the Supabase SQL Editor, then reload the website and
 --  open the Admin Portal. It adds one table if it is missing and replaces

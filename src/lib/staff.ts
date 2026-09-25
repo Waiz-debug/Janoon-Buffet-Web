@@ -53,7 +53,7 @@ export async function listStaff(): Promise<StaffMember[]> {
   const { data, error } = await supabase.rpc("admin_list_staff");
   if (error) {
     // Reads must not throw: the panel renders an empty list with the reason.
-    console.warn(`[Janoon] staff list failed: ${error.message}`);
+    console.warn(`[Junoon] staff list failed: ${error.message}`);
     throw new Error(firstLine(error.message));
   }
   const rows = (data ?? []) as {
@@ -191,7 +191,7 @@ function randomPassword(): string {
 export async function syncOwnStaffEmail(): Promise<void> {
   const { error } = await supabase.rpc("staff_sync_email");
   if (error && !isMissingFunction(error)) {
-    console.warn(`[Janoon] staff email sync failed: ${error.message}`);
+    console.warn(`[Junoon] staff email sync failed: ${error.message}`);
   }
 }
 

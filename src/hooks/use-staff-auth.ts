@@ -164,7 +164,7 @@ export async function staffLookup(userId: string): Promise<StaffLookup> {
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
-    console.warn(`[Janoon] staff lookup failed: ${error.message}`);
+    console.warn(`[Junoon] staff lookup failed: ${error.message}`);
     return { ok: false, message: error.message };
   }
 
@@ -307,7 +307,7 @@ export async function resendConfirmationEmail(
 
   const detail = error.message ?? "";
   const both = `${error.code ?? ""} ${detail}`.toLowerCase();
-  console.warn(`[Janoon] confirmation email not sent: ${detail}`);
+  console.warn(`[Junoon] confirmation email not sent: ${detail}`);
 
   if (
     both.includes("rate") ||
@@ -431,7 +431,7 @@ export async function authenticate(
     // console so the console shows the truth even where the card shows a single
     // sentence; it is never quietly rewritten into "wrong password".
     const reason = classifySignInError(error);
-    console.warn(`[Janoon] sign-in refused (${reason}): ${error.message}`);
+    console.warn(`[Junoon] sign-in refused (${reason}): ${error.message}`);
     return { ok: false, reason };
   }
   if (!data.user) return { ok: false, reason: "credentials" };
@@ -512,7 +512,7 @@ export async function claimFirstAdmin(
     // existing identity server-side. The user must now sign in with their
     // existing password to get a session — we cannot create one without it.
     console.warn(
-      `[Janoon] admin granted to the existing sign-in account: ${address}`,
+      `[Junoon] admin granted to the existing sign-in account: ${address}`,
     );
     return {
       ok: false,
@@ -557,7 +557,7 @@ export async function claimFirstAdmin(
     // Any other error from the function — log it and fall through.
     else {
       console.warn(
-        `[Janoon] claim_admin_for_email failed: ${existingErr.message}`,
+        `[Junoon] claim_admin_for_email failed: ${existingErr.message}`,
       );
     }
   }
@@ -625,7 +625,7 @@ export async function claimFirstAdmin(
 
   const claim = await supabase.rpc("claim_admin");
   if (claim.error) {
-    console.warn(`[Janoon] admin claim refused: ${claim.error.message}`);
+    console.warn(`[Junoon] admin claim refused: ${claim.error.message}`);
   }
 
   /**
@@ -766,7 +766,7 @@ export function useStaffAuth() {
   const canClaimOwner = useCallback(async (): Promise<AdminSetupState> => {
     const { data, error } = await supabase.rpc("staff_bootstrap_state");
     if (error) {
-      console.warn(`[Janoon] admin setup check failed: ${error.message}`);
+      console.warn(`[Junoon] admin setup check failed: ${error.message}`);
       return "unknown";
     }
     const answer = data as {

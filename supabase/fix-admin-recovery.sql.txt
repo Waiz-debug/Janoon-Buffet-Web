@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — authorization & admin setup rules (copy-paste, idempotent)
+--  Junoon — authorization & admin setup rules (copy-paste, idempotent)
 --
 --  THIS IS THE VISIBLE COPY OF supabase/fix-admin-recovery.sql
 --  (the file index in this project hides .sql files, so this .txt twin exists

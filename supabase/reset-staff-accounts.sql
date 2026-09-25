@@ -1,5 +1,5 @@
 -- ============================================================================
---  Janoon — reset every staff and admin account
+--  Junoon — reset every staff and admin account
 --
 --  Run this in the Supabase SQL Editor (Dashboard → SQL Editor). It is meant to
 --  be read once before it is run: section 1 only looks, section 2 is the reset.
