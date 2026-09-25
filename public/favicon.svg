@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  JUNOON tab mark — the gold "J" crest on nothing at all.
+  JANOON tab mark — the gold "J" crest on nothing at all.
 
   `public/logo.svg` is the full emblem: ornate gold linework painted on a
   near-black forest tile. That tile is right for the header and for the
@@ -31,7 +31,7 @@
   height="64"
   viewBox="0 0 64 64"
   role="img"
-  aria-label="JUNOON"
+  aria-label="Janoon"
 >
   <defs>
     <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">

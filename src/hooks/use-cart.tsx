@@ -26,7 +26,7 @@ export type CartItem = {
   addons?: CartAddOn[];
 };
 
-const STORAGE_KEY = "tribe-of-taste:cart";
+const STORAGE_KEY = "junoon:cart";
 
 type CartContextValue = {
   items: CartItem[];

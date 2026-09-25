@@ -1,5 +1,6 @@
 import { AdminOverview } from "@/components/admin/AdminOverview";
 import { AddOnManager } from "@/components/admin/AddOnManager";
+import { CounterHeroManager } from "@/components/admin/CounterHeroManager";
 import { CountersManager } from "@/components/admin/CountersManager";
 import { ExperienceManager } from "@/components/admin/ExperienceManager";
 import { HeroPhotoManager } from "@/components/admin/HeroPhotoManager";

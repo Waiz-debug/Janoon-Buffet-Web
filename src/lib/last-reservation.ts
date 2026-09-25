@@ -8,7 +8,7 @@
  * required by the public lookup query.
  */
 
-const STORAGE_KEY = "tribe-of-taste:last-reservation";
+const STORAGE_KEY = "junoon:last-reservation";
 
 export type ReservationPointer = {
   reference: string;

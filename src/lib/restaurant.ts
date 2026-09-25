@@ -28,9 +28,9 @@ const PHONE_HREF = "tel:+923334363996";
  * kitchen actually works to.
  */
 export const RESTAURANT = {
-  name: "JUNOON",
-  fullName: "JUNOON Imperial Dining & High Tea",
-  legalName: "Junoon Imperial Dining Ltd.",
+  name: "Janoon",
+  fullName: "Janoon — Imperial Dining & High Tea",
+  legalName: "Janoon Imperial Dining Ltd.",
   descriptor: "Imperial dining & high tea",
   /** The house's own line, kept in the singular for sentence use. */
   tagline: "Imperial dining & high tea",
@@ -42,11 +42,11 @@ export const RESTAURANT = {
   whatsappNumber: "923334363996",
   whatsappUrl: "https://wa.me/923334363996",
   whatsappDisplay: PHONE_DISPLAY,
-  /** The flagship courtyard. Venue-specific lines live in `LOCATIONS`. */
-  address: "Gulberg III, Lahore",
-  /** Both cities the house cooks in, as one line for the eyebrow and titles. */
+  /** This restaurant's address — keep exact; cover art prints it. */
+  address: "487-B, Mangam Chowk, Gulberg III, Lahore",
+  /** Both dining houses, as one line for the eyebrow and page titles. */
   cityLine: "Lahore · Islamabad",
-  /** The same two cities as prose, for sentences. */
+  /** The same two houses as prose, for sentences. */
   cityNames: "Lahore and Islamabad",
   hours: "12:00 pm – 12:00 am, every day",
   /** The three sittings the floor runs to. Read by the footer and the hero. */
@@ -58,13 +58,13 @@ export const RESTAURANT = {
   rating: 4.6,
   reviewCount: 72,
   buffetRange: "Rs 2,000 – 3,000",
-  instagramHandle: "@junoonrestaurant",
+  instagramHandle: "@janoon.pk",
   instagramUrl:
-    "https://www.instagram.com/junoonrestaurant?utm_source=ig_web_button_share_sheet&stkn=ZDNlZDc0MzIxNw==",
-  facebookUrl: "https://www.facebook.com/junoonrestaurantpk/",
-  tiktokUrl: "https://www.tiktok.com/@junoonrestaurant",
+    "https://www.instagram.com/janoon.pk",
+  facebookUrl: "https://www.facebook.com/janoon.pk/",
+  tiktokUrl: "https://www.tiktok.com/@janoon.pk",
   mapsUrl:
-    "https://www.google.com/maps/search/?api=1&query=JUNOON+Gulberg+Lahore",
+    "https://www.google.com/maps/search/?api=1&query=Janoon+Gulberg+III+Lahore",
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
 } as const;
 
@@ -98,12 +98,12 @@ export const LOCATIONS: readonly Venue[] = [
     id: "lahore",
     name: "Lahore Court",
     city: "Lahore",
-    address: "Gulberg III, Lahore",
+    address: "487-B, Mangam Chowk, Gulberg III, Lahore",
     note: "Flagship courtyard · dastarkhwan & High Tea",
     phoneDisplay: PHONE_DISPLAY,
     phoneHref: PHONE_HREF,
     mapsUrl:
-      "https://www.google.com/maps/search/?api=1&query=JUNOON+Gulberg+III+Lahore",
+      "https://www.google.com/maps/search/?api=1&query=Janoon+Gulberg+III+Lahore",
   },
   {
     id: "islamabad",
@@ -112,7 +112,7 @@ export const LOCATIONS: readonly Venue[] = [
     address: "F-7, Islamabad",
     note: "Pavilion dining · dastarkhwan & High Tea",
     mapsUrl:
-      "https://www.google.com/maps/search/?api=1&query=JUNOON+F-7+Islamabad",
+      "https://www.google.com/maps/search/?api=1&query=Janoon+F-7+Islamabad",
   },
 ];
 

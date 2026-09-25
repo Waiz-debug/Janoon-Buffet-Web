@@ -38,7 +38,7 @@ export function PromoAction({
   );
 }
 
-const DISMISSED_PREFIX = "tribe-of-taste:promo-dismissed:";
+const DISMISSED_PREFIX = "junoon:promo-dismissed:";
 
 /** Every promotion id this browser has already dismissed. */
 function readDismissedIds(): Set<string> {

@@ -142,7 +142,9 @@ export function ContactFooter() {
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
               An intimate sanctuary of Mughal gastronomy — brass and copper
               kitchens, angith coal and a dastarkhwan that never empties, kept in
-              the open air of {RESTAURANT.cityNames}.
+              the open air of              {RESTAURANT.cityNames}.
+            
+            
             </p>
             <p dir="rtl" className="font-display text-base text-gold/80">
               {RESTAURANT.urdu}

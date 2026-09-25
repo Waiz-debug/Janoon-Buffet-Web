@@ -16,6 +16,7 @@ import {
 
 import { JanoonMark } from "@/components/tribe/JanoonMark";
 import { useAuth } from "@/hooks/use-auth";
+import { RESTAURANT } from "@/lib/restaurant";
 import { ArrowRight, Loader2, Mail } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
