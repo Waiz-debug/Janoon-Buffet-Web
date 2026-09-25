@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { RESTAURANT } from "@/lib/restaurant";
+import { LOCATIONS, PRIMARY_VENUE, RESTAURANT } from "@/lib/restaurant";
 import {
   Car,
   Clock,
@@ -16,10 +16,11 @@ const INFO_ITEMS = [
   {
     icon: MapPin,
     title: "Find us",
-    lines: ["Gulberg, Lahore", "Punjab, Pakistan"],
+    // Both courtyards, named as the brand sheet names them.
+    lines: LOCATIONS.map((venue) => `${venue.name} · ${venue.address}`),
     action: {
       label: "Open in Google Maps",
-      href: RESTAURANT.mapsUrl,
+      href: PRIMARY_VENUE.mapsUrl,
     },
   },
   {
@@ -42,7 +43,10 @@ const INFO_ITEMS = [
   {
     icon: Clock,
     title: "Hours",
-    lines: ["Open 24 hours, every day", "Sehri · Lunch · Dinner · Late night"],
+    lines: [
+      RESTAURANT.service.dastarkhwan,
+      `High Tea ${RESTAURANT.service.highTea}`,
+    ],
   },
 ] as const;
 
@@ -64,9 +68,8 @@ export function LocationMap() {
               referrerPolicy="no-referrer-when-downgrade"
               className="h-[320px] w-full sm:h-[400px]"
             />
-            {/* Overlay CTA */}
-            <a
-              href={RESTAURANT.mapsUrl}
+            {/* Overlay CTA */}              <a
+              href={PRIMARY_VENUE.mapsUrl}
               target="_blank"
               rel="noreferrer"
               className="absolute bottom-4 left-4 right-4 flex items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/90 px-4 py-3 text-sm font-medium backdrop-blur-xl transition-colors hover:border-gold/40 hover:text-gold sm:left-auto sm:right-4 sm:w-fit"
@@ -84,10 +87,10 @@ export function LocationMap() {
               </span>
               <div>
                 <p className="font-display text-lg font-semibold">
-                  Visit us in Gulberg
+                  Visit us in {LOCATIONS.map((venue) => venue.city).join(" & ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Open-air terrace with parking alongside
+                  Open-air courtyards with parking alongside
                 </p>
               </div>
             </div>

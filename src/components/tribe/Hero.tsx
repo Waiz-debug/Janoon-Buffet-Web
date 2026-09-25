@@ -76,7 +76,7 @@ export function Hero() {
             className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/50 px-3.5 py-1.5 text-[0.65rem] font-medium tracking-[0.24em] text-gold uppercase backdrop-blur"
           >
             <Flame className="size-3.5" aria-hidden />
-            Mughlai haute cuisine · Gulberg, Lahore
+            {RESTAURANT.cuisine} · {RESTAURANT.cityLine}
           </motion.span>
 
           <motion.p
@@ -101,7 +101,7 @@ export function Hero() {
             Immerse yourself in the royal pageantry of a shahi dastarkhwan —
             nihari left to simmer overnight, kebabs roasted over angith coal and
             saffron-perfumed biryani, served on brass and copper in the open air
-            of Gulberg, Lahore.
+            of {RESTAURANT.cityNames}.
           </motion.p>
 
           {highTeaOffer ? (

@@ -1,18 +1,27 @@
+import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { Clock } from "lucide-react";
 
 /**
- * Live open/closed indicator. Janoon is 24/7, so this always shows
- * "Open now" with a pulsing green dot. Built as a standalone component so
- * it can be dropped into the header or anywhere else, and easily extended
- * if hours change in the future.
+ * Live open/closed indicator, read against the house's published service
+ * window: the dastarkhwan runs 12:00 pm to 12:00 am every day, so the kitchen is
+ * closed through the morning.
+ *
+ * This used to be a hardcoded `true` with the label "Open now · 24/7", which was
+ * a claim the restaurant does not make — a guest reading it at 9 am on their way
+ * over would have found the doors shut. The hours come from `RESTAURANT`, so
+ * correcting them corrects this badge too.
  */
+const OPEN_HOUR = 12;
+const CLOSE_HOUR = 24;
+
 export function OpenStatus({ className }: { className?: string }) {
-  // Janoon is open 24 hours — no closing logic needed.
-  const isOpen = true;
+  const hour = new Date().getHours();
+  const isOpen = hour >= OPEN_HOUR && hour < CLOSE_HOUR;
 
   return (
     <div
+      title={`Service hours: ${RESTAURANT.hours}`}
       className={cn(
         "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
         isOpen
@@ -33,7 +42,7 @@ export function OpenStatus({ className }: { className?: string }) {
         />
       </span>
       <Clock className="size-3" aria-hidden />
-      {isOpen ? "Open now · 24/7" : "Closed"}
+      {isOpen ? "Open now · till 12 am" : "Closed · opens 12 pm"}
     </div>
   );
 }

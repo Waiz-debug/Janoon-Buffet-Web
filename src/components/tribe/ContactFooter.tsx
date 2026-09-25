@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { subscribeToDispatch } from "@/lib/db";
-import { RESTAURANT } from "@/lib/restaurant";
+import { RESTAURANT, LOCATIONS } from "@/lib/restaurant";
 import {
   ArrowRight,
   Clock,
@@ -21,12 +21,9 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 
 const SERVICE_HOURS = [
-  { label: "Dastarkhwan buffet", value: "Open 24 hours, every day" },
-  {
-    label: "High Tea sittings",
-    value: "03:30–05:00 pm & 05:15–06:45 pm",
-  },
-  { label: "Grand dinner", value: "07:30 pm – 12:00 am" },
+  { label: "Dastarkhwan service", value: RESTAURANT.service.dastarkhwan },
+  { label: "High Tea sittings", value: RESTAURANT.service.highTea },
+  { label: "Grand dinner", value: RESTAURANT.service.dinner },
 ] as const;
 
 /**
@@ -138,17 +135,17 @@ export function ContactFooter() {
                   {RESTAURANT.name}
                 </p>
                 <p className="text-[0.6rem] tracking-[0.24em] text-gold/80 uppercase">
-                  Imperial dining &amp; high tea
+                  {RESTAURANT.descriptor}
                 </p>
               </div>
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
               An intimate sanctuary of Mughal gastronomy — brass and copper
               kitchens, angith coal and a dastarkhwan that never empties, kept in
-              the open air of Gulberg, Lahore.
+              the open air of {RESTAURANT.cityNames}.
             </p>
             <p dir="rtl" className="font-display text-base text-gold/80">
-              جنون · روایتی شاہی ذائقہ
+              {RESTAURANT.urdu}
             </p>
             <div className="flex items-center gap-2.5">
               {socials.map(({ href, label, Icon }) => (
@@ -172,19 +169,47 @@ export function ContactFooter() {
               Imperial sanctuaries
             </h3>
             <div className="flex flex-col gap-3 text-sm">
-              <div>
-                <p className="font-medium">Lahore Court</p>
-                <p className="mt-1 text-muted-foreground">{RESTAURANT.address}</p>
-                <a
-                  href={RESTAURANT.mapsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-gold underline-offset-4 hover:underline"
+              {/* Both courtyards, straight from `LOCATIONS` — the address and
+                  the map pin a guest reads here are the same values the
+                  reservation desk and the map section use. */}
+              {LOCATIONS.map((venue, index) => (
+                <div
+                  key={venue.id}
+                  className={index > 0 ? "border-t border-border/60 pt-3" : undefined}
                 >
-                  <MapPin className="size-3.5" aria-hidden />
-                  Open in Google Maps
-                </a>
-              </div>
+                  <p className="font-medium">{venue.name}</p>
+                  <p className="mt-1 text-muted-foreground">{venue.address}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {venue.note}
+                  </p>
+                  {venue.phoneDisplay ? (
+                    <a
+                      href={venue.phoneHref}
+                      className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-gold"
+                    >
+                      <Phone className="size-3.5 text-gold/70" aria-hidden />
+                      {venue.phoneDisplay}
+                    </a>
+                  ) : (
+                    <a
+                      href={RESTAURANT.phoneHref}
+                      className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-gold"
+                    >
+                      <Phone className="size-3.5 text-gold/70" aria-hidden />
+                      Central reservations · {RESTAURANT.phoneDisplay}
+                    </a>
+                  )}
+                  <a
+                    href={venue.mapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1.5 flex items-center gap-1.5 text-xs text-gold underline-offset-4 hover:underline"
+                  >
+                    <MapPin className="size-3.5" aria-hidden />
+                    Open in Google Maps
+                  </a>
+                </div>
+              ))}
               <div className="border-t border-border/60 pt-3">
                 <p className="font-medium">The Shahi Dewan</p>
                 <p className="mt-1 text-muted-foreground">
@@ -269,7 +294,7 @@ export function ContactFooter() {
             </Link>
           </nav>
           <p>
-            © {new Date().getFullYear()} {RESTAURANT.name} · {RESTAURANT.address}
+            © {new Date().getFullYear()} {RESTAURANT.legalName} · {RESTAURANT.cityLine}
           </p>
         </div>
       </div>

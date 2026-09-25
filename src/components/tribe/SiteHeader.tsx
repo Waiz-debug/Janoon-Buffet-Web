@@ -65,7 +65,7 @@ export function SiteHeader() {
               {RESTAURANT.name}
             </span>
             <span className="mt-1 text-[0.55rem] tracking-[0.24em] text-gold/80 uppercase">
-              Imperial dining &amp; high tea
+              {RESTAURANT.descriptor}
             </span>
           </span>
         </button>

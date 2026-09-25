@@ -112,7 +112,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   </button>
                 </div>
                 <p className="text-[0.65rem] font-medium tracking-[0.24em] text-gold/80 uppercase">
-                  JUNOON · Gulberg, Lahore
+                  {RESTAURANT.name} · {RESTAURANT.cityLine}
                 </p>
                 <CardTitle className="mt-2 text-xl font-display">
                   Reservations desk

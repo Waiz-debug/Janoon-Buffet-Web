@@ -1,25 +1,60 @@
 /**
  * JUNOON — single source of truth for public site content.
  *
- * Photos: swap these Unsplash placeholders for real photos of the Gulberg
- * seating area and live counters. Every image degrades to a themed tile
- * if it fails to load, so the layout never breaks.
+ * Identity, in one place: the house name, its descriptor, the Urdu line and
+ * both venues. Every heading, footer, page title and meta tag in the app reads
+ * from here, so correcting the business means editing this block and nothing
+ * else.
+ *
+ * Photos: swap these Unsplash placeholders for real photos of the seating area
+ * and live counters. Every image degrades to a themed tile if it fails to load,
+ * so the layout never breaks.
  */
 
 const unsplash = (id: string, width = 1000) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=70`;
 
+/** The central reservations line. Every venue is reached through it. */
+const PHONE_DISPLAY = "0333 4363996";
+const PHONE_HREF = "tel:+923334363996";
+
+/**
+ * The house.
+ *
+ * `name` stays the bare wordmark the crest prints. `fullName` is the trading
+ * name that goes in page titles and the footer, and `descriptor` is the line
+ * under the wordmark. "24/7 open buffet" was neither: it described a service
+ * the house does not run, so it is gone — the timings below are the ones the
+ * kitchen actually works to.
+ */
 export const RESTAURANT = {
   name: "JUNOON",
-  tagline: "24/7 open buffet",
-  phoneDisplay: "0333 4363996",
-  phoneHref: "tel:+923334363996",
+  fullName: "JUNOON Imperial Dining & High Tea",
+  legalName: "Junoon Imperial Dining Ltd.",
+  descriptor: "Imperial dining & high tea",
+  /** The house's own line, kept in the singular for sentence use. */
+  tagline: "Imperial dining & high tea",
+  cuisine: "Mughlai haute cuisine",
+  urdu: "جنون · روایتی شاہی ذائقہ",
+  phoneDisplay: PHONE_DISPLAY,
+  phoneHref: PHONE_HREF,
   /** WhatsApp click-to-chat — international format, no leading zero. */
   whatsappNumber: "923334363996",
   whatsappUrl: "https://wa.me/923334363996",
-  whatsappDisplay: "0333 4363996",
-  address: "Gulberg, Lahore",
-  hours: "Open 24 hours, every day",
+  whatsappDisplay: PHONE_DISPLAY,
+  /** The flagship courtyard. Venue-specific lines live in `LOCATIONS`. */
+  address: "Gulberg III, Lahore",
+  /** Both cities the house cooks in, as one line for the eyebrow and titles. */
+  cityLine: "Lahore · Islamabad",
+  /** The same two cities as prose, for sentences. */
+  cityNames: "Lahore and Islamabad",
+  hours: "12:00 pm – 12:00 am, every day",
+  /** The three sittings the floor runs to. Read by the footer and the hero. */
+  service: {
+    dastarkhwan: "12:00 pm – 12:00 am, every day",
+    highTea: "03:30 – 05:00 pm & 05:15 – 06:45 pm",
+    dinner: "07:30 pm – 12:00 am",
+  },
   rating: 4.6,
   reviewCount: 72,
   buffetRange: "Rs 2,000 – 3,000",
@@ -32,6 +67,57 @@ export const RESTAURANT = {
     "https://www.google.com/maps/search/?api=1&query=JUNOON+Gulberg+Lahore",
   heroImage: unsplash("photo-1517248135467-4c7edcad34c4", 1600),
 } as const;
+
+/**
+ * Both imperial sanctuaries.
+ *
+ * Taken from the brand sheet: the house cooks in Lahore (Gulberg) and Islamabad
+ * (F-7). The street line is the part to double-check — a courier, a taxi driver
+ * and a new guest all read this — so it is spelled out here once instead of
+ * being repeated across the header, the footer and the map.
+ *
+ * A venue with no line of its own falls back to the central reservations
+ * number, which is why Islamabad carries none: one hotline answers for the
+ * house until the second one is published.
+ */
+export type Venue = {
+  id: string;
+  /** The venue's own name, as the brand sheet lists it. */
+  name: string;
+  city: string;
+  address: string;
+  /** The kitchen's role in a line. */
+  note: string;
+  phoneDisplay?: string;
+  phoneHref?: string;
+  mapsUrl: string;
+};
+
+export const LOCATIONS: readonly Venue[] = [
+  {
+    id: "lahore",
+    name: "Lahore Court",
+    city: "Lahore",
+    address: "Gulberg III, Lahore",
+    note: "Flagship courtyard · dastarkhwan & High Tea",
+    phoneDisplay: PHONE_DISPLAY,
+    phoneHref: PHONE_HREF,
+    mapsUrl:
+      "https://www.google.com/maps/search/?api=1&query=JUNOON+Gulberg+III+Lahore",
+  },
+  {
+    id: "islamabad",
+    name: "Islamabad Pavilions",
+    city: "Islamabad",
+    address: "F-7, Islamabad",
+    note: "Pavilion dining · dastarkhwan & High Tea",
+    mapsUrl:
+      "https://www.google.com/maps/search/?api=1&query=JUNOON+F-7+Islamabad",
+  },
+];
+
+/** The flagship venue — the one a booking is taken at. */
+export const PRIMARY_VENUE = LOCATIONS[0];
 
 export const BUFFET_TIERS = [
   {
@@ -142,11 +228,11 @@ export const BOOKING_PROMISES = [
   },
   {
     title: "Free to reserve",
-    body: "No deposit and no card required — pay per head at the buffet counter.",
+    body: "No deposit and no card required — settle per head at the dastarkhwan.",
   },
   {
     title: "Groups over 12",
-    body: "Call 0333 4363996 and our floor team will set up joined tables for you.",
+    body: `Call ${PHONE_DISPLAY} and our floor team will set up joined tables for you.`,
   },
 ] as const;
 
