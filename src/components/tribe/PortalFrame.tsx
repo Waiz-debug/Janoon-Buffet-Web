@@ -41,7 +41,7 @@ export function PortalFrame({
             <JanoonMark className="size-10" />
             <span>
               <span className="block font-display text-base font-semibold leading-tight">
-                JUNOON
+                Janoon
               </span>
               <span className="block text-[0.65rem] tracking-[0.2em] text-gold/80 uppercase">
                 {badge}

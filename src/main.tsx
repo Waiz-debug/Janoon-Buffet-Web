@@ -33,7 +33,7 @@ function RouteLoading() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
       <JanoonMark className="size-12 animate-pulse" />
       <p className="text-[0.65rem] font-medium tracking-[0.24em] text-gold/70 uppercase">
-        JUNOON
+        Janoon
       </p>
     </div>
   );
@@ -79,7 +79,7 @@ class RootErrorBoundary extends React.Component<
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
           <div className="flex max-w-lg flex-col items-center text-center">
             <JanoonMark className="size-12" />
-            <p className="mt-4 text-sm font-semibold">JUNOON — this screen hit an error</p>
+            <p className="mt-4 text-sm font-semibold">Janoon — this screen hit an error</p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>

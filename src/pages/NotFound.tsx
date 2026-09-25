@@ -14,7 +14,7 @@ export default function NotFound() {
     >
 
       <div className="flex flex-col items-center text-center">
-        <JanoonMark className="size-14" alt="JUNOON" />
+        <JanoonMark className="size-14" alt="Janoon" />
 
         <span className="mt-6 text-[0.65rem] font-medium tracking-[0.28em] text-gold/80 uppercase">
           Junoon

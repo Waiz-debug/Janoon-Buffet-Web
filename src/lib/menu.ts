@@ -197,7 +197,7 @@ const makeDish = ([slug, name, urdu, categoryId, summary, image, price]: DishSee
   urdu,
   categoryId,
   summary,
-  description: `${summary} Prepared fresh by the JUNOON kitchen and served with the care befitting the house.`,
+  description: `${summary} Prepared fresh by the Janoon kitchen and served with the care befitting the house.`,
   notes: [],
   pairings: [],
   image,

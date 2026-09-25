@@ -307,7 +307,7 @@ export async function resendConfirmationEmail(
 
   const detail = error.message ?? "";
   const both = `${error.code ?? ""} ${detail}`.toLowerCase();
-  console.warn(`[JUNOON] confirmation email not sent: ${detail}`);
+  console.warn(`[Janoon] confirmation email not sent: ${detail}`);
 
   if (
     both.includes("rate") ||
@@ -431,7 +431,7 @@ export async function authenticate(
     // console so the console shows the truth even where the card shows a single
     // sentence; it is never quietly rewritten into "wrong password".
     const reason = classifySignInError(error);
-    console.warn(`[JUNOON] sign-in refused (${reason}): ${error.message}`);
+    console.warn(`[Janoon] sign-in refused (${reason}): ${error.message}`);
     return { ok: false, reason };
   }
   if (!data.user) return { ok: false, reason: "credentials" };
