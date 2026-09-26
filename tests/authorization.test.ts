@@ -29,6 +29,10 @@ const authCalls: AuthCall[] = [];
 /** Options handed to the throwaway client that creates staff sign-ins. */
 const clientOptions: unknown[] = [];
 const inviteSignUps: { email: string; password: string }[] = [];
+/** Sign-ins tried by the credential checker, on its own throwaway client. */
+const inviteSignIns: { email: string; password: string }[] = [];
+let inviteSignUpReply: Reply | null = null;
+let inviteSignInReply: Reply | null = null;
 
 let rpcReply: Reply = { data: null, error: null };
 /** Answers by rpc name, for the flows that call more than one function. */
@@ -135,11 +139,18 @@ mock.module("@supabase/supabase-js", () => ({
       auth: {
         signUp: async (payload: { email: string; password: string }) => {
           inviteSignUps.push(payload);
-          return {
-            data: { user: { id: "invited-id", email: payload.email }, session: null },
-            error: null,
-          };
+          return (
+            inviteSignUpReply ?? {
+              data: { user: { id: "invited-id", email: payload.email }, session: null },
+              error: null,
+            }
+          );
         },
+        signInWithPassword: async (payload: { email: string; password: string }) => {
+          inviteSignIns.push(payload);
+          return inviteSignInReply ?? { data: { user: null, session: null }, error: null };
+        },
+        signOut: async () => ({ error: null }),
       },
     };
   },
@@ -168,6 +179,9 @@ beforeEach(() => {
   authCalls.length = 0;
   clientOptions.length = 0;
   inviteSignUps.length = 0;
+  inviteSignIns.length = 0;
+  inviteSignUpReply = null;
+  inviteSignInReply = null;
   rpcReply = { data: null, error: null };
   rpcReplies = {};
   authReplies = {};
@@ -367,7 +381,12 @@ describe("addStaffAccount", () => {
   test("creates the sign-in without taking over the admin's session", async () => {
     const result = await staff.addStaffAccount("  New.Chef@Janoon.pk  ", "staff", "SharedSecret1!");
 
-    expect(result).toEqual({ createdSignIn: true, usedResetLink: false });
+    expect(result).toEqual({
+      createdSignIn: true,
+      usedResetLink: false,
+      passwordApplied: true,
+      needsConfirmation: false,
+    });
     // The address is normalised, and the password goes to Auth — never to a table.
     expect(inviteSignUps).toEqual([
       { email: "new.chef@janoon.pk", password: "SharedSecret1!" },
@@ -387,11 +406,123 @@ describe("addStaffAccount", () => {
   test("with no password given, the member sets their own through a reset link", async () => {
     const result = await staff.addStaffAccount("new@janoon.pk", "admin");
 
-    expect(result).toEqual({ createdSignIn: true, usedResetLink: true });
+    expect(result).toEqual({
+      createdSignIn: true,
+      usedResetLink: true,
+      passwordApplied: true,
+      needsConfirmation: false,
+    });
     expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
     // A generated password exists only long enough to create the account.
     expect(inviteSignUps[0].password.length).toBeGreaterThanOrEqual(8);
     expect(JSON.stringify(rpcCalls)).not.toContain(inviteSignUps[0].password);
+  });
+
+  /**
+   * The trap behind "the new account cannot sign in".
+   *
+   * `signUp` answers "User already registered" for an address that has an
+   * account, and the password supplied with it is discarded — the old one stays.
+   * An admin who typed a password and was told "added" would hand over a
+   * credential that was never set, and the member would be refused at the till.
+   * So the call reports `passwordApplied: false` and emails a setup link, which
+   * is the only way to give that address a known password.
+   */
+  test("an address that already has an account is reported, not quietly kept", async () => {
+    inviteSignUpReply = {
+      data: { user: null, session: null },
+      error: { message: "User already registered" },
+    };
+
+    const result = await staff.addStaffAccount("old@janoon.pk", "staff", "BrandNew1!");
+
+    expect(result).toEqual({
+      createdSignIn: false,
+      usedResetLink: true,
+      passwordApplied: false,
+      needsConfirmation: false,
+    });
+    // The role is still granted, and the setup link is the recovery path.
+    expect(rpcCalls).toEqual([
+      { name: "admin_add_staff", args: { p_email: "old@janoon.pk", p_role: "staff" } },
+    ]);
+    expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
+  });
+
+  test("an account that still has to confirm its address says so", async () => {
+    inviteSignUpReply = {
+      data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
+      error: null,
+    };
+
+    const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
+
+    // The password is set and will work — but not until the address is
+    // confirmed, which is the other reason a first sign-in is refused.
+    expect(result).toEqual({
+      createdSignIn: true,
+      usedResetLink: true,
+      passwordApplied: true,
+      needsConfirmation: true,
+    });
+  });
+});
+
+/* ------------------------------------------------------ the password check --- */
+
+/**
+ * The credential checker behind the admin's Credentials tab.
+ *
+ * It answers the question the vault cannot: *does this password actually work?*
+ * Two properties matter. It runs on its own client, so checking someone's
+ * password can never disturb the admin's session; and it turns Auth's refusal
+ * into the reason, instead of a generic failure the admin cannot act on.
+ */
+describe("verifyStaffSignIn", () => {
+  test("a working password is confirmed, on a client that keeps no session", async () => {
+    const result = await staff.verifyStaffSignIn(" Chef@Janoon.pk ", "SharedSecret1!");
+
+    expect(result).toEqual({ ok: true });
+    expect(inviteSignIns).toEqual([
+      { email: "chef@janoon.pk", password: "SharedSecret1!" },
+    ]);
+    // Never the admin's own session, and never a table.
+    expect(authCalls).toEqual([]);
+    expect(tableTouches).toEqual([]);
+    expect(clientOptions[0]).toMatchObject({
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  });
+
+  test("a wrong password is explained, and points at the only way back in", async () => {
+    inviteSignInReply = {
+      data: null,
+      error: { message: "Invalid login credentials" },
+    };
+
+    const result = await staff.verifyStaffSignIn("chef@janoon.pk", "wrong-one");
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toContain("setup link");
+  });
+
+  test("an unconfirmed address is told apart from a wrong password", async () => {
+    inviteSignInReply = {
+      data: null,
+      error: { message: "Email not confirmed" },
+    };
+
+    const result = await staff.verifyStaffSignIn("chef@janoon.pk", "SharedSecret1!");
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toContain("confirmed");
+  });
+
+  test("nothing is attempted without both halves of the credential", async () => {
+    const result = await staff.verifyStaffSignIn("", "");
+
+    expect(result.ok).toBe(false);
+    expect(inviteSignIns).toEqual([]);
   });
 
   test("an invalid address is refused before anything is sent anywhere", async () => {

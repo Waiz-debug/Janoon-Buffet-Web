@@ -130,12 +130,21 @@ export function StaffManager() {
       setHandover(
         result.createdSignIn ? { email: address, password: chosen || null } : null,
       );
+      // Say exactly what happened to the password, because the two failure
+      // cases below are the ones that otherwise read as "wrong password" to
+      // whoever is trying to sign in.
       setAddDone(
-        !result.createdSignIn
-          ? "That account already existed — the role has been granted to it."
-          : result.usedResetLink
-            ? "Account created and a password-setup link emailed. Their role is live already."
-            : "Account created. They sign in with the password you set, and can change it from Your account.",
+        !result.passwordApplied
+          ? `That address already had an account, so the password you typed was not applied — their existing password still works. ${
+              result.usedResetLink
+                ? "A setup link has been emailed so they can set a password you both know."
+                : "Use Send setup link on their row to email one."
+            }`
+          : result.needsConfirmation
+            ? "Account created. The address has to be confirmed before the first sign-in — have them open the link in their inbox, then the password below is the one that works."
+            : result.usedResetLink
+              ? "Account created and a password-setup link emailed. Their role is live already."
+              : "Account created. They sign in with the password you set, and can change it from Your account.",
       );
       toast.success(`${role === "admin" ? "Admin" : "Staff"} added`);
       refresh();
@@ -290,11 +299,12 @@ export function StaffManager() {
         {handover ? (
           <div className="flex flex-col gap-3 rounded-xl border border-gold/40 bg-gold/[0.08] p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-xs leading-relaxed text-gold">
-                <span className="font-semibold">Credentials to hand over.</span>{" "}
-                Copy these into a message now — this card is not saved anywhere,
-                and the password cannot be shown again afterwards.
-              </p>
+            <p className="text-xs leading-relaxed text-gold">
+              <span className="font-semibold">Credentials to hand over.</span>{" "}
+              Copy these into a message now — this card is not saved anywhere,
+              and the password cannot be shown again afterwards. Test it any time
+              from the <span className="font-semibold">Credentials</span> tab.
+            </p>
               <button
                 type="button"
                 aria-label="Hide the credentials"

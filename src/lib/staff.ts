@@ -91,11 +91,33 @@ export async function listStaff(): Promise<StaffMember[]> {
  * and a random one is generated that nobody — including the admin — ever sees;
  * the new member sets their own through the password-reset link.
  */
+export type StaffAccountResult = {
+  /** True when this call created the sign-in account. */
+  createdSignIn: boolean;
+  /** True when a setup link was emailed for the member to choose their own. */
+  usedResetLink: boolean;
+  /**
+   * True only when the password the owner typed is now this account's password.
+   *
+   * False when the address already had an account: Supabase keeps the existing
+   * password and silently ignores the one supplied. That is the commonest
+   * reason a new hire's first sign-in is refused, so it is reported rather than
+   * folded into a cheerful "added".
+   */
+  passwordApplied: boolean;
+  /**
+   * True when the project asks new accounts to confirm their email address
+   * first — the second reason a first sign-in is refused, and one the panel
+   * would otherwise report as a wrong password.
+   */
+  needsConfirmation: boolean;
+};
+
 export async function addStaffAccount(
   email: string,
   role: StaffRole,
   initialPassword?: string,
-): Promise<{ createdSignIn: boolean; usedResetLink: boolean }> {
+): Promise<StaffAccountResult> {
   const address = email.trim().toLowerCase();
   if (!address || !address.includes("@")) {
     throw new Error("Enter a valid email address.");
@@ -113,7 +135,7 @@ export async function addStaffAccount(
       storageKey: "janoon-invite-token",
     },
   });
-  const { error: signUpError } = await invite.auth.signUp({
+  const { data: signUpData, error: signUpError } = await invite.auth.signUp({
     email: address,
     password,
   });
@@ -124,13 +146,28 @@ export async function addStaffAccount(
     throw new Error(firstLine(signUpError.message));
   }
 
+  const createdSignIn = !alreadyRegistered;
+  // A project with "Confirm email" switched on hands back a user whose
+  // `email_confirmed_at` is null — they cannot sign in yet. Saying so is the
+  // difference between an admin who waits for a confirmation mail and one who
+  // concludes the password was wrong. An absent field is treated as "no
+  // problem reported" rather than as a refusal: only an explicit null is a yes.
+  const needsConfirmation =
+    createdSignIn && signUpData?.user?.email_confirmed_at === null;
+
   // The role is decided in Postgres, by `admin_add_staff`, which refuses any
   // caller who is not an admin. This call cannot promote anybody by itself.
   await rpc("admin_add_staff", { p_email: address, p_role: role });
 
+  // A setup link goes out whenever the owner was not left holding a password
+  // they can hand over: none was typed, the account already existed so the
+  // typed one was ignored, or the address still has to be confirmed. This is
+  // the only recovery path the panel has, and an extra mail costs nothing.
+  const needsOwnPassword =
+    !initialPassword?.trim() || alreadyRegistered || needsConfirmation;
+
   let usedResetLink = false;
-  if (!initialPassword?.trim() && !alreadyRegistered) {
-    // No shared secret anywhere: they pick their own password from the link.
+  if (needsOwnPassword) {
     const { error } = await supabase.auth.resetPasswordForEmail(address, {
       redirectTo:
         typeof window === "undefined" ? undefined : window.location.origin,
@@ -138,7 +175,69 @@ export async function addStaffAccount(
     usedResetLink = !error;
   }
 
-  return { createdSignIn: !alreadyRegistered, usedResetLink };
+  return {
+    createdSignIn,
+    usedResetLink,
+    passwordApplied: createdSignIn,
+    needsConfirmation,
+  };
+}
+
+export type SignInCheck = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Try a sign-in against a real account, on a throwaway client.
+ *
+ * This is how the admin finds out whether a credential *actually* works before
+ * a member stands at the till being told it does not: the password is tested
+ * against Supabase Auth itself, and Auth's own refusal is translated into the
+ * reason. Nothing is stored and nothing is written — the session that a
+ * successful check produces is dropped before the call returns, and the client
+ * never touches storage, so the admin stays signed in throughout.
+ */
+export async function verifyStaffSignIn(
+  email: string,
+  password: string,
+): Promise<SignInCheck> {
+  const address = email.trim().toLowerCase();
+  if (!address || !address.includes("@") || !password) {
+    return { ok: false, reason: "Enter the address and the password to test." };
+  }
+
+  const checker = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      storageKey: "janoon-invite-token",
+    },
+  });
+  const { error } = await checker.auth.signInWithPassword({
+    email: address,
+    password,
+  });
+  // The token never leaves this client, but release it rather than leave a live
+  // one sitting in memory.
+  await checker.auth.signOut().catch(() => undefined);
+
+  if (!error) return { ok: true };
+  if (/email not confirmed/i.test(error.message)) {
+    return {
+      ok: false,
+      reason:
+        "The account exists, but the address has never been confirmed — send a setup link and have them open it first.",
+    };
+  }
+  if (/invalid login credentials/i.test(error.message)) {
+    return {
+      ok: false,
+      reason:
+        "That is not the password on the account. Supabase keeps only a hash, so nobody can read the real one back — send a setup link to set a new password.",
+    };
+  }
+  if (/rate limit|too many|security purposes/i.test(error.message)) {
+    return { ok: false, reason: "Too many attempts just now. Wait a minute and try again." };
+  }
+  return { ok: false, reason: firstLine(error.message) };
 }
 
 export async function setStaffRole(userId: string, role: StaffRole) {
