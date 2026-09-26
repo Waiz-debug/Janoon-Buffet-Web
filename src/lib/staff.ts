@@ -203,16 +203,81 @@ export async function syncOwnStaffEmail(): Promise<void> {
  * be used to lock the real owner out.
  */
 async function reauthenticate(currentPassword: string): Promise<string> {
-  const { data: session } = await supabase.auth.getUser();
-  const email = session.user?.email;
-  if (!email) throw new Error("You are not signed in any more. Sign in again.");
+  const { data, error: lookupError } = await supabase.auth.getUser();
+  const email = data?.user?.email;
+  if (lookupError || !email) {
+    throw new Error("You are not signed in any more. Sign in again.");
+  }
 
   const { error } = await supabase.auth.signInWithPassword({
     email,
     password: currentPassword,
   });
-  if (error) throw new Error("That password is not correct.");
+  if (error) throw new Error(authError(error.message));
   return email;
+}
+
+/** The session was gone by the time we wrote to it — worth one more try. */
+function isMissingSession(message: string): boolean {
+  return /auth session missing|session not found|not authenticated|invalid refresh token|refresh token not found/i.test(
+    message,
+  );
+}
+
+/**
+ * Supabase Auth answers in its own words — "Invalid login credentials",
+ * "New password should be different from the old password.", "Auth session
+ * missing!". Every one of those is something the reader can act on, so each is
+ * translated into a sentence about what to do. Anything we do not recognise is
+ * passed through untouched rather than swallowed.
+ */
+function authError(message: string): string {
+  const text = firstLine(message);
+  if (/invalid login credentials|invalid password/i.test(text)) {
+    return "That password is not correct.";
+  }
+  if (/should be different from the old password/i.test(text)) {
+    return "The new password has to be different from the old one.";
+  }
+  if (/(at least|minimum of)\s*\d+\s*character|is too short|password should be at least/i.test(text)) {
+    return "Use at least 8 characters for the new password.";
+  }
+  if (/unable to validate email|invalid email|not a valid email|email address .*invalid/i.test(text)) {
+    return "Enter a valid email address.";
+  }
+  if (/already been registered|already registered|already exists|already in use/i.test(text)) {
+    return "That email address already belongs to an account.";
+  }
+  if (/has been changed|confirm the change|confirmation link/i.test(text)) {
+    return "Supabase emailed you a confirmation link — open it and the address changes.";
+  }
+  if (isMissingSession(text)) {
+    return "Your sign-in session expired. Sign in again, then try once more.";
+  }
+  if (/rate limit|too many requests|too many attempts|security purposes/i.test(text)) {
+    return "Too many attempts just now. Wait a minute, then try again.";
+  }
+  return text;
+}
+
+/**
+ * Hand the change to Supabase Auth on the caller's own session.
+ *
+ * `reauthenticate` has just issued a brand new session, so the write below is
+ * the one call that can lose a race with it. If Auth says the session is
+ * missing, the client is refreshed and the identical call is made once more —
+ * that single retry is what turns a silent no-op into a changed password.
+ */
+async function updateOwnAccount(
+  attributes: { email?: string; password?: string },
+): Promise<string> {
+  let { data, error } = await supabase.auth.updateUser(attributes);
+  if (error && isMissingSession(error.message)) {
+    await supabase.auth.refreshSession();
+    ({ data, error } = await supabase.auth.updateUser(attributes));
+  }
+  if (error) throw new Error(authError(error.message));
+  return data?.user?.email ?? "";
 }
 
 export type EmailChangeResult = {
@@ -235,12 +300,11 @@ export async function changeOwnEmail(
     throw new Error("That is already your email address.");
   }
 
-  const { data, error } = await supabase.auth.updateUser({ email: address });
-  if (error) throw new Error(firstLine(error.message));
+  const live = await updateOwnAccount({ email: address });
 
   // With "secure email change" on, the address only moves once the links have
   // been opened. The row is re-synced on the next visit either way.
-  const confirmationRequired = data.user?.email?.toLowerCase() !== address;
+  const confirmationRequired = live.toLowerCase() !== address;
   await syncOwnStaffEmail();
   return { confirmationRequired, address };
 }
@@ -249,7 +313,13 @@ export async function changeOwnEmail(
 export async function changeOwnPassword(
   currentPassword: string,
   newPassword: string,
+  /** The typed-again copy, when the screen has one. Both are checked here so
+   *  the rule cannot be forgotten by a caller that forgets to check it. */
+  repeatPassword?: string,
 ): Promise<void> {
+  if (repeatPassword !== undefined && newPassword !== repeatPassword) {
+    throw new Error("The new password and the repeat have to match.");
+  }
   if (newPassword.length < 8) {
     throw new Error("Use at least 8 characters for the new password.");
   }
@@ -257,7 +327,5 @@ export async function changeOwnPassword(
     throw new Error("The new password has to be different from the old one.");
   }
   await reauthenticate(currentPassword);
-
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) throw new Error(firstLine(error.message));
+  await updateOwnAccount({ password: newPassword });
 }

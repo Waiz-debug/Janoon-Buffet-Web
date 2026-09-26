@@ -15,9 +15,13 @@ import {
   Loader2,
   Mail,
   ShieldCheck,
-  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 /**
  * Sign-in credentials, for whoever is signed in — owner or floor team.
@@ -28,9 +32,14 @@ import { useEffect, useState } from "react";
  * the sign-in details and nothing else, so a staff account that changes its
  * password stays exactly as staff as it was.
  *
- * Both forms re-ask for the current password first. That is the re-authentication
- * step Supabase wants before a credential change, and it also means an unlocked
- * laptop cannot be used to lock the real account out.
+ * Both cards re-ask for the current password first. That is the
+ * re-authentication step Supabase wants before a credential change, and it also
+ * means an unlocked laptop cannot be used to lock the real account out.
+ *
+ * Both cards are also real `<form>`s, for the same reason the sign-in card is:
+ * the button is a genuine submit, Enter works from any field, and the button is
+ * never parked in a dead disabled state waiting for three fields to line up. It
+ * always runs, and it says which field needs fixing when one does.
  */
 export function AccountSettings() {
   const { session } = useStaffAuth();
@@ -40,7 +49,6 @@ export function AccountSettings() {
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailDone, setEmailDone] = useState<string | null>(null);
-  const [emailConfirming, setEmailConfirming] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
@@ -48,7 +56,6 @@ export function AccountSettings() {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwDone, setPwDone] = useState(false);
-  const [pwConfirming, setPwConfirming] = useState(false);
 
   // The team list should never show yesterday's address: if an email change was
   // confirmed since the last visit, catch the row up here.
@@ -56,13 +63,60 @@ export function AccountSettings() {
     void syncOwnStaffEmail();
   }, []);
 
-  const submitEmail = async () => {
+  const currentAddress = session?.email ?? "";
+
+  /* ---------------------------------------------------------------- rules --- */
+
+  /** What is still missing, in one sentence. `null` means the form may run. */
+  const emailProblem = (): string | null => {
+    const address = newEmail.trim();
+    if (!address) return "Type the address you want to sign in with.";
+    if (!address.includes("@") || !address.includes(".")) {
+      return "That does not look like an email address yet.";
+    }
+    if (address.toLowerCase() === currentAddress.toLowerCase()) {
+      return "That is already your sign-in address.";
+    }
+    if (!emailPassword) {
+      return "Type your current password to confirm the change.";
+    }
+    return null;
+  };
+
+  const passwordProblem = (): string | null => {
+    if (!currentPassword) {
+      return "Type your current password to confirm the change.";
+    }
+    if (!nextPassword) return "Type a new password.";
+    if (nextPassword.length < 8) {
+      return `The new password is ${nextPassword.length} character${
+        nextPassword.length === 1 ? "" : "s"
+      } — Supabase needs at least 8.`;
+    }
+    if (nextPassword !== repeatPassword) {
+      return "The new password and the repeat do not match.";
+    }
+    if (nextPassword === currentPassword) {
+      return "The new password has to be different from the old one.";
+    }
+    return null;
+  };
+
+  /* ------------------------------------------------------------- handlers --- */
+
+  const submitEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEmailDone(null);
+    const problem = emailProblem();
+    if (problem) {
+      setEmailError(problem);
+      return;
+    }
+
     setEmailBusy(true);
     setEmailError(null);
-    setEmailDone(null);
     try {
       const result = await changeOwnEmail(emailPassword, newEmail);
-      setEmailConfirming(false);
       setEmailPassword("");
       setNewEmail("");
       setEmailDone(
@@ -79,13 +133,19 @@ export function AccountSettings() {
     }
   };
 
-  const submitPassword = async () => {
+  const submitPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPwDone(false);
+    const problem = passwordProblem();
+    if (problem) {
+      setPwError(problem);
+      return;
+    }
+
     setPwBusy(true);
     setPwError(null);
-    setPwDone(false);
     try {
-      await changeOwnPassword(currentPassword, nextPassword);
-      setPwConfirming(false);
+      await changeOwnPassword(currentPassword, nextPassword, repeatPassword);
       setCurrentPassword("");
       setNextPassword("");
       setRepeatPassword("");
@@ -100,15 +160,6 @@ export function AccountSettings() {
       setPwBusy(false);
     }
   };
-
-  const emailReady =
-    newEmail.trim().length > 3 &&
-    newEmail.includes("@") &&
-    emailPassword.length > 0;
-  const passwordReady =
-    currentPassword.length > 0 &&
-    nextPassword.length >= 8 &&
-    nextPassword === repeatPassword;
 
   // Same field treatment as the sign-in card, so the account screen reads as
   // part of the same product.
@@ -132,19 +183,31 @@ export function AccountSettings() {
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {/* ————— Email ————— */}
-        <div className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/60 p-5">
+        <form
+          noValidate
+          onSubmit={(event) => void submitEmail(event)}
+          className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/60 p-5"
+        >
           <div className="flex items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
               <Mail className="size-4" aria-hidden />
             </span>
-            <div className="min-w-0">
-              <p className="font-display text-base font-semibold">
-                Sign-in email
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                Currently {session?.email ?? "—"}
-              </p>
-            </div>
+            <p className="font-display text-base font-semibold">
+              Sign-in email
+            </p>
+          </div>
+
+          {/* The one and only place the live address appears on this screen. */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 px-3.5 py-2.5">
+            <span className="shrink-0 text-xs text-muted-foreground">
+              Current address
+            </span>
+            <span
+              className="truncate text-sm text-foreground"
+              title={currentAddress || undefined}
+            >
+              {currentAddress || "—"}
+            </span>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -188,38 +251,27 @@ export function AccountSettings() {
 
           <Feedback error={emailError} />
 
-          {emailDone ? (
-            <p className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold">
-              <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              {emailDone}
-            </p>
-          ) : null}
+          {emailDone ? <Success>{emailDone}</Success> : null}
 
-          {emailConfirming ? (
-            <ConfirmRow
-              question={`Use ${newEmail.trim()} as your sign-in address?`}
-              busy={emailBusy}
-              onCancel={() => setEmailConfirming(false)}
-              onConfirm={() => void submitEmail()}
-            />
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit gap-2"
-              disabled={!emailReady || emailBusy}
-              onClick={() => setEmailConfirming(true)}
-            >
-              {emailBusy ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : null}
-              Update email
-            </Button>
-          )}
-        </div>
+          <Button
+            type="submit"
+            variant="outline"
+            className="w-fit gap-2"
+            disabled={emailBusy}
+          >
+            {emailBusy ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : null}
+            Update email
+          </Button>
+        </form>
 
         {/* ————— Password ————— */}
-        <div className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/60 p-5">
+        <form
+          noValidate
+          onSubmit={(event) => void submitPassword(event)}
+          className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/60 p-5"
+        >
           <div className="flex items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-ember/30 bg-ember/10 text-ember">
               <KeyRound className="size-4" aria-hidden />
@@ -296,35 +348,24 @@ export function AccountSettings() {
           <Feedback error={pwError} />
 
           {pwDone ? (
-            <p className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold">
-              <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <Success>
               Password changed. You stay signed in on this device, and your role
               is unchanged.
-            </p>
+            </Success>
           ) : null}
 
-          {pwConfirming ? (
-            <ConfirmRow
-              question="Change your password now?"
-              busy={pwBusy}
-              onCancel={() => setPwConfirming(false)}
-              onConfirm={() => void submitPassword()}
-            />
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit gap-2"
-              disabled={!passwordReady || pwBusy}
-              onClick={() => setPwConfirming(true)}
-            >
-              {pwBusy ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : null}
-              Change password
-            </Button>
-          )}
-        </div>
+          <Button
+            type="submit"
+            variant="outline"
+            className="w-fit gap-2"
+            disabled={pwBusy}
+          >
+            {pwBusy ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : null}
+            Change password
+          </Button>
+        </form>
       </div>
     </section>
   );
@@ -346,51 +387,17 @@ function Feedback({ error }: { error: string | null }) {
   );
 }
 
-/** The "are you sure" step both forms pass through before they run. */
-function ConfirmRow({
-  question,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  question: string;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
+/** A one-line confirmation, in brass. */
+function Success({ children }: { children: ReactNode }) {
   return (
-    <motion.div
+    <motion.p
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-3"
+      className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold"
+      role="status"
     >
-      <p className="text-xs leading-relaxed text-foreground/90">{question}</p>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="gap-1.5"
-          onClick={onCancel}
-        >
-          <X className="size-3.5" aria-hidden />
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          className="gap-1.5 bg-gradient-to-r from-gold to-ember font-semibold text-primary-foreground"
-          disabled={busy}
-          onClick={onConfirm}
-        >
-          {busy ? (
-            <Loader2 className="size-3.5 animate-spin" aria-hidden />
-          ) : (
-            <Check className="size-3.5" aria-hidden />
-          )}
-          Confirm
-        </Button>
-      </div>
-    </motion.div>
+      <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      {children}
+    </motion.p>
   );
 }
