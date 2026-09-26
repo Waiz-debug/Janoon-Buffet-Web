@@ -6,8 +6,8 @@ import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarCheck, Menu, Phone, ShoppingBag, X } from "lucide-react";
-import { useEffect, useState, type MouseEvent } from "react";
-import { Link, useLocation } from "react-router";
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
 
 /**
  * The public nav, in the order the page is read: the counters first, then the
@@ -36,7 +36,6 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { itemCount, openCart } = useCart();
-  const { pathname } = useLocation();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -55,20 +54,15 @@ export function SiteHeader() {
    * The brand is a link home, everywhere the header appears.
    *
    * It carries a real `href` — `/restaurant#top`, the top of the page the
-   * header lives on — so it behaves like any other home link: middle-click and
-   * "open in new tab" work, it is reachable and announceable by keyboard, and
-   * it returns the guest to the restaurant from `/order`, `/manage` or a dish
-   * page. Clicking it *while already there* must not re-render the page, so
-   * that case is intercepted and scrolled instead — smoothly, and without
-   * motion when the guest has asked for none.
+   * header lives on — and it is left entirely to the router. An earlier version
+   * intercepted the click when the guest was already on that page and only
+   * scrolled; standing at the top, that did nothing at all and read as a dead
+   * logo. Now every click navigates for real, and `ScrollToHash` does the
+   * scrolling afterwards — react-router gives each navigation a new `key`, so
+   * the handler runs again even for a click on the page it is already showing.
    */
-  const goHome = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (pathname !== "/restaurant") return;
-    event.preventDefault();
-    const reduceMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  const goHome = () => {
+    setOpen(false);
   };
 
   return (
@@ -85,7 +79,8 @@ export function SiteHeader() {
           to={{ pathname: "/restaurant", hash: "#top" }}
           onClick={goHome}
           aria-label={`${RESTAURANT.name} — back to the top`}
-          className="group flex cursor-pointer items-center gap-3 rounded-xl text-left transition-opacity duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:outline-none"
+          title="Back to the top"
+          className="group pointer-events-auto relative z-[60] flex cursor-pointer items-center gap-3 rounded-xl text-left transition-opacity duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:outline-none"
         >
           <JanoonMark className="size-10 shrink-0 transition-transform duration-300 group-hover:scale-105" />
           <span className="flex flex-col leading-none">
