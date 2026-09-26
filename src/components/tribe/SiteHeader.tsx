@@ -6,8 +6,8 @@ import { RESTAURANT } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarCheck, Menu, Phone, ShoppingBag, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useState, type MouseEvent } from "react";
+import { Link, useLocation } from "react-router";
 
 /**
  * The public nav, in the order the page is read: the counters first, then the
@@ -36,6 +36,7 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { itemCount, openCart } = useCart();
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -50,6 +51,26 @@ export function SiteHeader() {
     goToSection(id);
   };
 
+  /**
+   * The brand is a link home, everywhere the header appears.
+   *
+   * It carries a real `href` — `/restaurant#top`, the top of the page the
+   * header lives on — so it behaves like any other home link: middle-click and
+   * "open in new tab" work, it is reachable and announceable by keyboard, and
+   * it returns the guest to the restaurant from `/order`, `/manage` or a dish
+   * page. Clicking it *while already there* must not re-render the page, so
+   * that case is intercepted and scrolled instead — smoothly, and without
+   * motion when the guest has asked for none.
+   */
+  const goHome = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (pathname !== "/restaurant") return;
+    event.preventDefault();
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  };
+
   return (
     <header
       className={cn(
@@ -60,21 +81,22 @@ export function SiteHeader() {
       )}
     >
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:h-20 sm:px-6">
-        <button
-          type="button"
-          onClick={() => goTo("top")}
-          className="flex items-center gap-3 text-left"
+        <Link
+          to={{ pathname: "/restaurant", hash: "#top" }}
+          onClick={goHome}
+          aria-label={`${RESTAURANT.name} — back to the top`}
+          className="group flex cursor-pointer items-center gap-3 rounded-xl text-left transition-opacity duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:outline-none"
         >
-          <JanoonMark className="size-10" />
+          <JanoonMark className="size-10 shrink-0 transition-transform duration-300 group-hover:scale-105" />
           <span className="flex flex-col leading-none">
-            <span className="font-display text-[1.1rem] font-semibold tracking-[0.12em]">
+            <span className="font-display text-[1.1rem] font-semibold tracking-[0.12em] transition-colors duration-200 group-hover:text-gold">
               {RESTAURANT.name}
             </span>
             <span className="mt-1 text-[0.55rem] tracking-[0.24em] text-gold/80 uppercase">
               {RESTAURANT.descriptor}
             </span>
           </span>
-        </button>
+        </Link>
 
         <nav className="hidden items-center gap-0.5 lg:flex">
           {NAV_LINKS.map((link) => (

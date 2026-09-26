@@ -16,6 +16,7 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { scrollToSection } from "@/lib/scroll";
 import "./index.css";
 import { testSupabaseConnection } from "./lib/test-supabase";
 
@@ -179,9 +180,12 @@ function ScrollToHash() {
   useEffect(() => {
     if (!hash) return;
     const id = hash.slice(1);
-    const timer = window.setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ block: "start" });
-    }, 120);
+    // One beat for the route to paint, then the same smooth, motion-aware
+    // scroll the in-page nav uses — so a link to `#top` glides home from
+    // another page exactly as it does from within the page. `scrollToSection`
+    // also waits for a target that has not rendered yet, which a fixed delay
+    // could not do.
+    const timer = window.setTimeout(() => scrollToSection(id), 120);
     return () => window.clearTimeout(timer);
   }, [hash, key]);
   return null;
