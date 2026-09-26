@@ -204,7 +204,10 @@ export const EXPERIENCE_MEDIA = {
     slot: "experience-ambiance",
     label: "Main ambiance photo",
     hint: "The large wide shot of the open-air seating at the top of the section.",
-    url: RESTAURANT.heroImage,
+    // Deliberately not the hero backdrop: the two sit on the same page, and a
+    // section that opens with the photo the guest just scrolled past reads as
+    // a placeholder. Separate fine-dining rooms, one hero, one courtyard.
+    url: unsplash("photo-1550966871-3ed3cdb5ed0c", 1000),
   },
   food: {
     slot: "experience-food",
@@ -219,6 +222,17 @@ export const EXPERIENCE_MEDIA = {
  * owner can change the numbers from the admin panel without a redeploy.
  */
 export const SITE_CONTENT_DEFAULTS = {
+  /**
+   * The High Tea offer line under the hero headline.
+   *
+   * It was the one piece of copy with no default, so a project whose
+   * `site_content` table had not been seeded yet drew the hero without the
+   * offer pill at all — a visible hole at the very top of the site. The offer
+   * is published in `supabase/official-menu.sql` as the same text, and the
+   * admin panel overwrites this the moment the owner edits it.
+   */
+  "high-tea-offer":
+    "Seasons Special High Tea — Rs 1,895 + tax · 03:30–05:00 pm & 05:15–06:45 pm",
   "experience-seats": "4–20",
   "experience-seats-label": "seats per family table",
 } as const;

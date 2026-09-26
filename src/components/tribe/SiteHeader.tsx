@@ -107,7 +107,7 @@ export function SiteHeader() {
           <Button
             type="button"
             onClick={() => goTo("reserve")}
-            className="hidden h-11 gap-2 bg-accent px-5 text-[0.7rem] tracking-[0.16em] text-accent-foreground uppercase hover:bg-accent/90 sm:inline-flex"
+            className="hidden h-11 gap-2 bg-primary px-5 text-[0.7rem] font-semibold tracking-[0.16em] text-primary-foreground uppercase shadow-lg shadow-black/25 hover:bg-primary/90 sm:inline-flex"
           >
             <CalendarCheck className="size-4" aria-hidden />
             Reserve a Table

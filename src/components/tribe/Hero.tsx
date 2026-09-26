@@ -76,7 +76,7 @@ export function Hero() {
             className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/50 px-3.5 py-1.5 text-[0.65rem] font-medium tracking-[0.24em] text-gold uppercase backdrop-blur"
           >
             <Flame className="size-3.5" aria-hidden />
-            {RESTAURANT.cuisine} · {RESTAURANT.cityLine}
+            {RESTAURANT.cuisine} · {RESTAURANT.cityNames}
           </motion.span>
 
           <motion.p
@@ -124,7 +124,7 @@ export function Hero() {
               onClick={() => scrollToSection("counters")}
               className="group h-12 w-full gap-2 shadow-lg shadow-black/40 sm:w-auto"
             >
-              Explore royal counters
+              Explore the Live Counters
               <ArrowRight
                 className="size-4 transition-transform group-hover:translate-x-1"
                 aria-hidden
