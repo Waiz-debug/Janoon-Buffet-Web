@@ -13,6 +13,11 @@ import {
   type Reservation,
   type ReservationStatus,
 } from "@/lib/db";
+import {
+  findRecordByCode,
+  normalizeCode,
+  type DeskRecord,
+} from "@/lib/desk-lookup";
 import { formatRupees } from "@/lib/menu";
 import {
   dayKeyFromMs,
@@ -31,6 +36,7 @@ import {
   CheckCircle2,
   ChefHat,
   Clock,
+  KeyRound,
   Loader2,
   PackageCheck,
   Phone,
@@ -475,6 +481,204 @@ const PREORDER_ACTIONS: {
  * pre-orders and deliveries into Today and History, with a search bar and a
  * year/month/date filter over the history.
  */
+const DESK_KIND_LABELS: Record<DeskRecord["kind"], string> = {
+  reservation: "Table reservation",
+  preorder: "Pre-order",
+  delivery: "Delivery",
+};
+
+/**
+ * The same code matched against the records the desk already holds.
+ *
+ * The desk subscribes to all three tables over the realtime channel, so a code
+ * that `tribe_find_by_reference()` could not answer — a database that has not
+ * run the function yet — is still found here rather than reported missing.
+ */
+function matchLive(
+  code: string,
+  reservations: Reservation[],
+  preorders: Preorder[],
+  deliveries: DeliveryOrder[],
+): DeskRecord | null {
+  const same = (reference: string) => reference.trim().toUpperCase() === code;
+
+  const booking = reservations.find((row) => same(row.reference));
+  if (booking) {
+    return {
+      kind: "reservation",
+      reference: booking.reference,
+      name: booking.name,
+      phone: booking.phone,
+      status: booking.status,
+      when: `${booking.date} · ${booking.time}`,
+      detail: `${booking.partySize} ${booking.partySize === 1 ? "guest" : "guests"} · ${booking.seating}`,
+    };
+  }
+
+  const preorder = preorders.find((row) => same(row.reference));
+  if (preorder) {
+    return {
+      kind: "preorder",
+      reference: preorder.reference,
+      name: preorder.customerName,
+      phone: preorder.phone,
+      status: preorder.status,
+      when: `${preorder.pickupDate} · ${preorder.pickupTime}`,
+      detail: preorder.dish,
+    };
+  }
+
+  const delivery = deliveries.find((row) => same(row.reference));
+  if (delivery) {
+    return {
+      kind: "delivery",
+      reference: delivery.reference,
+      name: delivery.customerName,
+      phone: delivery.phone,
+      status: delivery.status,
+      detail: delivery.area,
+      total: delivery.total,
+    };
+  }
+
+  return null;
+}
+
+function FoundRecord({ record }: { record: DeskRecord }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-gold/30 bg-gold/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-2 text-[0.65rem] tracking-[0.18em] text-gold uppercase">
+          {DESK_KIND_LABELS[record.kind]}
+          <span className="rounded-full border border-gold/30 px-2 py-0.5 text-[0.6rem]">
+            {record.status}
+          </span>
+        </p>
+        <p className="mt-1 font-mono text-sm tracking-[0.14em] text-foreground">
+          {record.reference}
+        </p>
+        <p className="truncate text-sm font-medium">{record.name}</p>
+        {record.when || record.detail ? (
+          <p className="text-xs text-muted-foreground">
+            {[record.when, record.detail].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        {record.total !== undefined ? (
+          <span className="font-display text-sm font-semibold text-gold tabular-nums">
+            {formatRupees(record.total)}
+          </span>
+        ) : null}
+        <a
+          href={`tel:${record.phone}`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-gold/40 hover:text-foreground"
+        >
+          <Phone className="size-3.5" aria-hidden />
+          {formatPhone(record.phone)}
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Find by Code" — the desk's front door.
+ *
+ * The code is the only thing a guest has when they walk in or call, so it is
+ * the first field on the screen. The answer comes from the database
+ * (`tribe_find_by_reference()`), which refuses anyone who is not signed in as
+ * staff; when that function is not on the database yet, the same code is
+ * matched against the records already streaming into this desk, so the box
+ * works from the first load rather than showing an error nobody can fix.
+ */
+function FindByCode({
+  reservations,
+  preorders,
+  deliveries,
+}: {
+  reservations: Reservation[];
+  preorders: Preorder[];
+  deliveries: DeliveryOrder[];
+}) {
+  const [code, setCode] = useState("");
+  const [match, setMatch] = useState<DeskRecord | null>(null);
+  const [missed, setMissed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const find = async () => {
+    const wanted = normalizeCode(code);
+    if (wanted.length < 4) {
+      setMatch(null);
+      setMissed(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      const found =
+        (await findRecordByCode(wanted)) ??
+        matchLive(wanted, reservations, preorders, deliveries);
+      setMatch(found);
+      setMissed(!found);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-gold/25 bg-card/50 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <label
+            htmlFor="find-by-code"
+            className="flex items-center gap-2 text-[0.7rem] tracking-[0.18em] text-muted-foreground uppercase"
+          >
+            <KeyRound className="size-3.5 text-gold" aria-hidden />
+            Find by code
+          </label>
+          <input
+            id="find-by-code"
+            value={code}
+            onChange={(event) => setCode(event.target.value.toUpperCase())}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void find();
+            }}
+            placeholder="JNX-7K4P9Q"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="find-by-code-help"
+            className="h-10 w-full rounded-xl border border-input bg-background/50 px-3 font-mono text-sm tracking-[0.14em] text-foreground outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void find()}
+          disabled={busy}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-gold/40 bg-gold/15 px-4 text-xs font-medium text-gold transition-colors hover:border-gold/70 disabled:opacity-60"
+        >
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <Search className="size-4" aria-hidden />
+          )}
+          Find
+        </button>
+      </div>
+
+      {match ? <FoundRecord record={match} /> : null}
+      {missed ? (
+        <p className="text-xs text-muted-foreground">
+          No record carries that code. Check the characters, or search the board
+          below by name or number.
+        </p>
+      ) : null}
+      <p id="find-by-code-help" className="text-xs text-muted-foreground">
+        Reservations, pre-orders and delivery orders, straight from the database.
+      </p>
+    </section>
+  );
+}
+
 export function RecordsDesk({
   kinds = KIND_ORDER,
 }: {
@@ -512,6 +716,13 @@ export function RecordsDesk({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* The code a guest quotes, first on the screen. */}
+      <FindByCode
+        reservations={reservations ?? []}
+        preorders={preorders ?? []}
+        deliveries={deliveries ?? []}
+      />
+
       {kinds.length > 1 ? (
         <div className="flex flex-wrap gap-2">
           {kinds.map((option) => (

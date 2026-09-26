@@ -83,7 +83,7 @@ export default function ManageBooking() {
   // stood, so the panel stays closed for the rest of the visit.
   const activeLookup = releasedReference ? null : lookup;
 
-  // The stale pointer only lives in localStorage, so clearing it is the one
+  // The stale pointer only lives in session storage, so clearing it is the one
   // side effect left here.
   useEffect(() => {
     if (cancelled) clearReservationPointer();

@@ -1,0 +1,597 @@
+-- ============================================================================
+--  Transactions — reservations, pre-orders, deliveries
+-- ============================================================================
+--  Paste this whole file into the Supabase SQL editor and run it. It is
+--  idempotent: every statement is `create or replace`, `create table if not
+--  exists` or a `grant`, so running it twice changes nothing and it can be
+--  re-run after any later edit.
+--
+--  Run it after `supabase/schema.sql` (the tables and the staff roles have to
+--  exist first) and it does not matter whether the transaction functions were
+--  already there: this file is the current version of all of them.
+--
+--  What it is for
+--  --------------
+--  A guest may do exactly four things on this site: book a table, pre-order a
+--  dish, order delivery, and look up their own record. All four are functions
+--  in Postgres, not client code, and all four hand back a reference drawn by
+--  the database:
+--
+--    * `JNX-XXXXX` — the house code, five characters from a 32-character
+--      alphabet with the look-alike characters (I, O, 0, 1) left out, so it
+--      survives being read down a phone line. Drawn in Postgres and written in
+--      the same statement as the row, so a code can never be shown that no
+--      record carries, and checked against all three tables so it is unique
+--      across every kind of transaction.
+--
+--    * Prices are decided here too. `place_delivery_order()` takes
+--      `{slug, name, count}` and looks every price up itself; a cart edited in
+--      the browser cannot change what an order costs.
+--
+--    * `tribe_find_by_reference(code)` — the staff and admin desks' "Find by
+--      Code" box. It reads all three tables in one statement and refuses
+--      anyone who is not signed in as staff, so a guest's booking cannot be
+--      pulled out of the database by guessing a code.
+--
+--  Nothing here loosens security: guests still have no SELECT policy on the
+--  three tables, their own record is reachable only with the reference *and*
+--  the phone it was made with, and every write is rate limited per number and
+--  per caller.
+-- ============================================================================
+
+-- ------------------------------------------------------ rate-limit log ------
+-- The throttle counts writes in this table. Created only when it is missing,
+-- so this file also works on a database that predates it.
+do $$
+begin
+  if to_regclass('public.guest_write_log') is null then
+    create table public.guest_write_log (
+      bucket text not null,
+      key text not null,
+      created_at bigint not null default 0
+    );
+    create index guest_write_log_lookup_idx
+      on public.guest_write_log (bucket, key, created_at desc);
+    alter table public.guest_write_log enable row level security;
+  end if;
+end $$;
+
+--  Count hits in a window and refuse the call that goes over the limit.
+create or replace function public.tribe_rate_limit(
+  p_bucket text,
+  p_key text,
+  p_limit integer,
+  p_window_seconds integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  since bigint;
+  hits  integer;
+begin
+  since := (extract(epoch from now()) * 1000)::bigint
+           - (p_window_seconds::bigint * 1000);
+
+  delete from public.guest_write_log
+   where bucket = p_bucket and key = p_key and created_at < since;
+
+  select count(*) into hits
+    from public.guest_write_log
+   where bucket = p_bucket and key = p_key and created_at >= since;
+
+  if hits >= p_limit then
+    raise exception
+      'Too many requests from this number just now. Please wait a few minutes and try again.'
+      using errcode = 'P0001';
+  end if;
+
+  insert into public.guest_write_log (bucket, key) values (p_bucket, p_key);
+end $$;
+
+--  Both throttles at once: a per-number limit so one guest cannot hammer the
+--  form, and a looser per-caller limit so a script that keeps changing the
+--  number still cannot flood the desk. Needs `tribe_client_ip()` from
+--  schema.sql.
+create or replace function public.tribe_throttle_guest(
+  p_bucket text,
+  p_phone text,
+  p_per_phone integer,
+  p_per_caller integer,
+  p_window_seconds integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  digits text;
+begin
+  digits := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+
+  if length(digits) >= 6 then
+    perform public.tribe_rate_limit(
+      p_bucket || ':phone', digits, p_per_phone, p_window_seconds
+    );
+  end if;
+
+  perform public.tribe_rate_limit(
+    p_bucket || ':caller', public.tribe_client_ip(), p_per_caller, p_window_seconds
+  );
+end $$;
+
+-- ---------------------------------------------------------- references ------
+--  A booking reference short enough to read down the phone and not guessable.
+create or replace function public.tribe_reference(p_prefix text, p_length integer)
+returns text
+language plpgsql
+as $$
+declare
+  alphabet  text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  candidate text := p_prefix || '-';
+begin
+  for _i in 1..p_length loop
+    candidate := candidate
+      || substr(alphabet, 1 + floor(random() * length(alphabet))::integer, 1);
+  end loop;
+  return candidate;
+end $$;
+
+--  The house code, and the only way one is made: `JNX-` plus five characters,
+--  redrawn until it is free in all three transaction tables at once. Every
+--  transaction calls this, so a reservation, a pre-order and a delivery can
+--  never share a code — which is what lets the desks search one column for a
+--  code without knowing which kind of transaction it belongs to.
+--
+--  Uniqueness is enforced here rather than by a unique index alone because the
+--  three tables each carry their own index; a redraw is cheaper than a failed
+--  insert and never surfaces an error to a guest.
+create or replace function public.tribe_unique_reference()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  candidate text;
+begin
+  loop
+    candidate := public.tribe_reference('JNX', 5);
+    exit when not exists (
+      select 1 from public.reservations where reference = candidate
+    )
+      and not exists (
+      select 1 from public.preorders where reference = candidate
+    )
+      and not exists (
+      select 1 from public.delivery_orders where reference = candidate
+    );
+  end loop;
+  return candidate;
+end $$;
+
+--  Book a table. Returns the reference the guest keeps.
+create or replace function public.create_reservation(
+  p_name text,
+  p_phone text,
+  p_party_size integer,
+  p_date text,
+  p_time text,
+  p_seating text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name      text := trim(coalesce(p_name, ''));
+  v_digits    text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_notes     text := nullif(trim(coalesce(p_notes, '')), '');
+  v_reference text;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the booking.';
+  end if;
+  -- Any local or international formatting is accepted, as long as there are
+  -- enough digits to call back on.
+  if length(v_digits) < 10 or length(v_digits) > 15 then
+    raise exception 'Enter a valid phone number we can reach you on.';
+  end if;
+  if coalesce(p_date, '') !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'Please choose the date you are coming.';
+  end if;
+  if coalesce(p_time, '') !~ '^\d{2}:\d{2}$' then
+    raise exception 'Please choose the time you are coming.';
+  end if;
+  if coalesce(p_seating, '') not in ('outdoor', 'indoor') then
+    raise exception 'Please choose outdoor or indoor seating.';
+  end if;
+  if p_party_size is null or p_party_size < 1 or p_party_size > 40 then
+    raise exception 'Please choose how many guests are coming (1 to 40).';
+  end if;
+
+  perform public.tribe_throttle_guest('reservation', v_digits, 5, 25, 600);
+
+  v_reference := public.tribe_unique_reference();
+
+  insert into public.reservations
+    (reference, name, phone, party_size, date, time, seating, notes,
+     status, created_at)
+  values
+    (v_reference, v_name, v_digits, p_party_size, p_date, p_time, p_seating,
+     left(v_notes, 400), 'pending', (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object('reference', v_reference);
+end $$;
+
+--  Pre-order a slow-cooked specialty for collection.
+create or replace function public.create_preorder(
+  p_customer_name text,
+  p_phone text,
+  p_dish text,
+  p_quantity integer,
+  p_pickup_date text,
+  p_pickup_time text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name      text := trim(coalesce(p_customer_name, ''));
+  v_digits    text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_dish      text := trim(coalesce(p_dish, ''));
+  v_notes     text := nullif(trim(coalesce(p_notes, '')), '');
+  v_quantity  integer := coalesce(p_quantity, 1);
+  v_reference text;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the pre-order.';
+  end if;
+  if length(v_digits) < 10 or length(v_digits) > 15 then
+    raise exception 'Please enter a valid phone number we can reach you on.';
+  end if;
+  if length(v_dish) = 0 then
+    raise exception 'Please choose a dish to pre-order.';
+  end if;
+  if coalesce(p_pickup_date, '') !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'Please choose a pickup date.';
+  end if;
+  if coalesce(p_pickup_time, '') !~ '^\d{2}:\d{2}$' then
+    raise exception 'Please choose a pickup time.';
+  end if;
+
+  -- Clamped rather than rejected, exactly as the form does it.
+  v_quantity := least(greatest(v_quantity, 1), 20);
+
+  perform public.tribe_throttle_guest('preorder', v_digits, 5, 25, 600);
+
+  v_reference := public.tribe_unique_reference();
+
+  insert into public.preorders
+    (reference, customer_name, phone, dish, quantity, pickup_date, pickup_time,
+     notes, status, created_at, updated_at)
+  values
+    (v_reference, v_name, v_digits, v_dish, v_quantity, p_pickup_date,
+     p_pickup_time, left(v_notes, 300), 'pending',
+     (extract(epoch from now()) * 1000)::bigint,
+     (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object('reference', v_reference);
+end $$;
+
+--  Place a delivery order.
+--
+--  The client sends what it wants to buy, never what it costs: `p_items` is a
+--  list of `{slug, name, count}` and every unit price is looked up here. An
+--  item is priced from the dish it names, falling back to the add-on it names
+--  (a naan, a raita or a cold drink has no row in `menu_dishes`), and to the
+--  house default per plate when neither carries a managed price.
+create or replace function public.place_delivery_order(
+  p_customer_name text,
+  p_phone text,
+  p_address text,
+  p_area text,
+  p_items jsonb,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  -- Must match DELIVERY_FEE / FREE_DELIVERY_THRESHOLD in src/lib/menu.ts, and
+  -- the default plate price `deliveryUnitPrice` falls back to.
+  c_delivery_fee     constant integer := 150;
+  c_free_from        constant integer := 2500;
+  c_default_price    constant integer := 600;
+  c_max_lines        constant integer := 40;
+
+  v_name        text := trim(coalesce(p_customer_name, ''));
+  v_digits      text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_address     text := trim(coalesce(p_address, ''));
+  v_area        text := trim(coalesce(p_area, ''));
+  v_notes       text := nullif(trim(coalesce(p_notes, '')), '');
+  v_reference   text;
+  v_lines       jsonb := '[]'::jsonb;
+  v_item        jsonb;
+  v_slug        text;
+  v_label       text;
+  v_count       integer;
+  v_price       integer;
+  v_items_total integer := 0;
+  v_fee         integer;
+begin
+  if length(v_name) < 2 then
+    raise exception 'Please enter the name for the order.';
+  end if;
+  if length(v_digits) < 10 or length(v_digits) > 12 then
+    raise exception 'Please enter a valid phone number.';
+  end if;
+  if length(v_address) < 8 then
+    raise exception 'Please enter a full delivery address in Lahore.';
+  end if;
+  if length(v_area) = 0 then
+    raise exception 'Please choose your area in Lahore.';
+  end if;
+  if jsonb_typeof(coalesce(p_items, 'null'::jsonb)) <> 'array' then
+    raise exception 'Your cart is empty — add a dish before ordering.';
+  end if;
+
+  perform public.tribe_throttle_guest('delivery', v_digits, 6, 30, 600);
+
+  for v_item in select value from jsonb_array_elements(p_items)
+  loop
+    exit when jsonb_array_length(v_lines) >= c_max_lines;
+
+    v_slug := trim(coalesce(v_item ->> 'slug', ''));
+    v_label := left(coalesce(nullif(trim(v_item ->> 'name'), ''), v_slug), 80);
+
+    -- `count` arrives as JSON: accept whole numbers only and skip anything
+    -- else rather than letting a bad cast abort the whole order.
+    if v_slug = '' or coalesce(v_item ->> 'count', '') !~ '^\d+$' then
+      continue;
+    end if;
+    v_count := (v_item ->> 'count')::integer;
+    if v_count < 1 then
+      continue;
+    end if;
+    v_count := least(v_count, 20);
+
+    select coalesce(
+      (select d.price_per_plate from public.menu_dishes d
+        where d.slug = v_slug and d.price_per_plate > 0 limit 1),
+      (select a.price from public.menu_addons a
+        where a.id = v_slug and a.price > 0 limit 1),
+      c_default_price
+    ) into v_price;
+
+    v_lines := v_lines || jsonb_build_object(
+      'slug', v_slug,
+      'name', v_label,
+      'count', v_count,
+      'unitPrice', v_price
+    );
+  end loop;
+
+  if jsonb_array_length(v_lines) = 0 then
+    raise exception 'Your cart is empty — add a dish before ordering.';
+  end if;
+
+  -- `as lines(line)` names the set-returning function's single `value` column,
+  -- so `line` below is the jsonb object itself. Naming only the function would
+  -- leave `line` a one-field composite row, which has no `->>` operator.
+  select coalesce(sum((line ->> 'count')::integer * (line ->> 'unitPrice')::integer), 0)
+    into v_items_total
+    from jsonb_array_elements(v_lines) as lines(line);
+
+  v_fee := case when v_items_total >= c_free_from then 0 else c_delivery_fee end;
+
+  v_reference := public.tribe_unique_reference();
+
+  insert into public.delivery_orders
+    (reference, customer_name, phone, address, area, notes, items,
+     items_total, delivery_fee, total, status, created_at)
+  values
+    (v_reference, v_name, v_digits, v_address, v_area, left(v_notes, 300),
+     v_lines, v_items_total, v_fee, v_items_total + v_fee, 'placed',
+     (extract(epoch from now()) * 1000)::bigint);
+
+  return jsonb_build_object(
+    'reference', v_reference,
+    'total', v_items_total + v_fee,
+    'deliveryFee', v_fee
+  );
+end $$;
+
+-- ------------------------------------------------ a guest's own record -------
+--  The only way a guest reaches their own record. Both the reference and the
+--  phone number on the booking are required, and the comparison happens here in
+--  Postgres, so a wrong phone returns nothing rather than being filtered by the
+--  browser after the whole table has already been downloaded.
+--
+--  `security definer` is what lets these see past the RLS policies; they are
+--  deliberately narrow — one row in, one row out.
+create or replace function public.lookup_reservation(p_reference text, p_phone text)
+returns setof public.reservations
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select *
+    from public.reservations
+   where upper(trim(reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+$$;
+
+create or replace function public.lookup_delivery_order(p_reference text, p_phone text)
+returns setof public.delivery_orders
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select *
+    from public.delivery_orders
+   where upper(trim(reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+$$;
+
+--  A guest cancelling their own booking, checked the same way. Raises rather
+--  than silently doing nothing so the form can show a real message.
+create or replace function public.cancel_reservation(p_reference text, p_phone text)
+returns public.reservations
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target public.reservations;
+begin
+  select * into target
+    from public.reservations r
+   where upper(trim(r.reference)) = upper(trim(p_reference))
+     and length(regexp_replace(p_phone, '\D', '', 'g')) >= 6
+     and regexp_replace(r.phone, '\D', '', 'g')
+         = regexp_replace(p_phone, '\D', '', 'g');
+
+  if not found then
+    raise exception 'We could not find that booking.';
+  end if;
+  if target.status = 'cancelled' then
+    raise exception 'That reservation is already cancelled.';
+  end if;
+
+  update public.reservations
+     set status = 'cancelled'
+   where id = target.id
+  returning * into target;
+
+  return target;
+end $$;
+
+-- ---------------------------------------------------- Find by Code -----------
+--  The staff and admin desks' lookup box. One code in, one record out, from
+--  whichever of the three tables it belongs to.
+--
+--  Staff-only, and the check is here rather than in the browser: `is_staff()`
+--  is true for anyone signed in with a staff or admin role, and false for a
+--  guest, so a visitor who guesses a code gets an error instead of somebody
+--  else's booking. The desks also fall back to the records already streaming
+--  into their tables, so the box keeps working if this function has not been
+--  applied yet.
+create or replace function public.tribe_find_by_reference(p_reference text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_code text := upper(trim(coalesce(p_reference, '')));
+begin
+  if not public.is_staff() then
+    raise exception 'Staff sign-in required.';
+  end if;
+
+  if length(v_code) < 4 then
+    return null;
+  end if;
+
+  return coalesce(
+    (select jsonb_build_object(
+        'kind', 'reservation',
+        'reference', r.reference,
+        'name', r.name,
+        'phone', r.phone,
+        'status', r.status,
+        'when', r.date || ' · ' || r.time,
+        'detail', r.party_size::text
+                    || case when r.party_size = 1 then ' guest' else ' guests' end
+                    || ' · ' || r.seating,
+        'created_at', r.created_at)
+       from public.reservations r
+      where upper(trim(r.reference)) = v_code),
+
+    (select jsonb_build_object(
+        'kind', 'preorder',
+        'reference', p.reference,
+        'name', p.customer_name,
+        'phone', p.phone,
+        'status', p.status,
+        'when', p.pickup_date || ' · ' || p.pickup_time,
+        'detail', p.dish,
+        'created_at', p.created_at)
+       from public.preorders p
+      where upper(trim(p.reference)) = v_code),
+
+    (select jsonb_build_object(
+        'kind', 'delivery',
+        'reference', o.reference,
+        'name', o.customer_name,
+        'phone', o.phone,
+        'status', o.status,
+        'detail', o.area,
+        'total', o.total,
+        'created_at', o.created_at)
+       from public.delivery_orders o
+      where upper(trim(o.reference)) = v_code)
+  );
+end $$;
+
+-- ------------------------------------------------------------- grants -------
+--  Guests may create, look up and cancel their own records; the desks' code
+--  lookup is staff-only and is deliberately not granted to `anon`.
+grant execute on function public.tribe_reference(text, integer) to authenticated;
+grant execute on function public.tribe_unique_reference() to authenticated;
+grant execute on function public.tribe_rate_limit(text, text, integer, integer) to authenticated;
+grant execute on function public.tribe_throttle_guest(text, text, integer, integer, integer) to authenticated;
+
+grant execute on function public.create_reservation(text, text, integer, text, text, text, text) to anon, authenticated;
+grant execute on function public.create_preorder(text, text, text, integer, text, text, text) to anon, authenticated;
+grant execute on function public.place_delivery_order(text, text, text, text, jsonb, text) to anon, authenticated;
+
+grant execute on function public.lookup_reservation(text, text) to anon, authenticated;
+grant execute on function public.lookup_delivery_order(text, text) to anon, authenticated;
+grant execute on function public.cancel_reservation(text, text) to anon, authenticated;
+
+grant execute on function public.tribe_find_by_reference(text) to authenticated;
+revoke execute on function public.tribe_find_by_reference(text) from anon;
+
+-- =============================================================== verify ======
+--  Every function is on the database:
+--    select p.proname, pg_get_function_identity_arguments(p.oid) as args
+--      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--     where n.nspname = 'public'
+--       and p.proname in ('create_reservation', 'create_preorder',
+--                         'place_delivery_order', 'lookup_reservation',
+--                         'lookup_delivery_order', 'cancel_reservation',
+--                         'tribe_reference', 'tribe_unique_reference',
+--                         'tribe_find_by_reference')
+--     order by 1;
+--
+--  Every code is a house code, and no code is shared between tables:
+--    select 'reservations' as src, reference from public.reservations
+--    union all select 'preorders', reference from public.preorders
+--    union all select 'delivery_orders', reference from public.delivery_orders
+--     where reference like 'JNX-%'
+--     order by 2;
+--
+--  Draw a code without writing a row (must be JNX- plus five characters):
+--    select public.tribe_reference('JNX', 5);
+--
+--  A guest cannot use the desk lookup — this must raise:
+--    select public.tribe_find_by_reference('JNX-00000');

@@ -35,11 +35,14 @@ import { toast } from "sonner";
  * Counters and the items on each, on one screen.
  *
  * The shape is deliberately flat and obvious: **Create counter** at the top
- * makes a cooking station, and every station carries its own **Add item**
- * button, so building the menu is create → add → add. **Move to** on any row
- * re-files that item under another counter, which is the mapping an owner
- * actually reaches for — a dish that belongs at the charcoal grill rather than
- * the tandoor is one dropdown away, and only `category_id` is written.
+ * makes a cooking station, and every station lists what is on it. Items are
+ * created from the **Menu** tab, which asks for the counter as a required
+ * field before the row is written — one place decides where a dish lives, so
+ * an item can never be saved pointing at nothing. From here, **Move to** on
+ * any row re-files that item under another counter, which is the mapping an
+ * owner actually reaches for — a dish that belongs at the charcoal grill
+ * rather than the tandoor is one click away, and only `category_id` is
+ * written.
  *
  * Counters are ordered with the arrows; the order saved here is the order the
  * guest site draws its sections in. Every save goes straight to Supabase over
@@ -271,8 +274,11 @@ export function CountersManager({
     }
   };
 
-  const openItem = (dish: MenuDishRow | null, categoryId: string) =>
-    setItemForm({ open: true, dish, categoryId, label: "" });
+  // Editing only. New items are created from the Menu tab, where the counter
+  // is a required field of the form rather than an accident of which card was
+  // clicked.
+  const openItem = (dish: MenuDishRow) =>
+    setItemForm({ open: true, dish, categoryId: dish.categoryId, label: "" });
 
   const itemCounterName =
     itemForm.label ||
@@ -365,20 +371,6 @@ export function CountersManager({
                     </Button>
                   </>
                 ) : null}
-                {/* No "Add item" on a counter that no longer exists: the item
-                    would point at a row that is not there. Move the items
-                    below onto a real counter instead. */}
-                {isReal ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => openItem(null, counter.id)}
-                  >
-                    <Plus className="size-3.5" aria-hidden />
-                    Add item
-                  </Button>
-                ) : null}
                 {isReal ? (
                   <>
                     <Button
@@ -427,8 +419,9 @@ export function CountersManager({
 
             {counter.items.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-border/70 p-6 text-center text-xs text-muted-foreground">
-                Nothing on this counter yet — use{" "}
-                <span className="text-foreground">Add item</span> to build it.
+                Nothing on this counter yet — add an item from the{" "}
+                <span className="text-foreground">Menu</span> tab and file it
+                under this counter.
               </p>
             ) : (
               <div className="overflow-hidden rounded-2xl border border-border/70">
@@ -514,7 +507,7 @@ export function CountersManager({
                               variant="ghost"
                               size="icon"
                               aria-label={`Edit ${dish.name}`}
-                              onClick={() => openItem(dish, dish.categoryId)}
+                              onClick={() => openItem(dish)}
                             >
                               <Pencil className="size-3.5" aria-hidden />
                             </Button>

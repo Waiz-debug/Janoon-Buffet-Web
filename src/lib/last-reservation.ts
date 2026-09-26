@@ -1,11 +1,15 @@
 /**
- * The booking itself lives in the Convex database, so it always survives a
- * refresh. What cannot be stored on the server is *which* booking belongs to
- * the person in front of us — that is a device concern, so we keep a small
- * pointer (reference + phone) in localStorage and re-fetch the record from the
- * database on first render. Nothing sensitive is duplicated: only the two
- * values the guest already typed are kept, and they are the same two values
- * required by the public lookup query.
+ * The booking itself lives in the database, so it always survives a refresh.
+ * What cannot be stored on the server is *which* booking belongs to the person
+ * in front of us — that is a device concern, so a small pointer (reference +
+ * phone) is kept in `sessionStorage` and the record is re-fetched from the
+ * database on first render.
+ *
+ * The pointer is a convenience, never a source of truth: the record is only
+ * ever displayed from `lookup_reservation()`, which re-checks the reference
+ * *and* the phone in Postgres. And because the phone number is personal data,
+ * it is kept per tab rather than on the device: closing the tab is enough to
+ * leave nothing behind, and a guest returning later types both values again.
  */
 
 const STORAGE_KEY = "junoon:last-reservation";
@@ -18,7 +22,7 @@ export type ReservationPointer = {
 
 export function saveReservationPointer(pointer: ReservationPointer) {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pointer));
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(pointer));
   } catch {
     // Private browsing or storage disabled — the booking still exists server-side.
   }
@@ -26,7 +30,7 @@ export function saveReservationPointer(pointer: ReservationPointer) {
 
 export function readReservationPointer(): ReservationPointer | null {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
@@ -41,7 +45,7 @@ export function readReservationPointer(): ReservationPointer | null {
 
 export function clearReservationPointer() {
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(STORAGE_KEY);
   } catch {
     // Nothing to clean up if storage is unavailable.
   }

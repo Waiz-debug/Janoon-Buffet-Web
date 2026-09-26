@@ -1,3 +1,4 @@
+import { ReferenceCode } from "@/components/tribe/ReferenceCode";
 import { ReservationStatusBadge } from "@/components/tribe/ReservationStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,8 +170,8 @@ function ConfirmationPanel({
           <dt className="text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase">
             Booking reference
           </dt>
-          <dd className="mt-1 font-display text-2xl font-semibold tracking-wider text-gold">
-            {reservation.reference}
+          <dd className="mt-1">
+            <ReferenceCode code={reservation.reference} size="lg" />
           </dd>
         </div>
         <div className="rounded-2xl border border-border/70 bg-background/40 p-4">
@@ -299,7 +300,7 @@ export function ReservationForm() {
   // Both are derived rather than copied into state. They are answers *about the
   // record*, not events: mirroring them meant clearing the pointer, clearing the
   // panel and writing the message by hand from an effect. What is left is the
-  // one real side effect — clearing the stale pointer out of localStorage.
+  // one real side effect — clearing the stale pointer out of session storage.
   const cancelled = stored?.status === "cancelled" ? stored : null;
   const livePointer = cancelled || stored === null ? null : pointer;
 

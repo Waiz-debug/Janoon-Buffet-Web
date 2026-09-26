@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { useCart } from "@/hooks/use-cart";
+import { usePricedCart } from "@/hooks/use-priced-cart";
 import { formatRupees, FREE_DELIVERY_THRESHOLD } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
@@ -15,7 +15,7 @@ export function CartDrawer() {
     setCount,
     remove,
     clear,
-  } = useCart();
+  } = usePricedCart();
 
   const deliveryFee = itemsTotal >= FREE_DELIVERY_THRESHOLD ? 0 : 150;
   const total = itemsTotal + (items.length > 0 ? deliveryFee : 0);
@@ -95,7 +95,9 @@ export function CartDrawer() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{line.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {formatRupees(line.unitPrice)} each
+                      {line.unitPrice > 0
+                        ? `${formatRupees(line.unitPrice)} each`
+                        : "Ask at the counter"}
                       {weightLabel ? (
                         <span className="ml-1.5 rounded-md border border-gold/20 bg-gold/[0.06] px-1.5 py-0.5 text-gold">
                           {weightLabel}

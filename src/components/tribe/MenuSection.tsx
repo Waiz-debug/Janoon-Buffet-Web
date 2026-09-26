@@ -1,4 +1,6 @@
+import { AddToCartButton } from "@/components/tribe/AddToCartButton";
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
+import { CounterJumpBar } from "@/components/tribe/CounterJumpBar";
 import { FullMenuDialog } from "@/components/tribe/FullMenuDialog";
 import {
   SectionDivider,
@@ -8,6 +10,7 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
 import { MAIN_MENU_IDS, formatPkr, photoThumb } from "@/lib/menu";
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { Link } from "react-router";
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"] as const;
@@ -41,6 +44,8 @@ function tagsFor(dish: LiveDish, price: number): string[] {
  */
 export function MenuSection() {
   const { counters, unitPrice, menuReady } = useLiveSite();
+  /** Which chapter the jump bar last moved the guest to. */
+  const [activeChapter, setActiveChapter] = useState<string | null>(null);
 
   const chapters = MAIN_MENU_IDS.map((id) =>
     counters.find((counter) => counter.id === id),
@@ -51,15 +56,39 @@ export function MenuSection() {
   return (
     <section id="menu" className="scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        {/* The accent is the word: "À la carte", never "A la carte". The À
+            takes the brass while the rest of the line stays in the display
+            serif, so the board reads as a menu cover rather than a label. */}
         <SectionHeading
           align="center"
           eyebrow="Our menu"
-          title="À la carte"
+          title={
+            <>
+              <span className="text-gold">À</span> la carte
+            </>
+          }
           description="The priced dishes, section by section — the same rows the kitchen publishes and edits, each with its own price. Reserve a table, or add a dish to your delivery order."
         />
 
         <div className="mt-7 flex justify-center">
           <FullMenuDialog />
+        </div>
+
+        {/* Quick jumps across the chapters. The board itself is never filtered
+            — every section stays on the page and the whole menu scrolls top to
+            bottom; a tab only takes the guest to one. */}
+        <div className="mt-8">
+          <CounterJumpBar
+            items={withDishes.map((chapter) => ({
+              id: chapter.id,
+              name: chapter.name,
+            }))}
+            activeId={activeChapter}
+            onChange={setActiveChapter}
+            allLabel="All sections"
+            targetPrefix="chapter"
+            sectionId="menu"
+          />
         </div>
 
         <div className="mt-10">
@@ -83,6 +112,7 @@ export function MenuSection() {
               return (
                 <motion.article
                   key={chapter.id}
+                  id={`chapter-${chapter.id}`}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, amount: 0.15 }}
@@ -91,7 +121,7 @@ export function MenuSection() {
                     delay: (index % 3) * 0.07,
                     ease: "easeOut",
                   }}
-                  className="flex h-fit flex-col rounded-2xl border border-border/70 bg-card/40"
+                  className="flex h-fit scroll-mt-28 flex-col rounded-2xl border border-border/70 bg-card/40"
                 >
                   <header className="flex items-start gap-3 border-b border-border/60 p-5">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
@@ -146,18 +176,29 @@ export function MenuSection() {
                                 {dish.summary}
                               </p>
                             ) : null}
-                            {tags.length > 0 ? (
-                              <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                {tags.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="rounded-full border border-gold/20 bg-gold/[0.06] px-2 py-0.5 text-[0.6rem] tracking-[0.14em] text-gold/80 uppercase"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
+                            {/* Tags on the left, the dish's own "+" on the
+                                right: one row, one tap, no page reload. */}
+                            <div className="flex items-end justify-between gap-3 pt-0.5">
+                              {tags.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {tags.map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="rounded-full border border-gold/20 bg-gold/[0.06] px-2 py-0.5 text-[0.6rem] tracking-[0.14em] text-gold/80 uppercase"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span />
+                              )}
+                              <AddToCartButton
+                                slug={dish.slug}
+                                name={dish.name}
+                                unitPrice={price}
+                              />
+                            </div>
                           </div>
                         </li>
                       );

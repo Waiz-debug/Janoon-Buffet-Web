@@ -1,4 +1,4 @@
-import { CounterSelect } from "@/components/admin/CounterSelect";
+import { CounterPickerField } from "@/components/admin/CounterPickerField";
 import { ImageField } from "@/components/admin/ImageField";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,14 +50,16 @@ const EMPTY: ItemFormValues = {
  * the Add-ons board.
  *
  * Four fields to fill in — English name, Urdu name, price, photo — with the
- * category supplied by the section you clicked "Add item" in. Menu items get
+ * counter the item is served from chosen in the form itself. Menu items get
  * the visibility and Signature switches; their summary and description sit
  * behind a disclosure so the everyday form stays short.
  *
- * When `counters` is supplied the form also carries the counter picker, which
- * is what makes an item movable: the same form adds a dish to Charcoal Counter
- * and files an existing one under Barbecue & Grill. The value is owned by the
- * caller, because that is where the save reads it from.
+ * When `counters` is supplied the form also carries the required counter
+ * picker, which is what makes an item movable: the same form files a dish
+ * under Charcoal Counter or Barbecue & Grill, and refuses to save while no
+ * counter is ticked — `menu_dishes.category_id` is a foreign key, and an item
+ * without one never reaches the guest menu. The value is owned by the caller,
+ * because that is where the save reads it from.
  */
 type ItemDialogProps = {
   open: boolean;
@@ -111,6 +113,8 @@ function ItemForm({
     () => Boolean(initial?.summary || initial?.description),
   );
   const [saving, setSaving] = useState(false);
+  /** Set once a save is attempted with no counter ticked. */
+  const [counterError, setCounterError] = useState(false);
 
   const editing = Boolean(itemId);
   const showCounter = mode === "dish" && Boolean(counters?.length);
@@ -126,6 +130,11 @@ function ItemForm({
   const submit = async () => {
     if (values.name.trim().length < 2) {
       toast.error("Give the item a name first.");
+      return;
+    }
+    if (showCounter && !counterId) {
+      setCounterError(true);
+      toast.error("Select the counter this item is served from.");
       return;
     }
     if (mode === "addon" && (values.price.trim() === "" || Number(values.price) < 0)) {
@@ -161,18 +170,16 @@ function ItemForm({
 
         <div className="flex flex-col gap-4">
           {showCounter ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="item-counter">Counter</Label>
-              <CounterSelect
-                id="item-counter"
-                value={counterId ?? ""}
-                counters={counters ?? []}
-                onChange={(id) => onCounterChange?.(id)}
-              />
-              <p className="text-xs text-muted-foreground">
-                The section this item appears under on the public menu.
-              </p>
-            </div>
+            <CounterPickerField
+              id="item-counter"
+              value={counterId ?? ""}
+              counters={counters ?? []}
+              invalid={counterError}
+              onChange={(id) => {
+                setCounterError(false);
+                onCounterChange?.(id);
+              }}
+            />
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">

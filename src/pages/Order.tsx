@@ -3,7 +3,7 @@ import { ContactFooter } from "@/components/tribe/ContactFooter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCart } from "@/hooks/use-cart";
+import { usePricedCart } from "@/hooks/use-priced-cart";
 import { placeDeliveryOrder } from "@/lib/db";
 import { formatRupees, FREE_DELIVERY_THRESHOLD } from "@/lib/menu";
 import { RESTAURANT } from "@/lib/restaurant";
@@ -38,7 +38,10 @@ type Placed = { reference: string; total: number };
 
 export default function Order() {
   const navigate = useNavigate();
-  const { items, itemsTotal, itemCount, setCount, clear } = useCart();
+  // The bag is a device-side convenience; the numbers on this page are priced
+  // from the live menu, and `place_delivery_order()` prices them again on the
+  // server. Nothing here is taken on trust from storage.
+  const { items, itemsTotal, itemCount, setCount, clear } = usePricedCart();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -273,7 +276,9 @@ export default function Order() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{line.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatRupees(line.unitPrice)} each
+                      {line.unitPrice > 0
+                        ? `${formatRupees(line.unitPrice)} each`
+                        : "Ask at the counter"}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5">

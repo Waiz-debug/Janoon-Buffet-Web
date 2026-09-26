@@ -6,6 +6,13 @@
 --  supabase/official-menu.sql: its section 1a lifts the requirements those
 --  revisions left on columns the app has never written, gives the dish key a
 --  default, and creates the counter hero-image table.
+--
+--  Run supabase/transactions.sql after this file. It is the current version of
+--  the transaction layer — the `JNX-XXXXX` reference codes every reservation,
+--  pre-order and delivery is given, the guest lookups, the rate limits, and
+--  the staff-only `tribe_find_by_reference()` behind the desks' "Find by Code"
+--  box. The copies further down are the originals; this file supersedes them.
+--
 --  It is idempotent: re-running it will not drop or duplicate anything.
 --
 --  Timestamps are stored as milliseconds since the epoch (bigint) so the

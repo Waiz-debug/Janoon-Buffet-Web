@@ -1,3 +1,4 @@
+import { ReferenceCode } from "@/components/tribe/ReferenceCode";
 import type { DeliveryOrder } from "@/lib/db";
 import { formatRupees } from "@/lib/menu";
 import { cn } from "@/lib/utils";
@@ -22,9 +23,7 @@ export function DeliveryOrderCard({
     <article className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/60 p-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs tracking-[0.14em] text-gold">
-            {order.reference}
-          </p>
+          <ReferenceCode code={order.reference} size="sm" />
           <p className="mt-1 font-display text-lg font-semibold">
             {order.customerName}
           </p>

@@ -1,14 +1,13 @@
+import { AddToCartButton } from "@/components/tribe/AddToCartButton";
 import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
+import { CounterJumpBar } from "@/components/tribe/CounterJumpBar";
 import { FullMenuDialog } from "@/components/tribe/FullMenuDialog";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
-import { useCart } from "@/hooks/use-cart";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
 import { formatPkr, photoThumb, type MenuIcon } from "@/lib/menu";
-import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { Check, Plus } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 /**
  * The station name a counter wears on its card. It is read from the counter's
@@ -37,9 +36,8 @@ const STATION_BADGE: Record<MenuIcon, string> = {
  */
 export function LiveCounters() {
   const { counters, unitPrice, menuReady, counterImage } = useLiveSite();
-  const { add } = useCart();
-  /** `null` shows every counter — what the guest sees on opening. */
-  const [only, setOnly] = useState<string | null>(null);
+  /** Which counter the jump bar last moved the guest to. */
+  const [activeCounter, setActiveCounter] = useState<string | null>(null);
 
   // A counter with nothing but signature dishes under it belongs to the
   // à la carte board, not here — an empty card under a station's name reads as
@@ -47,9 +45,6 @@ export function LiveCounters() {
   const visible = counters.filter((counter) =>
     counter.items.some((dish) => !dish.featured),
   );
-  const shown = only
-    ? visible.filter((counter) => counter.id === only)
-    : visible;
 
   return (
     <section id="counters" className="hearth-texture scroll-mt-24 py-20 sm:py-28">
@@ -63,24 +58,21 @@ export function LiveCounters() {
             description="The kitchen's counters as the menu files them — one card per section, with each station's dishes and the price of the dish it leads with. Prices are shown where the dish is sold on its own; where a dish is served as part of a counter, ask at the counter."
           />
           {visible.length > 0 ? (
-            <div className="flex flex-wrap gap-2 lg:max-w-lg lg:justify-end">
-              <FilterChip active={only === null} onClick={() => setOnly(null)}>
-                All counters
-              </FilterChip>
-              {visible.map((counter) => (
-                <FilterChip
-                  key={counter.id}
-                  active={only === counter.id}
-                  onClick={() => setOnly(counter.id)}
-                >
-                  {counter.name}
-                </FilterChip>
-              ))}
+            <div className="lg:max-w-lg lg:pb-1 lg:justify-end">
+              <CounterJumpBar
+                items={visible.map((counter) => ({
+                  id: counter.id,
+                  name: counter.name,
+                }))}
+                activeId={activeCounter}
+                onChange={setActiveCounter}
+                allLabel="All counters"
+              />
             </div>
           ) : null}
         </div>
 
-        {shown.length === 0 ? (
+        {visible.length === 0 ? (
           <p className="mt-8 rounded-2xl border border-dashed border-border/70 p-10 text-center text-sm leading-relaxed text-muted-foreground">
             {menuReady
               ? "The counters are being restocked. Every station the kitchen publishes in the admin panel appears here the moment it is saved."
@@ -88,14 +80,13 @@ export function LiveCounters() {
           </p>
         ) : (
           <div className="mt-10 grid items-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {shown.map((counter, index) => {
+            {visible.map((counter, index) => {
               const Icon = CATEGORY_ICONS[counter.icon];
               // Signature dishes are shown once, on the à la carte board, and
               // are deliberately kept out of the counters so nothing appears
               // twice.
               const dishes = counter.items.filter((dish) => !dish.featured);
               const face: LiveDish | undefined = dishes[0];
-              const price = face ? unitPrice(face) : 0;
               // The station's own photograph when the owner uploaded one from
               // the admin panel; otherwise the face of the first dish on it, so
               // a counter is never shown as an empty tile.
@@ -106,6 +97,7 @@ export function LiveCounters() {
               return (
                 <motion.article
                   key={counter.id}
+                  id={`counter-${counter.id}`}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, amount: 0.2 }}
@@ -114,7 +106,7 @@ export function LiveCounters() {
                     delay: (index % 3) * 0.07,
                     ease: "easeOut",
                   }}
-                  className="group flex h-fit flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/60 transition-colors hover:border-gold/35"
+                  className="group flex h-fit scroll-mt-28 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/60 transition-colors hover:border-gold/35"
                 >
                   <div className="relative aspect-[16/10] overflow-hidden">
                     <SmartImage
@@ -140,48 +132,51 @@ export function LiveCounters() {
                       {counter.blurb}
                     </p>
 
-                    {face ? (
-                      <div className="mt-1 flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 p-3">
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-gold/25 bg-gold/10 text-gold">
-                          <Check className="size-4" aria-hidden />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">
-                            {face.name}
-                          </span>
-                          <span className="block text-[0.65rem] tracking-[0.16em] text-muted-foreground uppercase">
-                            {dishes.length}{" "}
-                            {dishes.length === 1 ? "dish" : "dishes"} at this
-                            counter
-                          </span>
-                        </span>
-                      </div>
+                    {/* The counter's own dishes, each one orderable from the
+                        card. Capped at four: the rest of the section is one
+                        click away in the full menu, and a card that lists
+                        twenty dishes stops reading as a card. */}
+                    <ul className="mt-1 flex flex-col divide-y divide-border/50 border-t border-border/50">
+                      {dishes.slice(0, 4).map((dish) => {
+                        const dishPrice = unitPrice(dish);
+                        return (
+                          <li
+                            key={dish.slug}
+                            className="flex items-center gap-2 py-2"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-sm">
+                              {dish.name}
+                            </span>
+                            <span className="shrink-0 text-xs font-medium text-gold tabular-nums">
+                              {dishPrice > 0
+                                ? formatPkr(dishPrice)
+                                : "Ask at the counter"}
+                            </span>
+                            <AddToCartButton
+                              slug={dish.slug}
+                              name={dish.name}
+                              unitPrice={dishPrice}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {dishes.length > 4 ? (
+                      <p className="text-[0.65rem] tracking-[0.16em] text-muted-foreground uppercase">
+                        + {dishes.length - 4} more at this counter
+                      </p>
                     ) : null}
 
                     <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-                      <span className="font-display text-sm font-semibold text-gold tabular-nums">
-                        {price > 0 ? formatPkr(price) : "Ask at the counter"}
+                      <span className="text-xs text-muted-foreground">
+                        {dishes.length}{" "}
+                        {dishes.length === 1 ? "dish" : "dishes"} at this
+                        counter
                       </span>
-                      {face && price > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            add({
-                              slug: face.slug,
-                              name: face.name,
-                              unitPrice: price,
-                            })
-                          }
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[0.65rem] font-medium tracking-[0.14em] text-accent-foreground uppercase transition-opacity hover:opacity-90"
-                        >
-                          <Plus className="size-3.5" aria-hidden />
-                          Add to order
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div className="flex justify-center pt-1">
-                      <FullMenuDialog initialCounter={counter.id} variant="link" />
+                      <FullMenuDialog
+                        initialCounter={counter.id}
+                        variant="link"
+                      />
                     </div>
                   </div>
                 </motion.article>
@@ -191,31 +186,5 @@ export function LiveCounters() {
         )}
       </div>
     </section>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "rounded-full border px-4 py-1.5 text-[0.7rem] tracking-[0.14em] uppercase transition-colors",
-        active
-          ? "border-gold/50 bg-gold/15 text-gold"
-          : "border-border/70 text-muted-foreground hover:border-gold/30 hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }

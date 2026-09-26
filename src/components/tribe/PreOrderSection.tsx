@@ -1,3 +1,4 @@
+import { ReferenceCode } from "@/components/tribe/ReferenceCode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -331,9 +332,8 @@ export function PreOrderSection() {
                 role="status"
                 className="rounded-xl border border-gold/30 bg-gold/[0.08] px-4 py-3 text-center text-xs leading-relaxed text-gold"
               >
-                Sent to the kitchen — reference{" "}
-                <span className="font-mono tracking-[0.14em]">{confirmedRef}</span>
-                . Keep it for when we call to confirm.
+                Sent to the kitchen — keep this code for when we call to
+                confirm: <ReferenceCode code={confirmedRef} size="sm" />
               </p>
             ) : null}
 

@@ -1,3 +1,4 @@
+import { ReferenceCode } from "@/components/tribe/ReferenceCode";
 import { useDeliveryOrderLookup } from "@/hooks/use-live-db";
 import { formatRupees } from "@/lib/menu";
 import { CheckCircle2, Clock, Loader2, MapPin, Phone } from "lucide-react";
@@ -61,9 +62,7 @@ export function OrderTracker({
 
       <article className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card/60 p-4 text-left">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="font-mono text-xs tracking-[0.14em] text-gold">
-            {order.reference}
-          </span>
+          <ReferenceCode code={order.reference} size="sm" />
           <StatusBadge status={order.status} />
         </div>
 
