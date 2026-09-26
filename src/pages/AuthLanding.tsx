@@ -418,8 +418,8 @@ export default function AuthLanding() {
             transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
             className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
           >
-            A Pakistani restaurant in Gulberg, Lahore — live counters and an à
-            la carte menu, with tables reserved online and dishes ordered for
+            A Pakistani restaurant in Gulberg, Lahore — live counters and a full
+            priced menu, with tables reserved online and dishes ordered for
             delivery.
           </motion.p>
 

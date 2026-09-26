@@ -136,7 +136,7 @@ export function ContactFooter() {
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
               A Pakistani restaurant in {RESTAURANT.cityLine}, serving its own
-              menu — live counters and an à la carte board, with tables booked
+              menu — live counters and a full priced board, with tables booked
               online and dishes ordered for delivery.
             </p>
             <div className="flex items-center gap-2.5">

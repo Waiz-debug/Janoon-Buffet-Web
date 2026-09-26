@@ -35,7 +35,7 @@ function tagsFor(dish: LiveDish, price: number): string[] {
 }
 
 /**
- * The à la carte board — the priced main-menu sections, as chapters.
+ * The main menu board — the priced menu sections, as chapters.
  *
  * The chapters are the live main-menu sections in menu order, and the dishes
  * inside them are the live rows, so the board is exactly what the kitchen has
@@ -56,15 +56,14 @@ export function MenuSection() {
   return (
     <section id="menu" className="scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
-        {/* The accent is the word: "À la carte", never "A la carte". The À
-            takes the brass while the rest of the line stays in the display
-            serif, so the board reads as a menu cover rather than a label. */}
+        {/* Plain words, the way a menu cover reads: the section name, then
+            the brass only on the word that matters. */}
         <SectionHeading
           align="center"
-          eyebrow="Our menu"
+          eyebrow="Section by section"
           title={
             <>
-              <span className="text-gold">À</span> la carte
+              Our <span className="text-gold">menu</span>
             </>
           }
           description="The priced dishes, section by section — the same rows the kitchen publishes and edits, each with its own price. Reserve a table, or add a dish to your delivery order."
@@ -92,17 +91,24 @@ export function MenuSection() {
         </div>
 
         <div className="mt-10">
-          <SectionDivider label="The menu" />
+          <SectionDivider label="All sections" />
         </div>
 
         {withDishes.length === 0 ? (
           <p className="mt-10 rounded-2xl border border-dashed border-border/70 p-10 text-center text-sm leading-relaxed text-muted-foreground">
             {menuReady
-              ? "The à la carte board is being rewritten. Every section the kitchen publishes in the admin panel appears here the moment it is saved."
+              ? "The menu is being rewritten. Every section the kitchen publishes in the admin panel appears here the moment it is saved."
               : "Setting the board…"}
           </p>
         ) : (
-          <div className="mt-10 grid items-start gap-5 md:grid-cols-2 lg:grid-cols-3">
+          /* Masonry, not a grid. A chapter with two dishes and a chapter with
+             twenty sit side by side; in a row grid the short one is stretched
+             or leaves a tall black void beneath it. Columns let each card end
+             exactly where its own dishes end, and the next card starts there
+             — so the board packs tightly at any dish count. The trade is
+             reading order: down a column, then across, which is how a printed
+             menu is read anyway. */
+          <div className="mt-10 columns-1 gap-5 md:columns-2 lg:columns-3">
             {withDishes.map((chapter, index) => {
               const Icon = CATEGORY_ICONS[chapter.icon];
               // Signature dishes belong on this board too — they are priced
@@ -121,7 +127,7 @@ export function MenuSection() {
                     delay: (index % 3) * 0.07,
                     ease: "easeOut",
                   }}
-                  className="flex h-fit scroll-mt-28 flex-col rounded-2xl border border-border/70 bg-card/40"
+                  className="mb-5 flex scroll-mt-28 break-inside-avoid flex-col rounded-2xl border border-border/70 bg-card/40"
                 >
                   <header className="flex items-start gap-3 border-b border-border/60 p-5">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
@@ -168,7 +174,7 @@ export function MenuSection() {
                                 {dish.name}
                               </Link>
                               <span className="shrink-0 text-sm font-medium text-gold tabular-nums">
-                                {price > 0 ? formatPkr(price) : "Ask at the counter"}
+                                {price > 0 ? formatPkr(price) : "Priced at the counter"}
                               </span>
                             </div>
                             {dish.summary ? (

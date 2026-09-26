@@ -93,7 +93,7 @@ export function Hero() {
             className="max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
           >
             A Pakistani restaurant in Gulberg, {RESTAURANT.cityNames} — its own
-            kitchen and its own menu, from live counters and an à la carte board
+            kitchen and its own menu, from live counters and a full priced board
             through to the sweets counter, with tables booked online and dishes
             ordered for delivery.
           </motion.p>

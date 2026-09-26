@@ -41,7 +41,7 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
             </span>
           ) : (
             <span className="shrink-0 text-[0.65rem] text-gold/80">
-              Ask at the counter
+              Priced at the counter
             </span>
           )}
         </div>
@@ -49,23 +49,19 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
           {dish.summary}
         </p>
         <div className="mt-auto flex items-center gap-2 pt-3">
-          {price > 0 ? (
-            <button
-              type="button"
-              onClick={() =>
-                add({ slug: dish.slug, name: dish.name, unitPrice: price })
-              }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/20"
-              aria-label={`Add ${dish.name} to delivery order`}
-            >
-              <Plus className="size-3.5" aria-hidden />
-              Add to cart
-            </button>
-          ) : (
-            <span className="text-[0.7rem] tracking-[0.12em] text-muted-foreground uppercase">
-              Ask at the counter
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() =>
+              add({ slug: dish.slug, name: dish.name, unitPrice: price })
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold transition-colors hover:bg-gold/20"
+            aria-label={`Add ${dish.name} to delivery order${
+              price > 0 ? "" : " — price settled at the counter"
+            }`}
+          >
+            <Plus className="size-3.5" aria-hidden />
+            {price > 0 ? "Add to cart" : "Ask & add"}
+          </button>
           <Link
             to={`/menu/${dish.slug}`}
             className="text-[0.7rem] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-gold"
@@ -86,14 +82,11 @@ type FullMenuDialogProps = {
   initialCounter?: string | null;
   /** `link` renders a quiet inline trigger for a counter card's footer. */
   variant?: "button" | "link";
-  /** Overrides the link variant's own wording, where a card needs its own. */
-  linkLabel?: string;
 };
 
 export function FullMenuDialog({
   initialCounter = null,
   variant = "button",
-  linkLabel,
 }: FullMenuDialogProps = {}) {
   const { counters, menuItemCount, unitPrice } = useLiveSite();
   /** `null` shows every counter — what the guest sees on opening. */
@@ -123,8 +116,7 @@ export function FullMenuDialog({
             type="button"
             className="inline-flex items-center gap-1.5 text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:text-gold"
           >
-            {linkLabel ??
-              `See all ${triggerCount} ${triggerCount === 1 ? "dish" : "dishes"}`}
+            See all {triggerCount} {triggerCount === 1 ? "dish" : "dishes"}
             <ArrowUpRight className="size-3.5" aria-hidden />
           </button>
         ) : (

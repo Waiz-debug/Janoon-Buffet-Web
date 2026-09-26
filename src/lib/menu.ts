@@ -157,13 +157,13 @@ export const MENU_CATEGORIES: MenuCategory[] = [
   { id: "street-food", name: "Street Food Special", urdu: "اسٹریٹ فوڈ اسپیشل", blurb: "Lahori street-food favourites, fried and served hot.", icon: "bites" },
   { id: "variety-naans-meetha", name: "Variety of Naans & Junooni Meetha", urdu: "نان کی Variety اور جنونی میٹھا", blurb: "A tandoor bread platter and the full dessert cabinet, from continental cakes to warm mithai.", icon: "dessert" },
   { id: "beverages-counter", name: "Beverages", urdu: "مشروبات", blurb: "Tea and green tea served through the meal.", icon: "drink" },
-  { id: "chef-special", name: "Chef Special", urdu: "چیف اسپیشل", blurb: "The kitchen's à la carte signatures, in portion sizes for the table.", icon: "flame" },
+  { id: "chef-special", name: "Chef Special", urdu: "چیف اسپیشل", blurb: "The kitchen's signature dishes, in portion sizes for the table.", icon: "flame" },
   { id: "appetizers", name: "Appetizers", urdu: "اپیٹائزرز", blurb: "The table's opening course: fries, stuffed naan and grilled wings.", icon: "bites" },
   { id: "veg-lentils", name: "Vegetables & Lentils", urdu: "سبزیاں اور دال", blurb: "Slow-cooked daals and spinach dishes, from the kitchen's vegetable section.", icon: "pot" },
   { id: "junooni-tandoor", name: "Junooni Tandoor", urdu: "جنونی تندور", blurb: "Breads pulled to order from the clay tandoor.", icon: "bread" },
-  { id: "salads", name: "Salads", urdu: "سالیڈز", blurb: "Raita and fresh salads to begin an à la carte meal.", icon: "salad" },
+  { id: "salads", name: "Salads", urdu: "سالیڈز", blurb: "Raita and fresh salads to begin the meal.", icon: "salad" },
   { id: "desserts-signature", name: "Desserts & Signature Dessert", urdu: "میٹھا اور سیگنیچر ڈیسرٹ", blurb: "The closing sweet course, the house signature cheesecake among it.", icon: "dessert" },
-  { id: "drinks", name: "Drinks", urdu: "مشروبات", blurb: "Chilled water, soft drinks and house refreshers for the à la carte table.", icon: "drink" },
+  { id: "drinks", name: "Drinks", urdu: "مشروبات", blurb: "Chilled water, soft drinks and house refreshers for the table.", icon: "drink" },
 ];
 
 /**

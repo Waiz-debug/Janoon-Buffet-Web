@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 
 /**
- * The "+" on a dish row — every priced dish on the counters and the à la carte
- * board carries one.
+ * The "+" on a dish row — every dish on the counters and on the menu board
+ * carries one.
  *
  * It is client state only, on purpose: the tap adds the line to the cart, shows
  * how many of that dish are already in the bag, and never navigates, so a guest
@@ -13,9 +13,14 @@ import { Plus } from "lucide-react";
  * from the live menu (see `usePricedCart()`) and `place_delivery_order()`
  * prices the order again on the server, so nothing here is a source of truth.
  *
- * A dish with no price of its own — a counter item served as part of a sitting
- * — renders nothing: the row already reads "Ask at the counter", and a button
- * that adds a plate the kitchen cannot price would be a lie.
+ * **Every dish gets a control.** A dish the kitchen has not given a price of
+ * its own — a High Tea plate, say, which is served as part of a sitting — used
+ * to render nothing at all, which left a dead row on the board: a guest could
+ * see the dish, could not order it, and had no way of telling that from a
+ * broken button. It now adds like any other dish, at no price, and says so:
+ * the pill reads "ask", the accessible name says the price is settled at the
+ * counter, and the cart and the order summary both print the line as "priced at
+ * the counter" instead of inventing a number for it.
  */
 export function AddToCartButton({
   slug,
@@ -40,7 +45,7 @@ export function AddToCartButton({
       return lineKey === key;
     })?.count ?? 0;
 
-  if (unitPrice <= 0) return null;
+  const unpriced = unitPrice <= 0;
 
   return (
     <button
@@ -48,8 +53,12 @@ export function AddToCartButton({
       onClick={() => add({ slug, name, unitPrice, weight })}
       aria-label={
         count > 0
-          ? `Add another ${name} — ${count} already in your order`
-          : `Add ${name} to your order`
+          ? `Add another ${name} — ${count} already in your order${
+              unpriced ? ", price settled at the counter" : ""
+            }`
+          : `Add ${name} to your order${
+              unpriced ? " — price settled at the counter" : ""
+            }`
       }
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[0.65rem] font-semibold tracking-[0.14em] uppercase transition-colors",
@@ -67,7 +76,7 @@ export function AddToCartButton({
       {/* The word only earns its space on a wide row; the icon alone carries it
           on the dense counter cards and on a phone. */}
       <span className="hidden sm:inline">
-        {count > 0 ? "added" : "add"}
+        {count > 0 ? "added" : unpriced ? "ask" : "add"}
       </span>
     </button>
   );

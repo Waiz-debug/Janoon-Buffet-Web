@@ -20,16 +20,13 @@ import { Link } from "react-router";
  * longer has would scroll a guest into empty space.
  *
  * The labels themselves follow fine-dining house style: one or two words each,
- * never a sentence, and no word that merely repeats the section heading the
- * guest is about to land on. "À la carte" *is* the menu — "À la carte menu"
- * said it twice and was the only entry long enough to throw the row out of
- * alignment. Each label is written title case and set in caps by the styles
- * below, so the accented À keeps its diacritic instead of being flattened to
- * "A la carte".
+ * never a sentence, and plain ones a first-time guest reads without stopping.
+ * "Menu" is the whole word — "À la carte menu" said it twice over and was the
+ * only entry long enough to throw the row out of alignment.
  */
 const NAV_LINKS = [
   { label: "Counters", id: "counters" },
-  { label: "À la carte", id: "menu" },
+  { label: "Menu", id: "menu" },
   { label: "Gallery", id: "gallery" },
   { label: "Reservations", id: "reserve" },
   { label: "About", id: "heritage" },

@@ -270,6 +270,15 @@ export default function Order() {
           {/* Order summary */}
           <aside className="h-fit rounded-2xl border border-border/70 bg-card/60 p-6 lg:sticky lg:top-28">
             <h2 className="font-display text-lg font-semibold">Your plates</h2>
+            {/* A plate the kitchen has not priced carries no number here, so the
+                guest is told plainly that the total below is for the priced
+                dishes and the team settles the rest before delivery. */}
+            {items.some((line) => line.unitPrice <= 0) ? (
+              <p className="mt-2 rounded-xl border border-gold/25 bg-gold/[0.06] px-3.5 py-2.5 text-xs leading-relaxed text-gold/90">
+                Plates marked &ldquo;priced at the counter&rdquo; are confirmed
+                by the team before delivery, and are not part of the total below.
+              </p>
+            ) : null}
             <ul className="mt-4 flex flex-col divide-y divide-border/60">
               {items.map((line) => (
                 <li key={line.slug} className="flex items-center gap-3 py-3">
@@ -278,7 +287,7 @@ export default function Order() {
                     <p className="text-xs text-muted-foreground">
                       {line.unitPrice > 0
                         ? `${formatRupees(line.unitPrice)} each`
-                        : "Ask at the counter"}
+                        : "Priced at the counter"}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5">

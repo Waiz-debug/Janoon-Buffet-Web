@@ -97,7 +97,7 @@ export function CartDrawer() {
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {line.unitPrice > 0
                         ? `${formatRupees(line.unitPrice)} each`
-                        : "Ask at the counter"}
+                        : "Priced at the counter"}
                       {weightLabel ? (
                         <span className="ml-1.5 rounded-md border border-gold/20 bg-gold/[0.06] px-1.5 py-0.5 text-gold">
                           {weightLabel}
