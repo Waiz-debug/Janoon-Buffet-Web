@@ -1,22 +1,23 @@
 -- ============================================================================
 -- JUNOON — complete official menu structure and seed
 --
--- High Tea: Seasons Special High Tea — Rs 1,895 + tax
--- Time slots: 03:30–05:00 pm and 05:15–06:45 pm
---
 -- This script is safe to run repeatedly. It creates the two menu tables when
 -- missing, keeps the uncategorized parking row, retires obsolete starter
 -- sections, upserts the 16 active official sections, upserts all 90 menu items
--- with the demo photo each one shows on the guest menu, preserves the
--- four-signature limit, and publishes a verification summary.
+-- with the placeholder photo each one shows on the guest menu, preserves the
+-- four-signature limit, removes the demo content an earlier revision
+-- published, and prints a verification summary.
 --
 -- The dish block in section 4 is generated from src/lib/menu.ts by
 -- tools/generate-menu-sql.mjs, so it cannot drift from the catalogue the admin
 -- panel seeds. The rest of the file is hand-written.
 --
--- High Tea counter rows use price_per_plate = null because the individual
--- items are included in the Rs 1,895 + tax seat price and are not standalone
--- delivery products. The exact à la carte prices are stored on their rows.
+-- An earlier revision of this header carried a High Tea seat price and two
+-- sitting times. Neither was published by the restaurant, so neither appears
+-- here any more — and section 1a deletes the copy that was already in the
+-- database. Counter rows use price_per_plate = null so no price is invented for
+-- an item the house has not put a price on; the exact à la carte prices are
+-- stored on their own rows.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -148,16 +149,34 @@ begin
   end if;
 end $$;
 
--- Keep the High Tea offer and both service slots in the same admin-managed
--- content table used by the guest site.
+-- The admin-managed copy table the guest site reads.
 create table if not exists public.site_content (
   key text primary key,
   value text not null,
   updated_at bigint not null default 0
 );
-insert into public.site_content (key, value, updated_at)
-values ('high-tea-offer', 'Seasons Special High Tea — Rs 1,895 + tax | 03:30–05:00 pm & 05:15–06:45 pm', (extract(epoch from now()) * 1000)::bigint)
-on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at;
+
+-- Remove the offer copy an earlier revision of this file published. The line
+-- was "Seasons Special High Tea — Rs 1,895 + tax | 03:30–05:00 pm &
+-- 05:15–06:45 pm": a price and two sitting times the restaurant never gave us,
+-- drawn under the hero and again over the counters. A guest plans an evening
+-- around a price, so it is deleted rather than re-seeded.
+delete from public.site_content where key = 'high-tea-offer';
+
+-- The rest of the demo content an earlier revision left in the database: a
+-- sample offer with an invented price and a caption on each demo photograph.
+-- The photographs stay — real ones replace them from the admin panel — but a
+-- caption or an offer the house never wrote does not. Guarded, because this
+-- file can be pasted before the tables exist.
+do $$
+begin
+  if to_regclass('public.promotions') is not null then
+    delete from public.promotions where demo;
+  end if;
+  if to_regclass('public.site_media') is not null then
+    update public.site_media set caption = null where demo and caption is not null;
+  end if;
+end $$;
 
 -- The app addresses every dish by slug. Refuse an ambiguous legacy table
 -- rather than silently updating the wrong row.
@@ -187,26 +206,29 @@ set active = false
 where id like 'cat-%';
 
 -- ---------------------------------------------------------------------------
--- 2. Official active sections: nine live counters followed by seven main-menu
---    sections. These are individual menu_categories rows, as requested.
+-- 2. Official active sections: nine counter sections followed by seven
+--    main-menu sections. These are individual menu_categories rows, as
+--    requested. The blurbs describe each section and nothing more — no seat
+--    price, no sitting time and no claim about how a dish is cooked, because
+--    none of that has been confirmed by the restaurant.
 -- ---------------------------------------------------------------------------
 insert into public.menu_categories (id, name, urdu, blurb, icon, sort_order, active)
 values
-  ('welcome-drinks', 'Welcome Drink', 'خوش آمدید ڈرنک', 'The first glass of the High Tea service — a five-serving welcome pour with every seat.', 'drink', 1, true),
-  ('soup-counter', 'Soup', 'سوپ', 'Hot soups served at the opening of the live High Tea service.', 'soup', 2, true),
+  ('welcome-drinks', 'Welcome Drink', 'خوش آمدید ڈرنک', 'The welcome pour that opens the menu — a five-serving glass at the table.', 'drink', 1, true),
+  ('soup-counter', 'Soup', 'سوپ', 'Hot soups served at the opening of the meal.', 'soup', 2, true),
   ('junooni-special-counter', 'Junooni Special', 'جنونی اسپیشل', 'The kitchen''s live mutton and charcoal specials, including the seekh kabab and chicken boti of the day.', 'flame', 3, true),
-  ('chinese-counter', 'Chinese', 'چائنیز', 'A wok counter running fried, sauced and rice dishes through both High Tea time slots.', 'soup', 4, true),
+  ('chinese-counter', 'Chinese', 'چائنیز', 'A wok counter running fried, sauced and rice dishes.', 'soup', 4, true),
   ('italian-continental', 'Italian & Continental', 'ایٹالین این کانٹیننٹل', 'Hot continental favourites from the pizza and sandwich station.', 'bites', 5, true),
   ('salad-chaat', 'Salad & Chaat Section', 'سالیڈ اور چاٹ', 'Fresh fruit, chaat and chilled salads assembled at the live counter.', 'salad', 6, true),
-  ('street-food', 'Street Food Special', 'اسٹریٹ فوڈ اسپیشل', 'Lahori street-food favourites fried and served throughout the High Tea slots.', 'bites', 7, true),
+  ('street-food', 'Street Food Special', 'اسٹریٹ فوڈ اسپیشل', 'Lahori street-food favourites, fried and served hot.', 'bites', 7, true),
   ('variety-naans-meetha', 'Variety of Naans & Junooni Meetha', 'نان کی Variety اور جنونی میٹھا', 'A tandoor bread platter and the full dessert cabinet, from continental cakes to warm mithai.', 'dessert', 8, true),
-  ('beverages-counter', 'Beverages', 'مشروبات', 'Tea and green tea kept coming for the length of the High Tea service.', 'drink', 9, true),
-  ('chef-special', 'Chef Special', 'چیف اسپیشل', 'The kitchen''s à la carte signatures, prepared with home-made desi ghee.', 'flame', 10, true),
+  ('beverages-counter', 'Beverages', 'مشروبات', 'Tea and green tea served through the meal.', 'drink', 9, true),
+  ('chef-special', 'Chef Special', 'چیف اسپیشل', 'The kitchen''s à la carte signatures, in portion sizes for the table.', 'flame', 10, true),
   ('appetizers', 'Appetizers', 'اپیٹائزرز', 'The table''s opening course: fries, stuffed naan and grilled wings.', 'bites', 11, true),
-  ('veg-lentils', 'Vegetables & Lentils', 'سبزیاں اور دال', 'Slow-cooked daals and spinach dishes finished with butter and desi ghee.', 'pot', 12, true),
-  ('junooni-tandoor', 'Junooni Tandoor', 'جنونی تندور', 'Breads pulled to order from the clay tandoor and finished with house ghee.', 'bread', 13, true),
+  ('veg-lentils', 'Vegetables & Lentils', 'سبزیاں اور دال', 'Slow-cooked daals and spinach dishes, from the kitchen''s vegetable section.', 'pot', 12, true),
+  ('junooni-tandoor', 'Junooni Tandoor', 'جنونی تندور', 'Breads pulled to order from the clay tandoor.', 'bread', 13, true),
   ('salads', 'Salads', 'سالیڈز', 'Raita and fresh salads to begin an à la carte meal.', 'salad', 14, true),
-  ('desserts-signature', 'Desserts & Signature Dessert', 'میٹھا اور سیگنیچر ڈیسرٹ', 'The final sweet course, from slow-reduced kheer to the Junooni signature cheesecake.', 'dessert', 15, true),
+  ('desserts-signature', 'Desserts & Signature Dessert', 'میٹھا اور سیگنیچر ڈیسرٹ', 'The closing sweet course, the house signature cheesecake among it.', 'dessert', 15, true),
   ('drinks', 'Drinks', 'مشروبات', 'Chilled water, soft drinks and house refreshers for the à la carte table.', 'drink', 16, true)
 on conflict (id) do update set
   name = excluded.name,
@@ -233,8 +255,8 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 4. All 90 menu items. The first 57 are live High Tea station
---    items and the final 33 are the priced à la carte menu. Names, sections and
+-- 4. All 90 menu items. The first 57 are counter items with no
+--    price of their own and the final 33 are the priced à la carte menu. Names, sections and
 --    prices are exact, and every row carries the demo photo the guest menu
 --    shows — a loaded database should look like the designed menu, not a wall
 --    of empty tiles.

@@ -23,21 +23,26 @@ const PHONE_HREF = "tel:+923334363996";
 /**
  * The house.
  *
- * `name` stays the bare wordmark the crest prints. `fullName` is the trading
- * name that goes in page titles and the footer, and `descriptor` is the line
- * under the wordmark. "24/7 open buffet" was neither: it described a service
- * the house does not run, so it is gone — the timings below are the ones the
- * kitchen actually works to.
+ * `name` is the bare wordmark the crest prints, and the name the site uses
+ * everywhere: JUNOON. `fullName` is the name that goes in page titles and the
+ * footer, and `descriptor` is the line under the wordmark. Gulberg, Lahore is
+ * the location and only the location — it is never part of the name.
+ *
+ * There are deliberately no prices, opening hours, offers, ratings or reviews
+ * in this block. Anything of that kind is either owner-published content in the
+ * database (the menu, the promotions board) or it does not appear on the site
+ * at all: an invented time or price is worse than an absent one, because a
+ * guest plans around it.
  */
 export const RESTAURANT = {
-  name: "Junoon",
-  fullName: "Junoon — Imperial Dining & High Tea",
-  legalName: "Junoon Imperial Dining Ltd.",
-  descriptor: "Imperial dining & high tea",
+  name: "JUNOON",
+  fullName: "JUNOON",
+  legalName: "JUNOON",
+  /** Under the wordmark in the header and the footer. */
+  descriptor: "Gulberg, Lahore",
   /** The house's own line, kept in the singular for sentence use. */
-  tagline: "Imperial dining & high tea",
-  cuisine: "Mughlai haute cuisine",
-  urdu: "جنون · روایتی شاہی ذائقہ",
+  tagline: "Pakistani restaurant in Gulberg, Lahore",
+  cuisine: "Pakistani restaurant",
   phoneDisplay: PHONE_DISPLAY,
   phoneHref: PHONE_HREF,
   /** WhatsApp click-to-chat — international format, no leading zero. */
@@ -50,16 +55,6 @@ export const RESTAURANT = {
   cityLine: "Gulberg III, Lahore",
   /** The same house as prose, for sentences. */
   cityNames: "Lahore",
-  hours: "12:00 pm – 12:00 am, every day",
-  /** The three sittings the floor runs to. Read by the footer and the hero. */
-  service: {
-    dastarkhwan: "12:00 pm – 12:00 am, every day",
-    highTea: "03:30 – 05:00 pm & 05:15 – 06:45 pm",
-    dinner: "07:30 pm – 12:00 am",
-  },
-  rating: 4.6,
-  reviewCount: 72,
-  buffetRange: "Rs 2,000 – 3,000",
   instagramHandle: "@junoon.pk",
   instagramUrl: "https://www.instagram.com/junoon.pk",
   facebookUrl: "https://www.facebook.com/junoon.pk/",
@@ -70,7 +65,7 @@ export const RESTAURANT = {
 } as const;
 
 /**
- * The one imperial sanctuary.
+ * The one house.
  *
  * The house cooks in Lahore only, at Gulberg III. The street line is the part
  * to double-check — a courier, a taxi driver and a new guest all read this —
@@ -97,10 +92,10 @@ export type Venue = {
 export const LOCATIONS: readonly Venue[] = [
   {
     id: "lahore",
-    name: "Gulberg Courtyard",
+    name: "JUNOON",
     city: "Lahore",
     address: "487-B, Mangam Chowk, Gulberg III, Lahore",
-    note: "Open-air courtyard · dastarkhwan & High Tea",
+    note: "Gulberg III, Lahore",
     phoneDisplay: PHONE_DISPLAY,
     phoneHref: PHONE_HREF,
     mapsUrl:
@@ -111,62 +106,19 @@ export const LOCATIONS: readonly Venue[] = [
 /** The house a booking is taken at. */
 export const PRIMARY_VENUE = LOCATIONS[0];
 
-export const BUFFET_TIERS = [
-  {
-    label: "Monday – Thursday",
-    price: "Rs 2,000",
-    note: "per person, all you can eat",
-  },
-  {
-    label: "Friday – Sunday",
-    price: "Rs 2,500",
-    note: "per person, live BBQ counters",
-  },
-  {
-    label: "Festive & Eid nights",
-    price: "Rs 3,000",
-    note: "per person, extended menu",
-  },
-] as const;
-
-export const BUFFET_INCLUDES = [
-  "Unlimited live-fire BBQ refills",
-  "Tandoori naan, sheermal & roti to order",
-  "Salad bar, raita, chutneys & pickles",
-  "Soft drinks, lassi and Kashmiri chai",
-] as const;
-
-export const TESTIMONIALS = [
-  {
-    quote:
-      "We came in at 1 AM with six kids after a wedding and they still set up a full table for us outdoors. The seekh kebab and nihari were exactly like home.",
-    name: "Faiza N.",
-    detail: "Family dinner · outdoor seating",
-    rating: 5,
-  },
-  {
-    quote:
-      "Best value buffet in Lahore right now. The grilled fish special was outstanding and the staff kept refilling the BBQ without us asking.",
-    name: "Hamza R.",
-    detail: "Late-night craving",
-    rating: 5,
-  },
-  {
-    quote:
-      "Booked ahead for my mother's birthday — 14 of us, open air, string lights on. They remembered the booking and had the table ready.",
-    name: "Ayesha & Bilal",
-    detail: "Birthday party of 14",
-    rating: 4,
-  },
-] as const;
-
+/**
+ * The gallery tiles. The captions are deliberately empty: a caption is a
+ * claim about the photo, and these are placeholder house photographs until the
+ * owner uploads real ones from the admin panel. A slot the owner gives a
+ * caption is shown with it; an empty one shows the photo alone.
+ */
 export const GALLERY = [
-  { caption: "Live seekh kebab counter", image: unsplash("photo-1555939594-58d7cb561ad1", 700) },
-  { caption: "Malai boti off the coals", image: unsplash("photo-1600891964092-4316c288032e", 700) },
-  { caption: "Nihari at 3 AM", image: unsplash("photo-1585937421612-70a008356fbe", 700) },
-  { caption: "Open-air family seating", image: unsplash("photo-1414235077428-338989a2e8c0", 700) },
-  { caption: "Gulab jamun & kheer", image: unsplash("photo-1563379091339-03b21ab4a4f8", 700) },
-  { caption: "Kulfi falooda", image: unsplash("photo-1544025162-d76694265947", 700) },
+  { caption: "", image: unsplash("photo-1555939594-58d7cb561ad1", 700) },
+  { caption: "", image: unsplash("photo-1600891964092-4316c288032e", 700) },
+  { caption: "", image: unsplash("photo-1585937421612-70a008356fbe", 700) },
+  { caption: "", image: unsplash("photo-1414235077428-338989a2e8c0", 700) },
+  { caption: "", image: unsplash("photo-1563379091339-03b21ab4a4f8", 700) },
+  { caption: "", image: unsplash("photo-1544025162-d76694265947", 700) },
 ] as const;
 
 /**
@@ -222,36 +174,36 @@ export const EXPERIENCE_MEDIA = {
  * owner can change the numbers from the admin panel without a redeploy.
  */
 export const SITE_CONTENT_DEFAULTS = {
-  /**
-   * The High Tea offer line under the hero headline.
-   *
-   * It was the one piece of copy with no default, so a project whose
-   * `site_content` table had not been seeded yet drew the hero without the
-   * offer pill at all — a visible hole at the very top of the site. The offer
-   * is published in `supabase/official-menu.sql` as the same text, and the
-   * admin panel overwrites this the moment the owner edits it.
-   */
-  "high-tea-offer":
-    "Seasons Special High Tea — Rs 1,895 + tax · 03:30–05:00 pm & 05:15–06:45 pm",
-  "experience-seats": "4–20",
-  "experience-seats-label": "seats per family table",
+  /** Placeholder totals for the admin panel's Experience tab and nothing
+   *  else — the public site does not state seating numbers or sittings it
+   *  cannot confirm. Keys the owner fills in are shown only where the site
+   *  renders that key, so adding one here is the way to give a field a
+   *  starting value rather than a public claim. */
+  "experience-seats": "",
+  "experience-seats-label": "",
 } as const;
 
 export type SiteContentKey = keyof typeof SITE_CONTENT_DEFAULTS;
 
-/** House rules that make booking ahead worth it for families. */
+/**
+ * What the reservation itself promises: three facts about this booking, not
+ * three claims about the restaurant. A table-holding window and a seating
+ * policy an earlier revision wrote here were never confirmed by the house, so
+ * they are gone. What is left is true of the product — the request reaches the
+ * desk, nothing is charged through this site, and a large party is a call.
+ */
 export const BOOKING_PROMISES = [
   {
-    title: "Table held for 20 minutes",
-    body: "Running late with the family? Call us and we will keep your table reserved.",
+    title: "Sent to the desk",
+    body: "The request lands on the restaurant's reservations desk under the name and number you leave.",
   },
   {
     title: "Free to reserve",
-    body: "No deposit and no card required — settle per head at the dastarkhwan.",
+    body: "No deposit and no card required — nothing is charged through this site.",
   },
   {
-    title: "Groups over 12",
-    body: `Call ${PHONE_DISPLAY} and our floor team will set up joined tables for you.`,
+    title: "Large parties",
+    body: `Call ${PHONE_DISPLAY} and the team will take the details for your group directly.`,
   },
 ] as const;
 

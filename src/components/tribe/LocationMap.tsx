@@ -1,35 +1,29 @@
 import { Button } from "@/components/ui/button";
 import { LOCATIONS, PRIMARY_VENUE, RESTAURANT } from "@/lib/restaurant";
-import {
-  Car,
-  Clock,
-  ExternalLink,
-  MapPin,
-  Phone,
-  ShieldCheck,
-} from "lucide-react";
+import { ExternalLink, MapPin, Phone } from "lucide-react";
 
 const MAPS_EMBED_URL =
   "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3405.2!2d74.348!3d31.516!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3919047d7d7d7d7d%3A0x1234567890abcdef!2sGulberg%2C%20Lahore!5e0!3m2!1sen!2spk!4v1";
 
+/**
+ * Where the restaurant is, and how to reach it.
+ *
+ * The cards carry only what the house itself gave us: the address, the map pin
+ * and the phone number. Parking, seating and opening-hours claims used to sit
+ * here and are gone — an unconfirmed opening time sends a guest across the city
+ * to a closed door, which is worse than no card at all. If the owner publishes
+ * hours later, this is the block to add them to, reading from `RESTAURANT`.
+ */
 const INFO_ITEMS = [
   {
     icon: MapPin,
     title: "Find us",
-    // The house, named as the brand sheet names it.
+    // The house, at the one address the reservation desk and the footer use.
     lines: LOCATIONS.map((venue) => `${venue.name} · ${venue.address}`),
     action: {
       label: "Open in Google Maps",
       href: PRIMARY_VENUE.mapsUrl,
     },
-  },
-  {
-    icon: Car,
-    title: "Parking",
-    lines: [
-      "Free parking alongside the open-air terrace",
-      "Additional street parking on the main road",
-    ],
   },
   {
     icon: Phone,
@@ -39,14 +33,6 @@ const INFO_ITEMS = [
       label: "WhatsApp us",
       href: RESTAURANT.whatsappUrl,
     },
-  },
-  {
-    icon: Clock,
-    title: "Hours",
-    lines: [
-      RESTAURANT.service.dastarkhwan,
-      `High Tea ${RESTAURANT.service.highTea}`,
-    ],
   },
 ] as const;
 
@@ -58,7 +44,7 @@ export function LocationMap() {
           {/* Map embed */}
           <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card/40">
             <iframe
-              title="Junoon location on Google Maps"
+              title={`${RESTAURANT.name} location on Google Maps`}
               src={MAPS_EMBED_URL}
               width="100%"
               height="400"
@@ -68,11 +54,12 @@ export function LocationMap() {
               referrerPolicy="no-referrer-when-downgrade"
               className="h-[320px] w-full sm:h-[400px]"
             />
-            {/* Overlay CTA */}              <a
+            {/* Overlay CTA */}
+            <a
               href={PRIMARY_VENUE.mapsUrl}
               target="_blank"
               rel="noreferrer"
-              className="absolute bottom-4 left-4 right-4 flex items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/90 px-4 py-3 text-sm font-medium backdrop-blur-xl transition-colors hover:border-gold/40 hover:text-gold sm:left-auto sm:right-4 sm:w-fit"
+              className="absolute bottom-4 left-4 right-4 flex items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/90 px-4 py-3 text-sm font-medium backdrop-blur-xl transition-colors hover:border-gold/40 hover:text-gold sm:right-4 sm:left-auto sm:w-fit"
             >
               <ExternalLink className="size-3.5" aria-hidden />
               Get directions
@@ -90,7 +77,7 @@ export function LocationMap() {
                   Visit us in {LOCATIONS.map((venue) => venue.city).join(" & ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Open-air courtyard with parking alongside
+                  {RESTAURANT.address}
                 </p>
               </div>
             </div>
@@ -139,15 +126,6 @@ export function LocationMap() {
                   </div>
                 );
               })}
-            </div>
-
-            {/* Trust signal */}
-            <div className="flex items-center gap-2 rounded-2xl border border-gold/25 bg-gold/[0.06] px-4 py-3">
-              <ShieldCheck className="size-4 shrink-0 text-gold" aria-hidden />
-              <p className="text-xs text-gold">
-                {RESTAURANT.rating}/5 from {RESTAURANT.reviewCount}+ Google
-                reviews · Verified restaurant listing
-              </p>
             </div>
 
             <Button asChild variant="outline" className="w-fit gap-2">

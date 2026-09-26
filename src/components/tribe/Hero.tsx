@@ -5,21 +5,15 @@ import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
 import { scrollToSection } from "@/lib/scroll";
 import { motion } from "framer-motion";
-import { ArrowRight, CalendarCheck, Clock, Flame } from "lucide-react";
+import { ArrowRight, CalendarCheck, Flame } from "lucide-react";
 
 /**
- * The four claims the house leads with. They are deliberately about method
- * rather than about the price: the price is on the High Tea band below and is
- * editable in the admin panel, while these are the reasons it costs what it
- * costs.
+ * The hero leads with the house's own name and two numbers the menu itself
+ * publishes — how many counters are running and how many dishes are on them —
+ * counted live, so the strip can never state something the kitchen is not
+ * serving. There are no prices, timings or superlatives here: an invented one
+ * is worse than an absent one.
  */
-const HERO_STATS = [
-  { value: "16+ hours", label: "Slow-cooked, never rushed" },
-  { value: "100%", label: "Asli desi ghee" },
-  { value: "Kashmir", label: "Single-source saffron" },
-  { value: "Live coal", label: "Angith roast" },
-] as const;
-
 const container = {
   hidden: {},
   show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
@@ -31,17 +25,25 @@ const item = {
 };
 
 /**
- * The imperial hero: one photograph of the dastarkhwan, the house name in Urdu
- * over it, and the four claims under a brass rule.
- *
- * The backdrop is the admin-managed `hero` media slot, so the photo the owner
- * uploads in the panel is the photo that greets every guest — no redeploy, and
- * it changes on the site the moment it is saved.
+ * The hero: the admin-managed backdrop photograph, the house name, and the
+ * two calls to action. The backdrop is the `hero` media slot, so the photo the
+ * owner uploads in the panel is the photo that greets every guest — no
+ * redeploy, and it changes on the site the moment it is saved.
  */
 export function Hero() {
-  const { heroImage, content } = useLiveSite();
+  const { heroImage, counters, dishes } = useLiveSite();
   const backdrop = heroImage ?? RESTAURANT.heroImage;
-  const highTeaOffer = content["high-tea-offer"];
+  /** What the menu actually holds right now, counted rather than claimed. */
+  const facts = [
+    {
+      value: String(counters.length),
+      label: counters.length === 1 ? "Live counter" : "Live counters",
+    },
+    {
+      value: String(dishes.length),
+      label: dishes.length === 1 ? "Dish on the menu" : "Dishes on the menu",
+    },
+  ];
 
   return (
     <section
@@ -79,40 +81,22 @@ export function Hero() {
             {RESTAURANT.cuisine} · {RESTAURANT.cityNames}
           </motion.span>
 
-          <motion.p
-            variants={item}
-            dir="rtl"
-            className="font-display text-lg text-gold/85 sm:text-xl"
-          >
-            جنون · شاہی دسترخوان
-          </motion.p>
-
           <motion.h1
             variants={item}
             className="font-display text-4xl leading-[1.05] font-semibold text-balance sm:text-5xl lg:text-6xl"
           >
-            An Ode to Mughal Gastronomy
+            {RESTAURANT.name}
           </motion.h1>
 
           <motion.p
             variants={item}
             className="max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
           >
-            Immerse yourself in the royal pageantry of a shahi dastarkhwan —
-            nihari left to simmer overnight, kebabs roasted over angith coal and
-            saffron-perfumed biryani, served on brass and copper in the open air
-            of {RESTAURANT.cityNames}.
+            A Pakistani restaurant in Gulberg, {RESTAURANT.cityNames} — its own
+            kitchen and its own menu, from live counters and an à la carte board
+            through to the sweets counter, with tables booked online and dishes
+            ordered for delivery.
           </motion.p>
-
-          {highTeaOffer ? (
-            <motion.span
-              variants={item}
-              className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-gold/20 bg-card/60 px-4 py-1.5 text-xs text-gold/90 backdrop-blur"
-            >
-              <Clock className="size-3.5 shrink-0" aria-hidden />
-              {highTeaOffer}
-            </motion.span>
-          ) : null}
 
           <motion.div
             variants={item}
@@ -147,18 +131,18 @@ export function Hero() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5, ease: "easeOut" }}
-          className="mt-12 grid grid-cols-2 gap-y-6 border-t border-border/60 pt-8 sm:grid-cols-4 sm:divide-x sm:divide-border/60"
+          className="mx-auto mt-12 grid max-w-md grid-cols-2 gap-6 border-t border-border/60 pt-8"
         >
-          {HERO_STATS.map((stat) => (
+          {facts.map((fact) => (
             <div
-              key={stat.value}
+              key={fact.label}
               className="flex flex-col items-center gap-1.5 px-2 text-center"
             >
               <dt className="font-display text-xl font-semibold text-gold sm:text-2xl">
-                {stat.value}
+                {fact.value}
               </dt>
               <dd className="text-[0.65rem] tracking-[0.18em] text-muted-foreground uppercase">
-                {stat.label}
+                {fact.label}
               </dd>
             </div>
           ))}

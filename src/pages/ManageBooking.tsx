@@ -162,7 +162,7 @@ export default function ManageBooking() {
                 Prefer to speak to us? Call {RESTAURANT.phoneDisplay}
               </a>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {RESTAURANT.hours} · {RESTAURANT.address}
+                {RESTAURANT.address}
               </p>
             </div>
           </div>
@@ -230,8 +230,9 @@ export default function ManageBooking() {
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  You are welcome to reserve another table at any hour — the
-                  buffet runs around the clock and changes stay free of charge.
+                  You are welcome to reserve another table — reservations cost
+                  nothing online, and a booking can be changed or cancelled
+                  here at any time.
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button asChild className="gap-2">

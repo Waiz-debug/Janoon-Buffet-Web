@@ -5,7 +5,6 @@ import {
   ArrowRight,
   ChefHat,
   ChevronDown,
-  Clock,
   Flame,
   Loader2,
   Lock,
@@ -13,7 +12,6 @@ import {
   MapPin,
   Phone,
   ShieldCheck,
-  Star,
   UserPlus,
   UtensilsCrossed,
 } from "lucide-react";
@@ -44,21 +42,27 @@ import {
 import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
 
+/**
+ * Three facts the house can stand behind: the menu is served counter by
+ * counter, the address is the one on the map, and the phone number is the one
+ * the reservation desk answers. Prices, hours and ratings used to sit here and
+ * are gone — none of them were given to us by the restaurant.
+ */
 const HIGHLIGHTS = [
   {
     icon: UtensilsCrossed,
-    value: RESTAURANT.buffetRange,
-    label: "All-you-can-eat buffet, per person",
+    value: "Live counters",
+    label: "The menu, counter by counter",
   },
   {
-    icon: Clock,
-    value: "Open 24 hours",
-    label: "Charcoal grills going all night",
+    icon: MapPin,
+    value: RESTAURANT.cityLine,
+    label: "Where to find us",
   },
   {
-    icon: Star,
-    value: `${RESTAURANT.rating} / 5`,
-    label: `${RESTAURANT.reviewCount}+ Google reviews`,
+    icon: Phone,
+    value: RESTAURANT.phoneDisplay,
+    label: "Reservations & orders",
   },
 ] as const;
 
@@ -394,7 +398,7 @@ export default function AuthLanding() {
             className="inline-flex items-center gap-2 rounded-full border border-gold/25 bg-background/55 px-4 py-1.5 text-[0.68rem] font-medium uppercase tracking-[0.22em] text-gold backdrop-blur"
           >
             <Flame className="size-3.5" aria-hidden />
-            Open-air terrace · Gulberg, Lahore
+            {RESTAURANT.cityLine}
           </motion.span>
 
           <motion.h1
@@ -404,7 +408,7 @@ export default function AuthLanding() {
             className="mt-6 font-display text-5xl leading-[1.02] font-semibold tracking-tight text-balance sm:text-7xl"
           >
             <span className="bg-gradient-to-r from-gold via-gold to-ember bg-clip-text text-transparent">
-              Junoon
+              {RESTAURANT.name}
             </span>
           </motion.h1>
 
@@ -414,8 +418,9 @@ export default function AuthLanding() {
             transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
             className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
           >
-            Lahore&apos;s 24/7 open buffet — charcoal BBQ, clay-pot handi and
-            desi desserts served on the terrace, around the clock.
+            A Pakistani restaurant in Gulberg, Lahore — live counters and an à
+            la carte menu, with tables reserved online and dishes ordered for
+            delivery.
           </motion.p>
 
           <motion.div
@@ -516,10 +521,6 @@ export default function AuthLanding() {
           <div className="brass-rule h-px w-full" aria-hidden />
 
           <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2.5 pt-7 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <Clock className="size-3.5 text-gold/70" aria-hidden />
-              Open 24 hours
-            </span>
             <a
               href={RESTAURANT.phoneHref}
               className="inline-flex items-center gap-2 transition-colors hover:text-gold"
@@ -529,7 +530,7 @@ export default function AuthLanding() {
             </a>
             <span className="inline-flex items-center gap-2">
               <MapPin className="size-3.5 text-gold/70" aria-hidden />
-              Gulberg · Lahore, Pakistan
+              {RESTAURANT.address}
             </span>
           </div>
 
@@ -565,7 +566,7 @@ export default function AuthLanding() {
           </div>
 
           <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
-            © {new Date().getFullYear()} Junoon · Pakistani Restaurant
+            © {new Date().getFullYear()} {RESTAURANT.name} · {RESTAURANT.cityLine}
           </p>
         </motion.div>
       </footer>
@@ -703,16 +704,16 @@ function SignInModal({
         />
 
         {/*
-          The house mark, so the door is unmistakably Junoon's — the same
-          artwork as the apple-touch tile and the manifest icons, not a
+          The house mark, so the door is unmistakably the restaurant's — the
+          same artwork as the apple-touch tile and the manifest icons, not a
           stand-in icon.
         */}
         <div className="relative flex flex-col items-center text-center">
-          <JanoonMark className="size-14 rounded-lg" alt="Junoon" />
+          <JanoonMark className="size-14 rounded-lg" alt={RESTAURANT.name} />
           <span className="mt-3 inline-flex items-center gap-2 text-gold/80">
             <RoleIcon className="size-3.5" aria-hidden />
             <span className="text-[0.62rem] font-medium tracking-[0.26em] uppercase">
-              Junoon
+              {RESTAURANT.name}
             </span>
           </span>
           <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight">

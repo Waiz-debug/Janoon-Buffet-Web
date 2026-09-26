@@ -5,7 +5,8 @@ import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { Button } from "@/components/ui/button";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { useLiveSite } from "@/hooks/use-live-site";
-import { BUFFET_TIERS, RESTAURANT } from "@/lib/restaurant";
+import { formatPkr } from "@/lib/menu";
+import { RESTAURANT } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -21,7 +22,7 @@ import { Link, useParams } from "react-router";
 export default function MenuDetail() {
   const { slug } = useParams<{ slug: string }>();
   const goToSection = useGoToSection();
-  const { getDish, getCounter, dishes, dishesByCategory, menuReady } =
+  const { getDish, getCounter, dishes, dishesByCategory, menuReady, unitPrice } =
     useLiveSite();
   const dish = slug ? getDish(slug) : undefined;
 
@@ -62,8 +63,8 @@ export default function MenuDetail() {
             That dish is not on the menu tonight
           </h1>
           <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-            It may have been renamed or rotated out. Browse the full buffet to see
-            what is being served this evening.
+            It may have been renamed or rotated out. Browse the full menu to see
+            what the kitchen is serving.
           </p>
           <Button asChild className="gap-2">
             <Link to="/restaurant#menu">
@@ -79,6 +80,8 @@ export default function MenuDetail() {
 
   const category = getCounter(dish.categoryId);
   const Icon = category ? CATEGORY_ICONS[category.icon] : undefined;
+  /** "Ask at the counter" when the row carries no price of its own. */
+  const price = unitPrice(dish);
   const pairings = (dish.pairings ?? [])
     .map((paired) => getDish(paired))
     .filter((paired): paired is NonNullable<typeof paired> => Boolean(paired));
@@ -101,7 +104,7 @@ export default function MenuDetail() {
           </Link>
           <span aria-hidden>/</span>
           <Link to="/restaurant#menu" className="transition-colors hover:text-gold">
-            {category?.name ?? "Buffet"}
+            {category?.name ?? "Menu"}
           </Link>
           <span aria-hidden>/</span>
           <span className="text-foreground">{dish.name}</span>
@@ -118,12 +121,11 @@ export default function MenuDetail() {
             <div className="flex flex-col gap-4">
               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[0.7rem] tracking-[0.2em] text-gold uppercase">
                 {Icon ? <Icon className="size-3.5" aria-hidden /> : null}
-                {category?.name ?? "Buffet"}
+                {category?.name ?? "Menu"}
               </span>
               <h1 className="font-display text-4xl leading-tight font-semibold text-balance sm:text-5xl">
                 {dish.name}
               </h1>
-              <p className="text-sm text-gold/80">{dish.urdu}</p>
               <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
                 {dish.description}
               </p>
@@ -148,7 +150,7 @@ export default function MenuDetail() {
                 onClick={() => goToSection("reserve")}
               >
                 <CalendarCheck className="size-4" aria-hidden />
-                Book Buffet
+                Reserve a Table
               </Button>
               <Button
                 asChild
@@ -164,8 +166,9 @@ export default function MenuDetail() {
             </div>
 
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Served as part of the all-you-can-eat buffet — {RESTAURANT.buffetRange}{" "}
-              per person, unlimited refills.
+              {price > 0
+                ? `Priced at ${formatPkr(price)} on the menu — reserve a table, or add it to a delivery order.`
+                : "Served at its counter — ask the team for today's price."}
             </p>
           </motion.div>
 
@@ -182,57 +185,54 @@ export default function MenuDetail() {
                 loading="eager"
                 className="aspect-[4/3] w-full object-cover lg:aspect-[4/5]"
               />
-              <span className="absolute top-4 left-4 rounded-full border border-gold/30 bg-background/85 px-3 py-1.5 text-[0.65rem] tracking-[0.18em] text-gold uppercase backdrop-blur">
-                Included in every buffet
+              <span className="absolute top-4 left-4 rounded-full border border-gold/30 bg-background/85 px-3 py-1.5 text-[0.65rem] tracking-[0.18em] text-gold uppercase tabular-nums backdrop-blur">
+                {price > 0 ? formatPkr(price) : "Ask at the counter"}
               </span>
             </div>
           </motion.div>
         </section>
 
-        {/* Buffet inclusion */}
+        {/* How to order it */}
         <section className="hearth-texture border-y border-border/60 py-16 sm:py-20">
           <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div className="flex flex-col gap-4">
               <span className="text-[0.7rem] tracking-[0.22em] text-gold uppercase">
-                How it is served
+                How to order
               </span>
               <h2 className="max-w-2xl font-display text-2xl font-semibold text-balance sm:text-3xl">
-                One ticket, four counters — {dish.name} included without limit
+                {dish.name} — at the table, or delivered
               </h2>
             </div>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
-              {BUFFET_TIERS.map((tier) => (
+              {[
+                {
+                  title: "Dine in",
+                  body: `Reserve a table and order ${dish.name} with the rest of the menu.`,
+                },
+                {
+                  title: "Delivery",
+                  body: "Add the dish to a delivery order — the total is worked out from the menu price, never from this page.",
+                },
+                {
+                  title: "Call the restaurant",
+                  body: `Questions about a dish, or a large order? Call ${RESTAURANT.phoneDisplay}.`,
+                },
+              ].map((option) => (
                 <div
-                  key={tier.label}
+                  key={option.title}
                   className="rounded-2xl border border-border/70 bg-card/50 p-6"
                 >
-                  <p className="text-[0.7rem] tracking-[0.18em] text-muted-foreground uppercase">
-                    {tier.label}
+                  <p className="flex items-center gap-2 font-display text-lg font-semibold">
+                    <Check className="size-4 text-gold" aria-hidden />
+                    {option.title}
                   </p>
-                  <p className="mt-2 font-display text-3xl font-semibold text-gold">
-                    {tier.price}
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {option.body}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{tier.note}</p>
                 </div>
               ))}
             </div>
-
-            <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-              {[
-                "Unlimited refills from the live counter",
-                "Tandoori naan, sheermal and roti to order",
-                "Salad bar, raita and house chutneys",
-                "Soft drinks, lassi and Kashmiri chai",
-              ].map((line) => (
-                <li key={line} className="flex items-center gap-2.5 text-sm">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-gold/30 text-gold">
-                    <Check className="size-3" aria-hidden />
-                  </span>
-                  <span className="text-muted-foreground">{line}</span>
-                </li>
-              ))}
-            </ul>
           </div>
         </section>
 
@@ -275,7 +275,7 @@ export default function MenuDetail() {
           <section className="mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6">
             <div className="flex items-end justify-between gap-4">
               <h2 className="font-display text-2xl font-semibold">
-                Also from {category?.name ?? "the buffet"}
+                Also from {category?.name ?? "the menu"}
               </h2>
               <Link
                 to="/restaurant#menu"

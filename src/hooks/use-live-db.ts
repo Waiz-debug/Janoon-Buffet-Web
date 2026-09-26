@@ -351,11 +351,17 @@ export function usePreorders(): Preorder[] | undefined {
 /**
  * Promotions. `activeOnly` drops anything switched off or past its expiry —
  * the admin list asks for every row, the public banner only for live offers.
+ *
+ * Seeded demo offers are excluded from every guest feed by default; the admin
+ * panel passes `includeDemo` so the team can see and delete them.
  */
-export function usePromotions(activeOnly: boolean): Promotion[] | undefined {
+export function usePromotions(
+  activeOnly: boolean,
+  includeDemo = false,
+): Promotion[] | undefined {
   return useLiveTable<Promotion>(
     TABLES.promotions,
-    () => fetchPromotions({ activeOnly }),
+    () => fetchPromotions({ activeOnly, includeDemo }),
     activeOnly ? "active" : "all",
   );
 }

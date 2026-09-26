@@ -3,7 +3,6 @@ import { SmartImage } from "@/components/tribe/SmartImage";
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
 import { formatRupees } from "@/lib/menu";
-import { BUFFET_TIERS } from "@/lib/restaurant";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { ArrowUpRight, Check, Plus, UtensilsCrossed } from "lucide-react";
+import { ArrowUpRight, Plus, UtensilsCrossed } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -41,7 +40,9 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
               {formatRupees(price)}
             </span>
           ) : (
-            <span className="shrink-0 text-[0.65rem] text-gold/80">High Tea</span>
+            <span className="shrink-0 text-[0.65rem] text-gold/80">
+              Ask at the counter
+            </span>
           )}
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
@@ -62,7 +63,7 @@ function DishCard({ dish, price }: { dish: LiveDish; price: number }) {
             </button>
           ) : (
             <span className="text-[0.7rem] tracking-[0.12em] text-muted-foreground uppercase">
-              Included in High Tea
+              Ask at the counter
             </span>
           )}
           <Link
@@ -147,21 +148,10 @@ export function FullMenuDialog({
             The complete menu
           </DialogTitle>
           <DialogDescription>
-            Every dish across our nine live High Tea stations and seven main-menu
-            sections — all included in the dine-in buffet, or available for
-            Lahore delivery at the prices shown.
+            Every section of the menu the kitchen publishes, with each dish's own
+            price. A priced dish can be added to a delivery order; a dish without
+            a price is served at its counter — ask the team for today's price.
           </DialogDescription>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {BUFFET_TIERS.map((tier) => (
-              <span
-                key={tier.label}
-                className="inline-flex items-center gap-1.5 rounded-full border border-gold/25 bg-gold/[0.08] px-3 py-1 text-xs text-muted-foreground"
-              >
-                <Check className="size-3 text-gold" aria-hidden />
-                Dine-in buffet {tier.price} · {tier.label}
-              </span>
-            ))}
-          </div>
 
           {/* One chip per counter, so a guest can read a single station — the
               charcoal grill — without scrolling the whole spread. */}
@@ -214,7 +204,6 @@ export function FullMenuDialog({
                       <h3 className="font-display text-lg font-semibold">
                         {counter.name}
                       </h3>
-                      <p className="text-xs text-gold/70">{counter.urdu}</p>
                     </div>
                   </header>
                   {/* `items-start` so a card ends with its own content — a

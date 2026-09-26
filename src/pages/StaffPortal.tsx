@@ -263,7 +263,7 @@ export default function StaffPortal() {
     <PortalFrame
       badge="Staff portal"
       title="The floor desk"
-      description="Everything the evening team needs while the terrace is full — the live delivery feed, order totals, and every table booking, pre-order and delivery in one searchable desk."
+      description="Everything the desk needs while the restaurant is serving — the live delivery feed, order totals, and every table booking, pre-order and delivery in one searchable desk."
     >
       {/* A project with no schema looks like a desk that never receives
           anything — say so up front rather than leaving the team guessing. */}

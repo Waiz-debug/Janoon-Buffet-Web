@@ -119,7 +119,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   Reservations desk
                 </CardTitle>
                 <CardDescription>
-                  Sign in with your work email to manage buffet bookings
+                  Sign in with your work email to manage bookings
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleEmailSubmit}>

@@ -11,11 +11,13 @@ import { useEffect, useMemo, useState } from "react";
 /**
  * The offers board — every live promotion, in one place.
  *
- * The banner strip above it surfaces the newest offer mid-scroll; this is the
- * part a guest reaches by scrolling further, so it holds the whole collection
- * rather than only the newest one. Both read the same `promotions` table, so
- * publishing an entry in the admin panel puts it on the strip *and* on this
- * board with no redeploy and no refresh on the guest's side.
+ * The strip above it surfaces the newest offer mid-scroll; this is the part a
+ * guest reaches by scrolling further, so it holds the whole collection rather
+ * than only the newest one. Both read the same `promotions` table and both
+ * ignore seeded demo rows, so the board can only ever show what the restaurant
+ * itself has published. Publish an entry in the admin panel and it appears on
+ * the strip *and* on this board with no redeploy and no refresh on the guest's
+ * side.
  *
  * This is a guest surface and nothing else. It used to hide a "Manage
  * promotions" link behind an admin check, which put an editing control on the
@@ -58,9 +60,9 @@ export function PromotionsSection() {
     <section id="offers" className="scroll-mt-24 px-4 py-16 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-6xl">
         <SectionHeading
-          eyebrow="Offers & specials"
-          title="What's on this week"
-          description="Family deals, seasonal platters and the late-night specials running at the terrace — each one live, and each one gone once its clock runs out."
+          eyebrow="Offers"
+          title="What's on"
+          description="Offers published by the restaurant itself — each one runs while it is live and leaves the board when its time is up. Nothing appears here that the restaurant has not published."
         />
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -130,7 +132,7 @@ export function PromotionsSection() {
                       : "No end date"}
                   </span>
                   {/* The owner can point an offer anywhere; without a link the
-                      card still leads to the buffet booking form. */}
+                      card still leads to the reservation form. */}
                   {promo.linkUrl ? (
                     <Button
                       asChild
@@ -151,7 +153,7 @@ export function PromotionsSection() {
                       className="gap-1.5 text-gold hover:text-gold"
                     >
                       <a href="#reserve">
-                        Book Buffet
+                        Reserve a Table
                         <Sparkles className="size-3.5" aria-hidden />
                       </a>
                     </Button>

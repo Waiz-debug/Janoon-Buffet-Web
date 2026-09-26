@@ -1,31 +1,41 @@
 import { SmartImage } from "@/components/tribe/SmartImage";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { useLiveSite } from "@/hooks/use-live-site";
-import { EXPERIENCE_MEDIA } from "@/lib/restaurant";
+import { EXPERIENCE_MEDIA, RESTAURANT } from "@/lib/restaurant";
 import { motion } from "framer-motion";
-import { Moon, Quote, Trees, Users } from "lucide-react";
+import { CalendarCheck, Truck, UtensilsCrossed } from "lucide-react";
 
-const VIBES = [
+/**
+ * What the house actually does, in three lines.
+ *
+ * This section used to describe an open-air courtyard of a given size, a
+ * scratch kitchen and a private chamber — none of it confirmed by the
+ * restaurant. What is left is only what the product itself proves: the menu is
+ * published counter by counter, tables are booked online, and dishes are
+ * ordered for delivery. The photographs come from the admin-managed Experience
+ * slots, so the owner replaces them with real pictures of the house.
+ */
+const FACTS = [
   {
-    icon: Trees,
-    title: "Open-air family seating",
-    body: "Long tables under string lights and a night breeze — room for the cousins, the grandparents and the pram, with the grills working a few steps away.",
+    icon: UtensilsCrossed,
+    title: "One menu, counter by counter",
+    body: "Every dish is filed under the counter that serves it, and the full menu opens section by section — the same rows the kitchen publishes and repriced from its own admin panel.",
   },
   {
-    icon: Users,
-    title: "Cooked the slow, old way",
-    body: "Nihari that starts at dawn, handi stirred in clay, seekh kebab pressed by hand. Nothing is rushed, which is exactly why it tastes like home.",
+    icon: CalendarCheck,
+    title: "Tables booked online",
+    body: "Send a reservation request and it lands on the restaurant's own desk, where the team keeps the table and can reach you back on the number you left.",
   },
   {
-    icon: Moon,
-    title: "Late-night cravings welcome",
-    body: "The buffet never closes. Walk in at 2 AM or 5 AM after a wedding and find a full spread, hot naan and Kashmiri chai waiting.",
+    icon: Truck,
+    title: "Dishes delivered",
+    body: "Priced dishes can be ordered for delivery, with the total worked out from the menu on the server rather than from anything the page states.",
   },
 ] as const;
 
 export function AboutVibe() {
-  // Photos and the seating counter are both owner-managed in the admin panel.
-  const { mediaOr, content } = useLiveSite();
+  // Photos are owner-managed in the admin panel.
+  const { mediaOr } = useLiveSite();
 
   return (
     <section id="heritage" className="hearth-texture scroll-mt-24 py-20 sm:py-28">
@@ -33,15 +43,15 @@ export function AboutVibe() {
         <div className="grid gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div className="flex flex-col gap-10">
             <SectionHeading
-              eyebrow="Our heritage"
-              title="An open-air table in Lahore, served whenever your family is hungry"
-              description="Junoon was built on a single idea: good desi cooking should not keep office hours. Arrive after a wedding, before a shift, or on a slow Friday night — the coals are always lit."
+              eyebrow="About the restaurant"
+              title={`${RESTAURANT.name} — a Pakistani kitchen in ${RESTAURANT.cityLine}`}
+              description={`The restaurant cooks and serves its own menu at ${RESTAURANT.address}, and everything published on this site comes from the house: the dishes, the prices and the photographs are edited by the restaurant itself.`}
             />
 
             <div className="flex flex-col gap-4">
-              {VIBES.map((vibe, index) => (
+              {FACTS.map((fact, index) => (
                 <motion.div
-                  key={vibe.title}
+                  key={fact.title}
                   initial={{ opacity: 0, x: -18 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true, amount: 0.5 }}
@@ -49,14 +59,14 @@ export function AboutVibe() {
                   className="flex gap-4 rounded-2xl border border-border/70 bg-card/60 p-5 backdrop-blur transition-colors hover:border-gold/30"
                 >
                   <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">
-                    <vibe.icon className="size-5" aria-hidden />
+                    <fact.icon className="size-5" aria-hidden />
                   </span>
                   <div>
                     <h3 className="font-display text-lg font-semibold">
-                      {vibe.title}
+                      {fact.title}
                     </h3>
                     <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                      {vibe.body}
+                      {fact.body}
                     </p>
                   </div>
                 </motion.div>
@@ -64,52 +74,30 @@ export function AboutVibe() {
             </div>
           </div>
 
-          {/* Heritage collage */}
+          {/* Two photographs of the house, both owner-managed. */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
-            className="relative flex flex-col gap-4"
+            className="flex flex-col gap-4"
           >
-            <div className="grid grid-cols-5 gap-3">
-              <SmartImage
-                src={mediaOr(
-                  EXPERIENCE_MEDIA.ambiance.slot,
-                  EXPERIENCE_MEDIA.ambiance.url,
-                )}
-                alt="Open-air seating at Junoon"
-                className="col-span-5 h-52 w-full rounded-3xl border border-border/70 object-cover sm:h-64"
-              />
-              <SmartImage
-                src={mediaOr(
-                  EXPERIENCE_MEDIA.food.slot,
-                  EXPERIENCE_MEDIA.food.url,
-                )}
-                alt="Seekh kebab on the charcoal grill"
-                className="col-span-3 h-32 w-full rounded-3xl border border-border/70 object-cover sm:h-36"
-              />
-              <div className="col-span-2 flex h-32 flex-col justify-center gap-1 rounded-3xl border border-gold/25 bg-gold/[0.07] p-4 text-center sm:h-36">
-                <span className="font-display text-2xl font-semibold text-gold">
-                  {content["experience-seats"]}
-                </span>
-                <span className="text-[0.7rem] leading-snug tracking-wide text-muted-foreground uppercase">
-                  {content["experience-seats-label"]}
-                </span>
-              </div>
-            </div>
-
-            <figure className="rounded-3xl border border-border/70 bg-card/70 p-6">
-              <Quote className="size-5 text-gold/70" aria-hidden />
-              <blockquote className="mt-3 font-display text-lg leading-relaxed text-balance italic">
-                &ldquo;Feels less like a restaurant and more like a family
-                courtyard in the old city — except the food never stops
-                coming.&rdquo;
-              </blockquote>
-              <figcaption className="mt-4 text-xs tracking-wide text-muted-foreground uppercase">
-                A regular from Gulberg
-              </figcaption>
-            </figure>
+            <SmartImage
+              src={mediaOr(
+                EXPERIENCE_MEDIA.ambiance.slot,
+                EXPERIENCE_MEDIA.ambiance.url,
+              )}
+              alt={`${RESTAURANT.name}, ${RESTAURANT.cityLine}`}
+              className="h-52 w-full rounded-3xl border border-border/70 object-cover sm:h-64"
+            />
+            <SmartImage
+              src={mediaOr(
+                EXPERIENCE_MEDIA.food.slot,
+                EXPERIENCE_MEDIA.food.url,
+              )}
+              alt={`A dish from the ${RESTAURANT.name} kitchen`}
+              className="h-40 w-full rounded-3xl border border-border/70 object-cover sm:h-48"
+            />
           </motion.div>
         </div>
       </div>

@@ -92,6 +92,10 @@ export type Promotion = {
   visible: boolean;
   imageUrl?: string;
   imagePath?: string;
+  /** Seeded demo row — never rendered on a guest surface. `fetchPromotions`
+   *  drops these unless the admin panel asks for them so the team can delete
+   *  the row. */
+  demo: boolean;
   /** Optional action for the offer's button — an in-app path or a full URL. */
   linkUrl?: string;
   /** Position on the offers board — lower first. */
@@ -244,6 +248,7 @@ type PromotionDb = {
   headline: string;
   body: string | null;
   visible: boolean;
+  demo: boolean | null;
   image_url: string | null;
   image_path: string | null;
   link_url: string | null;
@@ -1895,6 +1900,7 @@ function toPromotion(row: PromotionDb): Promotion {
     imageUrl: row.image_url || mediaUrl(row.image_path) || undefined,
     imagePath: row.image_path ?? undefined,
     linkUrl: row.link_url ?? undefined,
+    demo: row.demo === true,
     sortOrder: row.sort_order ?? PROMO_DEFAULT_ORDER,
     expiresAt: ms(row.expires_at),
     createdAt: ms(row.created_at) ?? 0,
@@ -1906,7 +1912,7 @@ function toPromotion(row: PromotionDb): Promotion {
 export const PROMO_DEFAULT_ORDER = 100;
 
 export async function fetchPromotions(
-  options: { activeOnly?: boolean } = {},
+  options: { activeOnly?: boolean; includeDemo?: boolean } = {},
 ): Promise<Promotion[]> {
   const rows = await selectRows<PromotionDb>(TABLES.promotions, (q) =>
     q.order("created_at", { ascending: false }),
@@ -1917,6 +1923,10 @@ export async function fetchPromotions(
     // Expired banners disable and remove themselves the moment the clock runs
     // out — no cleanup job required.
     .filter((promo) => !promo.expiresAt || promo.expiresAt > now)
+    // A seeded demo offer carries a price and a deal the restaurant never
+    // published, so it is never guest content. The admin list still receives
+    // these rows — that is where the team deletes them from.
+    .filter((promo) => options.includeDemo || !promo.demo)
     .filter((promo) => (options.activeOnly ? promo.visible : true));
 
   // Board position is applied here rather than in the query: ordering by

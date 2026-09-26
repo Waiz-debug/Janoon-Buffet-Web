@@ -1,19 +1,21 @@
 /**
  * JUNOON's official menu catalogue.
  *
- * The first nine sections are live High Tea stations. The remaining seven are
- * à la carte sections. The distinction is carried in the stable category ids
- * and order; the database stores both in menu_categories and every item in
+ * The first nine sections are the counter sections. The remaining seven are the
+ * à la carte sections. The distinction is carried in the stable category ids and
+ * order; the database stores both in menu_categories and every item in
  * menu_dishes, so the admin board and guest site read the same rows.
  *
- * High Tea items have no individual price: they are included in the
- * Seasons Special High Tea seat price of Rs 1,895 + tax. Their database price
- * is therefore null and the guest cart does not offer them as standalone
- * delivery items. A la carte rows carry the exact published prices.
+ * A counter item carries no price of its own: its database price is null, so
+ * the guest cart does not offer it as a standalone delivery item and the site
+ * says "ask at the counter" rather than quoting a number. À la carte rows carry
+ * the exact prices they are sold at. No price, offer or sitting time is written
+ * down here that the restaurant has not published — a seat price and two
+ * sitting times used to live in this comment, and they were not ours to publish.
  */
 
 export type CategoryId =
-  // Counters — live High Tea stations
+  // Counters — the counter sections
   | "welcome-drinks"
   | "soup-counter"
   | "junooni-special-counter"
@@ -146,27 +148,27 @@ const IMG = {
 } as const;
 
 export const MENU_CATEGORIES: MenuCategory[] = [
-  { id: "welcome-drinks", name: "Welcome Drink", urdu: "خوش آمدید ڈرنک", blurb: "The first glass of the High Tea service — a five-serving welcome pour with every seat.", icon: "drink" },
-  { id: "soup-counter", name: "Soup", urdu: "سوپ", blurb: "Hot soups served at the opening of the live High Tea service.", icon: "soup" },
+  { id: "welcome-drinks", name: "Welcome Drink", urdu: "خوش آمدید ڈرنک", blurb: "The welcome pour that opens the menu — a five-serving glass at the table.", icon: "drink" },
+  { id: "soup-counter", name: "Soup", urdu: "سوپ", blurb: "Hot soups served at the opening of the meal.", icon: "soup" },
   { id: "junooni-special-counter", name: "Junooni Special", urdu: "جنونی اسپیشل", blurb: "The kitchen's live mutton and charcoal specials, including the seekh kabab and chicken boti of the day.", icon: "flame" },
-  { id: "chinese-counter", name: "Chinese", urdu: "چائنیز", blurb: "A wok counter running fried, sauced and rice dishes through both High Tea time slots.", icon: "soup" },
+  { id: "chinese-counter", name: "Chinese", urdu: "چائنیز", blurb: "A wok counter running fried, sauced and rice dishes.", icon: "soup" },
   { id: "italian-continental", name: "Italian & Continental", urdu: "ایٹالین این کانٹیننٹل", blurb: "Hot continental favourites from the pizza and sandwich station.", icon: "bites" },
   { id: "salad-chaat", name: "Salad & Chaat Section", urdu: "سالیڈ اور چاٹ", blurb: "Fresh fruit, chaat and chilled salads assembled at the live counter.", icon: "salad" },
-  { id: "street-food", name: "Street Food Special", urdu: "اسٹریٹ فوڈ اسپیشل", blurb: "Lahori street-food favourites fried and served throughout the High Tea slots.", icon: "bites" },
+  { id: "street-food", name: "Street Food Special", urdu: "اسٹریٹ فوڈ اسپیشل", blurb: "Lahori street-food favourites, fried and served hot.", icon: "bites" },
   { id: "variety-naans-meetha", name: "Variety of Naans & Junooni Meetha", urdu: "نان کی Variety اور جنونی میٹھا", blurb: "A tandoor bread platter and the full dessert cabinet, from continental cakes to warm mithai.", icon: "dessert" },
-  { id: "beverages-counter", name: "Beverages", urdu: "مشروبات", blurb: "Tea and green tea kept coming for the length of the High Tea service.", icon: "drink" },
-  { id: "chef-special", name: "Chef Special", urdu: "چیف اسپیشل", blurb: "The kitchen's à la carte signatures, prepared with home-made desi ghee.", icon: "flame" },
+  { id: "beverages-counter", name: "Beverages", urdu: "مشروبات", blurb: "Tea and green tea served through the meal.", icon: "drink" },
+  { id: "chef-special", name: "Chef Special", urdu: "چیف اسپیشل", blurb: "The kitchen's à la carte signatures, in portion sizes for the table.", icon: "flame" },
   { id: "appetizers", name: "Appetizers", urdu: "اپیٹائزرز", blurb: "The table's opening course: fries, stuffed naan and grilled wings.", icon: "bites" },
-  { id: "veg-lentils", name: "Vegetables & Lentils", urdu: "سبزیاں اور دال", blurb: "Slow-cooked daals and spinach dishes finished with butter and desi ghee.", icon: "pot" },
-  { id: "junooni-tandoor", name: "Junooni Tandoor", urdu: "جنونی تندور", blurb: "Breads pulled to order from the clay tandoor and finished with house ghee.", icon: "bread" },
+  { id: "veg-lentils", name: "Vegetables & Lentils", urdu: "سبزیاں اور دال", blurb: "Slow-cooked daals and spinach dishes, from the kitchen's vegetable section.", icon: "pot" },
+  { id: "junooni-tandoor", name: "Junooni Tandoor", urdu: "جنونی تندور", blurb: "Breads pulled to order from the clay tandoor.", icon: "bread" },
   { id: "salads", name: "Salads", urdu: "سالیڈز", blurb: "Raita and fresh salads to begin an à la carte meal.", icon: "salad" },
-  { id: "desserts-signature", name: "Desserts & Signature Dessert", urdu: "میٹھا اور سیگنیچر ڈیسرٹ", blurb: "The final sweet course, from slow-reduced kheer to the Junooni signature cheesecake.", icon: "dessert" },
+  { id: "desserts-signature", name: "Desserts & Signature Dessert", urdu: "میٹھا اور سیگنیچر ڈیسرٹ", blurb: "The closing sweet course, the house signature cheesecake among it.", icon: "dessert" },
   { id: "drinks", name: "Drinks", urdu: "مشروبات", blurb: "Chilled water, soft drinks and house refreshers for the à la carte table.", icon: "drink" },
 ];
 
 /**
- * The nine live High Tea stations, in service order — what the guest site shows
- * under "Live Imperial Counters".
+ * The counter sections, in menu order — what the guest site shows under
+ * "Live counters".
  *
  * The seven à la carte sections are everything else in `MENU_CATEGORIES`, split
  * from that one list rather than typed out a second time, so a section can

@@ -71,7 +71,10 @@ function toDatetimeLocal(ms: number): string {
 }
 
 export function PromotionsManager() {
-  const promos = usePromotions(false);
+  // `includeDemo`: the panel is the one place a seeded demo offer is still
+  // visible, because it is the one place it can be deleted from. Every guest
+  // surface drops demo rows outright.
+  const promos = usePromotions(false, true);
 
   const [draft, setDraft] = useState<PromotionDraft | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);

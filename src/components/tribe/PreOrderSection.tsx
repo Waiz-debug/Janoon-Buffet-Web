@@ -17,45 +17,18 @@ import { CalendarClock, Clock, Flame, Loader2, Phone } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-/** The dishes shown when Supabase has no pre-order items yet. */
-const FALLBACK_DISHES = [
-  {
-    id: "mutton-dumpukht",
-    name: "Mutton Dumpukht",
-    urdu: "دم پخت",
-    description:
-      "Slow-cooked for 6+ hours in a sealed handi with whole spices and bone marrow. Available on 24-hour pre-order only.",
-    price: 3500,
-    category: "slow-cooked",
-    serves: "2–4 guests",
-  },
-  {
-    id: "whole-roasted-sajji",
-    name: "Whole Roasted Sajji",
-    urdu: "سجی",
-    description:
-      "Marinated whole chicken roasted over open coals for hours. Pre-order by noon for evening collection.",
-    price: 2800,
-    category: "grills",
-    serves: "3–5 guests",
-  },
-  {
-    id: "seekh-kebab-platter",
-    name: "Seekh Kebab Platter (Party)",
-    urdu: "سیخ کباب پلیٹر",
-    description:
-      "A 50-piece mixed platter of our charcoal seekh kebabs — beef and chicken — for large family gatherings.",
-    price: 8000,
-    category: "platters",
-    serves: "10–15 guests",
-  },
-] as const;
-
-/** One row on the pre-order board — live items and the fallback share it. */
+/**
+ * One row on the pre-order board.
+ *
+ * The board reads `pre_order_items` and nothing else. It used to fall back to
+ * three built-in dishes with their own prices and cooking claims, which meant a
+ * database with an empty table showed a guest invented prices for dishes the
+ * kitchen had not written down. An empty board is the honest answer instead:
+ * the section simply is not on the page until the restaurant publishes an item.
+ */
 type PreOrderCard = {
   id: string;
   name: string;
-  urdu: string;
   description: string;
   price: number;
   category: string;
@@ -98,28 +71,21 @@ export function PreOrderSection() {
   // reflected here without a reload. The built-in list stands in until the
   // table has been seeded.
   const liveItems = usePublicPreOrderItems();
-  const dishes: PreOrderCard[] =
-    liveItems && liveItems.length > 0
-      ? liveItems.map((item) => ({
-          id: item.id,
-          name: item.name,
-          urdu: item.urdu ?? "",
-          description: item.description ?? "",
-          price: item.price,
-          category: item.category,
-          serves: item.serves ?? "",
-          // The kitchen's own photo when there is one, otherwise the photo of
-          // the category it belongs to — a handi, a roast, a platter, a sweet
-          // — so every card on the board carries food, never an empty tile.
-          image:
-            item.image ||
-            PREORDER_CATEGORY_PHOTOS[item.category] ||
-            DEFAULT_DISH_PHOTO,
-        }))
-      : FALLBACK_DISHES.map((dish) => ({
-          ...dish,
-          image: PREORDER_CATEGORY_PHOTOS[dish.category] ?? DEFAULT_DISH_PHOTO,
-        }));
+  const dishes: PreOrderCard[] = (liveItems ?? []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    description: item.description ?? "",
+    price: item.price,
+    category: item.category,
+    serves: item.serves ?? "",
+    // The kitchen's own photo when there is one, otherwise the photo of the
+    // category it belongs to — a handi, a roast, a platter, a sweet — so every
+    // card on the board carries food, never an empty tile.
+    image:
+      item.image ||
+      PREORDER_CATEGORY_PHOTOS[item.category] ||
+      DEFAULT_DISH_PHOTO,
+  }));
 
   const slots = getSlots();
   const selectedDish = dishes.find((dish) => dish.id === selectedId);
@@ -175,13 +141,17 @@ export function PreOrderSection() {
     }
   };
 
+  // Nothing published: no board, and no form promising a dish that is not on
+  // it. Hooks are all above this line, so the early return is safe.
+  if (dishes.length === 0) return null;
+
   return (
     <section id="preorder" className="scroll-mt-24 py-16 sm:py-20">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <SectionHeading
-          eyebrow="Pre-Order Specialties"
-          title="Slow-cooked, worth the wait"
-          description="Some dishes need hours of preparation. Book your Dumpukht, Sajji or party platter at least 24 hours ahead and collect at your chosen time."
+          eyebrow="Pre-order"
+          title="Order ahead for collection"
+          description="Dishes the restaurant has opened for pre-order, with its own prices. Choose a dish and a pickup slot and the kitchen will confirm by phone."
           align="center"
         />
 
@@ -226,11 +196,6 @@ export function PreOrderSection() {
                       <h4 className="font-display text-base font-semibold">
                         {dish.name}
                       </h4>
-                      {dish.urdu ? (
-                        <p className="text-xs text-gold/60" dir="rtl" lang="ur">
-                          {dish.urdu}
-                        </p>
-                      ) : null}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 text-xs font-medium text-gold">

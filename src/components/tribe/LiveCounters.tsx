@@ -2,14 +2,12 @@ import { CATEGORY_ICONS } from "@/components/tribe/category-icons";
 import { FullMenuDialog } from "@/components/tribe/FullMenuDialog";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
-import { Button } from "@/components/ui/button";
 import { useCart } from "@/hooks/use-cart";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
 import { formatPkr, photoThumb, type MenuIcon } from "@/lib/menu";
-import { scrollToSection } from "@/lib/scroll";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { CalendarCheck, Check, Plus } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 /**
@@ -18,27 +16,27 @@ import { useState, type ReactNode } from "react";
  * anyone having to name the station twice.
  */
 const STATION_BADGE: Record<MenuIcon, string> = {
-  flame: "Live grill",
-  pot: "Slow handi",
-  bread: "Clay tandoor",
-  soup: "Slow simmer",
-  salad: "Garden counter",
-  bites: "Street wok",
-  dessert: "Royal sweet",
-  drink: "Welcome pour",
+  flame: "Grill",
+  pot: "Handi",
+  bread: "Tandoor",
+  soup: "Soup",
+  salad: "Salad",
+  bites: "Street food",
+  dessert: "Dessert",
+  drink: "Drinks",
 };
 
 /**
- * Live Imperial Counters — the nine High Tea stations, straight from
- * `menu_categories` / `menu_dishes`.
+ * Live counters — every section of the menu, straight from `menu_categories` /
+ * `menu_dishes`.
  *
  * Each card is one counter with the first dish filed under it as its face, the
  * station it runs from as a badge, and the price of that dish ready to order.
  * The chips filter the board to a single counter, so a guest can read the grill
  * without scrolling the spread.
  */
-export function ImperialCounters() {
-  const { counters, unitPrice, content, menuReady, counterImage } = useLiveSite();
+export function LiveCounters() {
+  const { counters, unitPrice, menuReady, counterImage } = useLiveSite();
   const { add } = useCart();
   /** `null` shows every counter — what the guest sees on opening. */
   const [only, setOnly] = useState<string | null>(null);
@@ -60,9 +58,9 @@ export function ImperialCounters() {
             guest scans before deciding which station to walk to first. */}
         <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
           <SectionHeading
-            eyebrow="Imperial courtyard"
-            title="Live Imperial Counters"
-            description="Nine stations run through both High Tea sittings. Everything below is included in the seat price — walk the courtyard and eat your way across it, or order a dish to your table for delivery."
+            eyebrow="The menu"
+            title="Live counters"
+            description="The kitchen's counters as the menu files them — one card per section, with each station's dishes and the price of the dish it leads with. Prices are shown where the dish is sold on its own; where a dish is served as part of a counter, ask at the counter."
           />
           {visible.length > 0 ? (
             <div className="flex flex-wrap gap-2 lg:max-w-lg lg:justify-end">
@@ -80,32 +78,6 @@ export function ImperialCounters() {
               ))}
             </div>
           ) : null}
-        </div>
-
-        {/* The High Tea offer, kept in `site_content` so the price and both
-            sittings are the owner's to change from the admin panel. */}
-        <div
-          id="high-tea"
-          className="mt-10 flex scroll-mt-28 flex-col gap-5 rounded-2xl border border-gold/25 bg-gold/[0.07] p-6 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div>
-            <p className="text-[0.65rem] tracking-[0.24em] text-gold/80 uppercase">
-              Seasons Special High Tea
-            </p>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              {content["high-tea-offer"] ??
-                "Rs 1,895 + tax, served 03:30–05:00 pm and 05:15–06:45 pm. Every counter below is included in the seat price."}{" "}
-              The à la carte board further down is priced per dish.
-            </p>
-          </div>
-          <Button
-            type="button"
-            onClick={() => scrollToSection("reserve")}
-            className="h-11 shrink-0 gap-2"
-          >
-            <CalendarCheck className="size-4" aria-hidden />
-            Reserve a High Tea Table
-          </Button>
         </div>
 
         {shown.length === 0 ? (
@@ -158,14 +130,6 @@ export function ImperialCounters() {
                       <Icon className="size-3" aria-hidden />
                       {STATION_BADGE[counter.icon]}
                     </span>
-                    {counter.urdu ? (
-                      <span
-                        dir="rtl"
-                        className="absolute top-3 right-3 rounded-md border border-gold/25 bg-background/75 px-2 py-1 font-display text-[0.7rem] text-gold/90 backdrop-blur"
-                      >
-                        {counter.urdu}
-                      </span>
-                    ) : null}
                   </div>
 
                   <div className="flex flex-1 flex-col gap-3 p-5">
@@ -195,8 +159,8 @@ export function ImperialCounters() {
                     ) : null}
 
                     <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-                      <span className="font-display text-lg font-semibold text-gold tabular-nums">
-                        {price > 0 ? formatPkr(price) : "Included"}
+                      <span className="font-display text-sm font-semibold text-gold tabular-nums">
+                        {price > 0 ? formatPkr(price) : "Ask at the counter"}
                       </span>
                       {face && price > 0 ? (
                         <button
@@ -211,13 +175,9 @@ export function ImperialCounters() {
                           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[0.65rem] font-medium tracking-[0.14em] text-accent-foreground uppercase transition-opacity hover:opacity-90"
                         >
                           <Plus className="size-3.5" aria-hidden />
-                          Order to dastarkhwan
+                          Add to order
                         </button>
-                      ) : (
-                        <span className="shrink-0 rounded-lg border border-gold/20 px-2.5 py-1.5 text-[0.65rem] tracking-[0.14em] text-gold/80 uppercase">
-                          Included in High Tea
-                        </span>
-                      )}
+                      ) : null}
                     </div>
 
                     <div className="flex justify-center pt-1">

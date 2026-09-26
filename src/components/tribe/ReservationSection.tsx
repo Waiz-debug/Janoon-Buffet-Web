@@ -1,12 +1,10 @@
 import { ReservationForm } from "@/components/tribe/ReservationForm";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
-import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
 import { motion } from "framer-motion";
 import {
   ArrowUpRight,
   CalendarCheck,
-  Crown,
   Phone,
   Sparkles,
   UtensilsCrossed,
@@ -14,39 +12,37 @@ import {
 import { Link } from "react-router";
 
 /**
- * What a private gathering actually gets. Written as the three things a host
- * asks about — the room, the sitting, and who is looking after the table —
- * rather than as features.
+ * What booking here actually does. Written as the three things a guest checks
+ * before sending the form — where the request goes, what it costs to hold, and
+ * how to change it — rather than as features of a private room the restaurant
+ * has never told us it has.
  */
 const GATHERING_FEATURES = [
   {
-    icon: Crown,
-    title: "The Shahi Dewan",
-    body: "A private chamber curtained off from the courtyard, seating six to eight on a single dastarkhwan.",
-  },
-  {
-    icon: UtensilsCrossed,
-    title: "Afternoon Darbar",
-    body: "Royal High Tea in two sittings, 03:30–05:00 pm and 05:15–06:45 pm, with all nine counters open to your party.",
+    icon: CalendarCheck,
+    title: "Sent to the restaurant's desk",
+    body: "The request is written to the restaurant's own reservations desk, and the team keeps the table under the name and number you leave.",
   },
   {
     icon: Sparkles,
-    title: "Attendant at the table",
-    body: "Continuous multi-course hosting, refills and table-side attention from the moment your guests arrive.",
+    title: "Nothing to pay online",
+    body: "No deposit and no card is taken through this site — the reservation itself is free.",
+  },
+  {
+    icon: UtensilsCrossed,
+    title: "Groups and gatherings",
+    body: `For a large party, call ${RESTAURANT.phoneDisplay} and the team will take the details directly.`,
   },
 ] as const;
 
 /**
- * The Royal Sanctuaire — private dining, and the booking form itself.
+ * The reservation block — the booking form itself.
  *
  * The form is the same `ReservationForm` the rest of the site uses, so a table
  * booked here is written by the same `create_reservation` call, lands in the
  * same reservations desk, and can be managed or cancelled at `/manage`.
  */
 export function ReservationSection() {
-  const { content } = useLiveSite();
-  const highTeaOffer = content["high-tea-offer"];
-
   return (
     <section
       id="reserve"
@@ -57,9 +53,9 @@ export function ReservationSection() {
           <div className="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
             <div className="flex flex-col gap-8 lg:sticky lg:top-28">
               <SectionHeading
-                eyebrow="Royal sanctuaire"
-                title="Host your courtly gathering at Junoon"
-                description="From intimate High Tea sittings to lavish celebrations, our team arranges every detail with imperial grace — a curated Shahi spread, a chamber of your own, and an attendant who keeps the dastarkhwan flowing."
+                eyebrow="Reservations"
+                title={`Reserve a table at ${RESTAURANT.name}`}
+                description="Send the form and the restaurant's desk takes the booking; call the number below if you would rather book over the phone."
               />
 
               <div className="flex flex-col gap-3">
@@ -91,12 +87,6 @@ export function ReservationSection() {
                 ))}
               </div>
 
-              {highTeaOffer ? (
-                <p className="rounded-2xl border border-gold/25 bg-gold/[0.07] px-4 py-3 text-xs leading-relaxed text-gold/90">
-                  {highTeaOffer}
-                </p>
-              ) : null}
-
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
                 <a
                   href={RESTAURANT.phoneHref}
@@ -122,10 +112,10 @@ export function ReservationSection() {
                     Table reservation
                   </p>
                   <h3 className="mt-1 font-display text-xl font-semibold">
-                    Secure your courtly table
+                    Your table
                   </h3>
                   <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                    No deposit — pay per guest at the counter on arrival.
+                    No deposit — the reservation itself costs nothing online.
                   </p>
                 </div>
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">

@@ -106,8 +106,8 @@ const row = (dish, index) =>
 
 const block = [
   "-- ---------------------------------------------------------------------------",
-  `-- 4. All ${dishes.length} menu items. The first ${highTea} are live High Tea station`,
-  `--    items and the final ${priced} are the priced à la carte menu. Names, sections and`,
+  `-- 4. All ${dishes.length} menu items. The first ${highTea} are counter items with no`,
+  `--    price of their own and the final ${priced} are the priced à la carte menu. Names, sections and`,
   "--    prices are exact, and every row carries the demo photo the guest menu",
   "--    shows — a loaded database should look like the designed menu, not a wall",
   "--    of empty tiles.",
@@ -193,6 +193,6 @@ for (const target of TARGETS) {
 }
 
 console.log(
-  `${dishes.length} dishes (${highTea} High Tea, ${priced} priced), ` +
+  `${dishes.length} dishes (${highTea} at the counter, ${priced} priced), ` +
     `${signatures.size} signatures, ${PHOTO_OF_KEY.size} photos`,
 );

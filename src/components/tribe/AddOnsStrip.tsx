@@ -13,10 +13,9 @@ import { useState } from "react";
 /**
  * The Traditional Add-ons board: naan and breads, sides and salads, drinks and
  * lassi, and cold drinks. Every heading comes from `addon_categories`, and
- * every item, price, Urdu name and photo from `menu_addons`, so whatever the
- * admin saves goes live immediately — including a category the owner invents.
- * Each item is a quick "add to order" pill — the guest keeps browsing after
- * tapping.
+ * every item, price and photo from `menu_addons`, so whatever the admin saves
+ * goes live immediately — including a category the owner invents. Each item is
+ * a quick "add to order" pill — the guest keeps browsing after tapping.
  */
 export function AddOnsStrip() {
   const { add } = useCart();
@@ -68,15 +67,6 @@ export function AddOnsStrip() {
                 <p className="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
                   <span aria-hidden>{group.icon}</span>
                   {group.name}
-                  {group.urdu ? (
-                    <span
-                      className="text-[0.7rem] tracking-normal text-gold/60 normal-case"
-                      dir="rtl"
-                      lang="ur"
-                    >
-                      {group.urdu}
-                    </span>
-                  ) : null}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {items.map((addon, index) => {
@@ -115,13 +105,6 @@ export function AddOnsStrip() {
                         <span className="font-medium">{addon.name}</span>
                         <span className="text-xs text-muted-foreground">
                           {formatRupees(addon.price)}
-                        </span>
-                        <span
-                          className="hidden text-[0.65rem] text-gold/50 sm:inline"
-                          dir="rtl"
-                          lang="ur"
-                        >
-                          {addon.urdu}
                         </span>
                         {justAdded ? (
                           <Check className="size-3.5" aria-hidden />

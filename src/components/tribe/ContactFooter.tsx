@@ -6,7 +6,7 @@ import { subscribeToDispatch } from "@/lib/db";
 import { RESTAURANT, LOCATIONS } from "@/lib/restaurant";
 import {
   ArrowRight,
-  Clock,
+  CalendarCheck,
   Facebook,
   Instagram,
   Loader2,
@@ -14,21 +14,14 @@ import {
   MessageCircle,
   Music2,
   Phone,
-  ShieldCheck,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-const SERVICE_HOURS = [
-  { label: "Dastarkhwan service", value: RESTAURANT.service.dastarkhwan },
-  { label: "High Tea sittings", value: RESTAURANT.service.highTea },
-  { label: "Grand dinner", value: RESTAURANT.service.dinner },
-] as const;
-
 /**
- * The Royal Dispatch — one letter a month, from the same database the rest of
- * the site reads.
+ * The dispatch — occasional news from the house, kept in the same database the
+ * rest of the site reads.
  *
  * The write goes through `subscribe_to_dispatch` in Postgres: the table itself
  * is closed to the public, so the address is validated and throttled on the
@@ -49,7 +42,7 @@ function RoyalDispatch() {
       setJoined(true);
       setEmail("");
       toast.success("Welcome to the dispatch", {
-        description: "New counters and High Tea sittings, once a month.",
+        description: "We will write when there is something to tell you.",
       });
     } catch (error) {
       toast.error("Could not add you", {
@@ -64,12 +57,14 @@ function RoyalDispatch() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm leading-relaxed text-muted-foreground">
-        Regal notes from the kitchen — new counters, seasonal High Tea sittings
-        and festival tables. One letter a month, nothing else.
+        Occasional news from the restaurant — new dishes and what the kitchen is
+        serving. Your address is only used for this, and you can leave the list
+        at any time.
       </p>
       {joined ? (
         <p className="rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-xs leading-relaxed text-gold">
-          You are on the list. The next dispatch goes out with the seasons.
+          You are on the list. We will write when there is something to tell
+          you.
         </p>
       ) : (
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
@@ -90,7 +85,7 @@ function RoyalDispatch() {
             type="submit"
             size="icon"
             disabled={saving}
-            aria-label="Join the Royal Dispatch"
+            aria-label="Join the newsletter"
             className="size-11 shrink-0"
           >
             {saving ? (
@@ -106,8 +101,8 @@ function RoyalDispatch() {
 }
 
 /**
- * The imperial footer: the house, the two sanctuaries, the service hours and
- * the dispatch, over a brass rule with the concierge links beneath it.
+ * The footer: the house, the address, the booking links and the dispatch,
+ * over a brass rule with the contact links beneath it.
  *
  * Everything contactable here is real — the phone, the address and the map all
  * come from `RESTAURANT`, so there is one place to change them.
@@ -140,12 +135,9 @@ export function ContactFooter() {
               </div>
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-              An intimate sanctuary of Mughal gastronomy — brass and copper
-              kitchens, angith coal and a dastarkhwan that never empties, kept
-              in the open air of {RESTAURANT.cityNames}.
-            </p>
-            <p dir="rtl" className="font-display text-base text-gold/80">
-              {RESTAURANT.urdu}
+              A Pakistani restaurant in {RESTAURANT.cityLine}, serving its own
+              menu — live counters and an à la carte board, with tables booked
+              online and dishes ordered for delivery.
             </p>
             <div className="flex items-center gap-2.5">
               {socials.map(({ href, label, Icon }) => (
@@ -163,10 +155,10 @@ export function ContactFooter() {
             </div>
           </div>
 
-          {/* The house */}
+          {/* Where the house is */}
           <div className="flex flex-col gap-5">
             <h3 className="font-display text-sm font-semibold tracking-[0.18em] text-gold uppercase">
-              Find the house
+              Find us
             </h3>
             <div className="flex flex-col gap-3 text-sm">
               {/* Straight from `LOCATIONS` — the address and the map pin a
@@ -211,49 +203,51 @@ export function ContactFooter() {
                   </a>
                 </div>
               ))}
-              <div className="border-t border-border/60 pt-3">
-                <p className="font-medium">The Shahi Dewan</p>
-                <p className="mt-1 text-muted-foreground">
-                  Private chamber for six to eight guests
-                </p>
-                <button
-                  type="button"
-                  onClick={() => goToSection("reserve")}
-                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-gold underline-offset-4 hover:underline"
-                >
-                  Reserve the Chamber
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* The hours */}
+          {/* The booking links */}
           <div className="flex flex-col gap-5">
             <h3 className="font-display text-sm font-semibold tracking-[0.18em] text-gold uppercase">
-              Service hours
+              Book &amp; order
             </h3>
-            <dl className="flex flex-col gap-3 text-sm">
-              {SERVICE_HOURS.map((entry) => (
-                <div key={entry.label}>
-                  <dt className="flex items-center gap-2 text-[0.65rem] tracking-[0.16em] text-muted-foreground uppercase">
-                    <Clock className="size-3.5 text-gold/70" aria-hidden />
-                    {entry.label}
-                  </dt>
-                  <dd className="mt-0.5 text-muted-foreground">{entry.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="inline-flex items-center gap-2 self-start rounded-full border border-gold/25 bg-gold/[0.07] px-3 py-1.5 text-[0.65rem] tracking-[0.16em] text-gold uppercase">
-              <ShieldCheck className="size-3.5" aria-hidden />
-              Halal dietary advisory
-            </p>
+            <div className="flex flex-col gap-3 text-sm">
+              <button
+                type="button"
+                onClick={() => goToSection("reserve")}
+                className="inline-flex items-center gap-2 text-left text-muted-foreground transition-colors hover:text-gold"
+              >
+                <CalendarCheck className="size-3.5 text-gold/70" aria-hidden />
+                Reserve a table
+              </button>
+              <Link
+                to="/manage"
+                className="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold"
+              >
+                <ArrowRight className="size-3.5 text-gold/70" aria-hidden />
+                Manage a reservation
+              </Link>
+              <Link
+                to="/order"
+                className="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold"
+              >
+                <ArrowRight className="size-3.5 text-gold/70" aria-hidden />
+                Order delivery
+              </Link>
+              <a
+                href={RESTAURANT.phoneHref}
+                className="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold"
+              >
+                <Phone className="size-3.5 text-gold/70" aria-hidden />
+                {RESTAURANT.phoneDisplay}
+              </a>
+            </div>
           </div>
 
           {/* The dispatch */}
           <div className="flex flex-col gap-5">
             <h3 className="font-display text-sm font-semibold tracking-[0.18em] text-gold uppercase">
-              Royal dispatch
+              Newsletter
             </h3>
             <RoyalDispatch />
             <a
@@ -261,7 +255,7 @@ export function ContactFooter() {
               className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-gold"
             >
               <Phone className="size-3.5 text-gold" aria-hidden />
-              Concierge desk · {RESTAURANT.phoneDisplay}
+              Call us · {RESTAURANT.phoneDisplay}
             </a>
           </div>
         </div>
@@ -285,7 +279,7 @@ export function ContactFooter() {
               href={RESTAURANT.phoneHref}
               className="transition-colors hover:text-foreground"
             >
-              Concierge desk
+              Call us
             </a>
             <Link
               to="/dashboard"

@@ -1,5 +1,4 @@
 import { JanoonMark } from "@/components/tribe/JanoonMark";
-import { OpenStatus } from "@/components/tribe/OpenStatus";
 import { useGoToSection } from "@/hooks/use-go-to-section";
 import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
@@ -11,19 +10,21 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
 /**
- * The public nav, in the order the courtyard is walked: the counters first,
- * then the priced board, the sitting that runs through both, the private
- * chamber, and the story behind the kitchen.
+ * The public nav, in the order the page is read: the counters first, then the
+ * priced board, the gallery, the reservation form and the note about the
+ * restaurant.
  *
- * Every destination is a section on the restaurant page, and `useGoToSection`
- * carries a guest there from anywhere in the app.
+ * Every destination is a section that exists on the restaurant page, and
+ * `useGoToSection` carries a guest there from anywhere in the app. Nothing is
+ * linked that is not rendered — a nav entry pointing at a section the page no
+ * longer has would scroll a guest into empty space.
  */
 const NAV_LINKS = [
   { label: "Live counters", id: "counters" },
   { label: "À la carte menu", id: "menu" },
-  { label: "High tea experience", id: "high-tea" },
-  { label: "Private dining", id: "reserve" },
-  { label: "Our heritage", id: "heritage" },
+  { label: "Gallery", id: "gallery" },
+  { label: "Reserve a table", id: "reserve" },
+  { label: "About", id: "heritage" },
 ];
 
 export function SiteHeader() {
@@ -65,7 +66,7 @@ export function SiteHeader() {
               {RESTAURANT.name}
             </span>
             <span className="mt-1 text-[0.55rem] tracking-[0.24em] text-gold/80 uppercase">
-              Imperial dining · high tea
+              {RESTAURANT.descriptor}
             </span>
           </span>
         </button>
@@ -177,7 +178,6 @@ export function SiteHeader() {
                 >
                   Manage a reservation
                 </Link>
-                <OpenStatus className="mx-auto mt-2" />
                 <Link
                   to="/dashboard"
                   className="px-1 pt-1 text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"

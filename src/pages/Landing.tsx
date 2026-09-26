@@ -2,7 +2,7 @@ import { AboutVibe } from "@/components/tribe/AboutVibe";
 import { AddOnsStrip } from "@/components/tribe/AddOnsStrip";
 import { ContactFooter } from "@/components/tribe/ContactFooter";
 import { Hero } from "@/components/tribe/Hero";
-import { ImperialCounters } from "@/components/tribe/ImperialCounters";
+import { LiveCounters } from "@/components/tribe/LiveCounters";
 import { LocationMap } from "@/components/tribe/LocationMap";
 import { MenuSection } from "@/components/tribe/MenuSection";
 import { PreOrderSection } from "@/components/tribe/PreOrderSection";
@@ -17,15 +17,16 @@ import { RESTAURANT } from "@/lib/restaurant";
 import { CalendarCheck, Phone } from "lucide-react";
 
 /**
- * The restaurant page, in the order the courtyard is walked: the dastarkhwan,
- * the nine live counters, the priced à la carte board, and the private chamber
- * to book it all from.
+ * The restaurant page, in the order it is read: the counters the menu is filed
+ * under, the priced à la carte board, the reservation form, the note about the
+ * house, and then whatever the restaurant has published — offers, pre-orders,
+ * add-ons and gallery — over the address and the map.
  *
- * Everything below the private-dining block is the rest of the house — the
- * heritage story, the offers the owner publishes, pre-orders for the slow
- * cooked dishes, the add-on board, reviews and the map. Each of those renders
- * nothing at all when there is nothing to show, so a house with no live offers
- * and no pre-orders never carries an empty band.
+ * Everything below the reservation block renders nothing at all when there is
+ * nothing to show, so a restaurant with no live offers, no pre-orders and no
+ * gallery photos never carries an empty band. The offer strip and the offers
+ * board are the clearest case: the seeded demo promotion is filtered out in
+ * `fetchPromotions()`, so nothing appears until the house publishes a real one.
  */
 export default function Landing() {
   const goToSection = useGoToSection();
@@ -36,7 +37,7 @@ export default function Landing() {
 
       <main>
         <Hero />
-        <ImperialCounters />
+        <LiveCounters />
         <MenuSection />
         <ReservationSection />
 

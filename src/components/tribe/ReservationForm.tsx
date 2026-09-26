@@ -70,9 +70,9 @@ const CONFIRMATION_HEADLINES: Record<ReservationStatus, string> = {
 
 const CONFIRMATION_NOTES: Record<ReservationStatus, string> = {
   pending:
-    "Our floor team confirms every booking by phone, so expect a call shortly to lock in your table.",
+    "The restaurant's desk picks up every booking, and will reach you on the number you left if anything needs confirming.",
   confirmed:
-    "Your booking is confirmed. Give your reference at the counter on arrival and you will be seated straight away.",
+    "Your booking is confirmed. Give your reference on arrival and the team will take you to your table.",
   seated:
     "Your party has been seated. Please speak to our floor team if anything needs changing.",
   cancelled:
@@ -204,7 +204,7 @@ function ConfirmationPanel({
         >
           {RESTAURANT.phoneDisplay}
         </a>{" "}
-        and we will hold your table for 20 minutes past your arrival time.
+        and the team will note it on your booking.
       </p>
 
       {confirmingCancel && canCancel ? (
@@ -541,7 +541,7 @@ export function ReservationForm() {
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Open 24 hours — all slots live.
+            Every slot is open — the desk confirms the time with you.
           </p>
         </div>
       </div>
@@ -617,7 +617,7 @@ export function ReservationForm() {
 
       <p className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
         <Phone className="size-3.5 text-gold" aria-hidden />
-        No deposit needed — pay per head at the counter. Call{" "}
+        No deposit needed — nothing is charged online. Call{" "}
         <a
           href={RESTAURANT.phoneHref}
           className="text-gold underline-offset-4 hover:underline"

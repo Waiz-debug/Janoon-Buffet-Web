@@ -132,8 +132,7 @@ export default function Order() {
             Your cart is empty
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Pick your plates from the buffet menu and we will deliver them
-            across Lahore.
+            Pick your dishes from the menu and we will deliver them.
           </p>
           <Button asChild className="mt-6">
             <Link to="/restaurant#menu">

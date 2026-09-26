@@ -26,14 +26,13 @@ function tagsFor(dish: LiveDish, price: number): string[] {
   if (dish.weights?.length) {
     tags.push(dish.weights.map((weight) => weight.label).join(" · "));
   }
-  if (price <= 0) tags.push("Included in High Tea");
   const note = dish.notes?.[0]?.label;
   if (note) tags.push(note);
   return tags.slice(0, 3);
 }
 
 /**
- * The Imperial À La Carte — the seven priced sections, as chapters.
+ * The à la carte board — the priced main-menu sections, as chapters.
  *
  * The chapters are the live main-menu sections in menu order, and the dishes
  * inside them are the live rows, so the board is exactly what the kitchen has
@@ -54,9 +53,9 @@ export function MenuSection() {
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <SectionHeading
           align="center"
-          eyebrow="Grand menu"
-          title="The Imperial À La Carte"
-          description="Each creation is crafted strictly according to courtly royal taste, cooked in brass and copper and fired over angith coal — priced per dish for the table."
+          eyebrow="Our menu"
+          title="À la carte"
+          description="The priced dishes, section by section — the same rows the kitchen publishes and edits, each with its own price. Reserve a table, or add a dish to your delivery order."
         />
 
         <div className="mt-7 flex justify-center">
@@ -64,7 +63,7 @@ export function MenuSection() {
         </div>
 
         <div className="mt-10">
-          <SectionDivider label="Dastarkhwan" />
+          <SectionDivider label="The menu" />
         </div>
 
         {withDishes.length === 0 ? (
@@ -105,11 +104,6 @@ export function MenuSection() {
                       <h3 className="font-display text-lg font-semibold">
                         {chapter.name}
                       </h3>
-                      {chapter.urdu ? (
-                        <p dir="rtl" className="text-xs text-gold/70">
-                          {chapter.urdu}
-                        </p>
-                      ) : null}
                     </div>
                   </header>
 
@@ -144,7 +138,7 @@ export function MenuSection() {
                                 {dish.name}
                               </Link>
                               <span className="shrink-0 text-sm font-medium text-gold tabular-nums">
-                                {price > 0 ? formatPkr(price) : "Included"}
+                                {price > 0 ? formatPkr(price) : "Ask at the counter"}
                               </span>
                             </div>
                             {dish.summary ? (
