@@ -92,9 +92,9 @@ export type Promotion = {
   visible: boolean;
   imageUrl?: string;
   imagePath?: string;
-  /** Seeded demo row — never rendered on a guest surface. `fetchPromotions`
-   *  drops these unless the admin panel asks for them so the team can delete
-   *  the row. */
+  /** A seeded sample rather than the restaurant's own offer. A guest surface
+   *  shows the newest sample as a stand-in only while the restaurant has no
+   *  offers of its own; the admin panel always receives every row. */
   demo: boolean;
   /** Optional action for the offer's button — an in-app path or a full URL. */
   linkUrl?: string;
