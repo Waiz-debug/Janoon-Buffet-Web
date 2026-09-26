@@ -86,11 +86,14 @@ type FullMenuDialogProps = {
   initialCounter?: string | null;
   /** `link` renders a quiet inline trigger for a counter card's footer. */
   variant?: "button" | "link";
+  /** Overrides the link variant's own wording, where a card needs its own. */
+  linkLabel?: string;
 };
 
 export function FullMenuDialog({
   initialCounter = null,
   variant = "button",
+  linkLabel,
 }: FullMenuDialogProps = {}) {
   const { counters, menuItemCount, unitPrice } = useLiveSite();
   /** `null` shows every counter — what the guest sees on opening. */
@@ -120,7 +123,8 @@ export function FullMenuDialog({
             type="button"
             className="inline-flex items-center gap-1.5 text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:text-gold"
           >
-            See all {triggerCount} {triggerCount === 1 ? "dish" : "dishes"}
+            {linkLabel ??
+              `See all ${triggerCount} ${triggerCount === 1 ? "dish" : "dishes"}`}
             <ArrowUpRight className="size-3.5" aria-hidden />
           </button>
         ) : (

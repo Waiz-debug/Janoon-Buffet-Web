@@ -4,9 +4,11 @@ import { CounterJumpBar } from "@/components/tribe/CounterJumpBar";
 import { FullMenuDialog } from "@/components/tribe/FullMenuDialog";
 import { SectionHeading } from "@/components/tribe/SectionHeading";
 import { SmartImage } from "@/components/tribe/SmartImage";
+import { useGoToSection } from "@/hooks/use-go-to-section";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
 import { formatPkr, photoThumb, type MenuIcon } from "@/lib/menu";
 import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -33,11 +35,24 @@ const STATION_BADGE: Record<MenuIcon, string> = {
  * station it runs from as a badge, and the price of that dish ready to order.
  * The chips filter the board to a single counter, so a guest can read the grill
  * without scrolling the spread.
+ *
+ * Two things the cards are careful about:
+ *
+ *   • **Height follows the dishes.** A card is `h-fit` in an `items-start` grid,
+ *     so a counter with two dishes is a short card and a counter with ten is a
+ *     tall one. Nothing is stretched to match its neighbour, and no dead space
+ *     is left at the bottom of a small card.
+ *   • **Every dish is named.** The whole list is printed, not a taste of it, so
+ *     a guest can read what a counter actually serves without opening anything,
+ *     and the count in the heading is the real count rather than a "first four
+ *     of".
  */
 export function LiveCounters() {
   const { counters, unitPrice, menuReady, counterImage } = useLiveSite();
   /** Which counter the jump bar last moved the guest to. */
   const [activeCounter, setActiveCounter] = useState<string | null>(null);
+  /** Carries a tap on a counter or a dish straight to the à la carte board. */
+  const goToSection = useGoToSection();
 
   // A counter with nothing but signature dishes under it belongs to the
   // à la carte board, not here — an empty card under a station's name reads as
@@ -124,29 +139,52 @@ export function LiveCounters() {
                     </span>
                   </div>
 
-                  <div className="flex flex-1 flex-col gap-3 p-5">
-                    <h3 className="font-display text-xl font-semibold">
-                      {counter.name}
-                    </h3>
+                  <div className="flex flex-col gap-3 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-display text-xl font-semibold">
+                        {counter.name}
+                      </h3>
+                      {/* The whole spread as a dialog, for a guest who would
+                          rather read it than scroll the page. */}
+                      <FullMenuDialog
+                        initialCounter={counter.id}
+                        variant="link"
+                        linkLabel="Full menu"
+                      />
+                    </div>
                     <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                       {counter.blurb}
                     </p>
 
-                    {/* The counter's own dishes, each one orderable from the
-                        card. Capped at four: the rest of the section is one
-                        click away in the full menu, and a card that lists
-                        twenty dishes stops reading as a card. */}
-                    <ul className="mt-1 flex flex-col divide-y divide-border/50 border-t border-border/50">
-                      {dishes.slice(0, 4).map((dish) => {
+                    {/* What this counter serves, in full. The count is the live
+                        one, so a card can never promise four dishes and then
+                        list two. */}
+                    <p className="mt-1 border-t border-border/50 pt-3 text-[0.6rem] tracking-[0.22em] text-muted-foreground uppercase">
+                      Dishes at this counter · {dishes.length}
+                    </p>
+
+                    {/* Each dish is orderable from the card, and its name is a
+                        door to the same dish on the à la carte board. The "+"
+                        sits beside the name rather than inside it, so ordering
+                        a dish never navigates away from the card. */}
+                    <ul className="flex flex-col divide-y divide-border/50">
+                      {dishes.map((dish) => {
                         const dishPrice = unitPrice(dish);
                         return (
                           <li
                             key={dish.slug}
                             className="flex items-center gap-2 py-2"
                           >
-                            <span className="min-w-0 flex-1 truncate text-sm">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                goToSection(`chapter-${counter.id}`)
+                              }
+                              title={`See ${dish.name} in the à la carte menu`}
+                              className="min-w-0 flex-1 truncate text-left text-sm transition-colors hover:text-gold"
+                            >
                               {dish.name}
-                            </span>
+                            </button>
                             <span className="shrink-0 text-xs font-medium text-gold tabular-nums">
                               {dishPrice > 0
                                 ? formatPkr(dishPrice)
@@ -161,24 +199,25 @@ export function LiveCounters() {
                         );
                       })}
                     </ul>
-                    {dishes.length > 4 ? (
-                      <p className="text-[0.65rem] tracking-[0.16em] text-muted-foreground uppercase">
-                        + {dishes.length - 4} more at this counter
-                      </p>
-                    ) : null}
-
-                    <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-                      <span className="text-xs text-muted-foreground">
-                        {dishes.length}{" "}
-                        {dishes.length === 1 ? "dish" : "dishes"} at this
-                        counter
-                      </span>
-                      <FullMenuDialog
-                        initialCounter={counter.id}
-                        variant="link"
-                      />
-                    </div>
                   </div>
+
+                  {/* The last line of the card, and a door rather than
+                      decoration: one tap puts the guest at this counter's
+                      chapter on the à la carte board. */}
+                  <button
+                    type="button"
+                    onClick={() => goToSection(`chapter-${counter.id}`)}
+                    className="group/foot flex w-full items-center justify-between gap-3 border-t border-border/60 px-5 py-3.5 text-left text-[0.65rem] tracking-[0.18em] text-gold uppercase transition-colors hover:bg-gold/[0.07]"
+                  >
+                    <span className="min-w-0 truncate">
+                      See all {dishes.length}{" "}
+                      {dishes.length === 1 ? "dish" : "dishes"}
+                    </span>
+                    <ArrowRight
+                      className="size-3.5 shrink-0 transition-transform group-hover/foot:translate-x-0.5"
+                      aria-hidden
+                    />
+                  </button>
                 </motion.article>
               );
             })}

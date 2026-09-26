@@ -18,12 +18,20 @@ import { Link } from "react-router";
  * `useGoToSection` carries a guest there from anywhere in the app. Nothing is
  * linked that is not rendered — a nav entry pointing at a section the page no
  * longer has would scroll a guest into empty space.
+ *
+ * The labels themselves follow fine-dining house style: one or two words each,
+ * never a sentence, and no word that merely repeats the section heading the
+ * guest is about to land on. "À la carte" *is* the menu — "À la carte menu"
+ * said it twice and was the only entry long enough to throw the row out of
+ * alignment. Each label is written title case and set in caps by the styles
+ * below, so the accented À keeps its diacritic instead of being flattened to
+ * "A la carte".
  */
 const NAV_LINKS = [
-  { label: "Live counters", id: "counters" },
-  { label: "À la carte menu", id: "menu" },
+  { label: "Counters", id: "counters" },
+  { label: "À la carte", id: "menu" },
   { label: "Gallery", id: "gallery" },
-  { label: "Reserve a table", id: "reserve" },
+  { label: "Reservations", id: "reserve" },
   { label: "About", id: "heritage" },
 ];
 
