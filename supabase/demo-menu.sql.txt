@@ -351,7 +351,7 @@ from (values
   ('soft-drinks', 'Soft Drinks', 'سافٹ ڈرنکس', 'drinks', 195, false, 87, 'photo-1546173159-315724a31696', 'Chilled soft drinks served with ice.'),
   ('karak-chai', 'Karak Chai', 'کراک چائے', 'drinks', 245, false, 88, 'photo-1544787219-7f47ccb76574', 'The pink chai pulled between two vessels.'),
   ('frrsh-lime-soda', 'Frrsh Lime Soda', 'فریش لائم سوڈا', 'drinks', 275, false, 89, 'photo-1546173159-315724a31696', 'Fresh lime soda with a bright citrus finish.'),
-  ('mint-margarita', 'Mint Margarita', 'منٹ مارگریٹا', 'drinks', 445, false, 90, 'photo-1544145945-f90425340c7e', 'Tequila, lime and mint shaken to order.'),
+  ('mint-margarita', 'Mint Margarita', 'منٹ مارگریٹا', 'drinks', 445, false, 90, 'photo-1544145945-f90425340c7e', 'Tequila, lime and mint shaken to order.')
 ) as d(slug, name, urdu, category_id, price, featured, sort_order, photo, summary)
 on conflict (slug) do update set
   name = excluded.name,
@@ -396,7 +396,10 @@ create trigger menu_dishes_signature_limit
 select 'official_sections' as what, count(*) filter (where active and id <> 'uncategorized') as rows
 from public.menu_categories
 union all
-select 'official_dishes', count(*) from public.menu_dishes
+select 'official_dishes', count(*)
+from public.menu_dishes d
+join public.menu_categories c on c.id = d.category_id
+where c.active and c.id <> 'uncategorized'
 union all
 select 'signatures', count(*) from public.menu_dishes where featured;
 

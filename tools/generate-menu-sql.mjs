@@ -15,6 +15,11 @@
  * row, the section upserts, the signature trigger, the verification queries — is
  * hand-written and is left exactly as it is.
  *
+ * The rows are joined with ",\n" and the last one carries no comma. A trailing
+ * comma before the closing `)` of a VALUES list is a syntax error in Postgres
+ * (42601: syntax error at or near ")"), and the whole 90-row insert — the
+ * entire menu — is one statement, so it has to be exact.
+ *
  * Writes each target twice: once as `.sql`, and once as a `.txt` twin. The file
  * index hides `.sql`, so the twin is the copy a person can actually open; it is
  * the same SQL behind a five-line header.
@@ -97,7 +102,7 @@ const row = (dish, index) =>
     index + 1,
     sql(dish.photo),
     sql(dish.summary),
-  ].join(", ")}),`;
+  ].join(", ")})`;
 
 const block = [
   "-- ---------------------------------------------------------------------------",
@@ -125,7 +130,7 @@ const block = [
   "       null, d.price, true, d.featured, true, d.sort_order,",
   "       (extract(epoch from now()) * 1000)::bigint",
   "from (values",
-  ...dishes.map(row),
+  dishes.map(row).join(",\n"),
   ") as d(slug, name, urdu, category_id, price, featured, sort_order, photo, summary)",
   "on conflict (slug) do update set",
   "  name = excluded.name,",
