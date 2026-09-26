@@ -1159,6 +1159,7 @@ describe("the security schema", () => {
     "admin_set_staff_role",
     "admin_set_staff_active",
     "admin_remove_staff",
+    "admin_delete_staff_account",
     "admin_grant_role",
     "admin_remove_role",
   ];

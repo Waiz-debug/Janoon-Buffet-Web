@@ -343,6 +343,59 @@ begin
   return jsonb_build_object('ok', true, 'userId', p_user_id);
 end $$;
 
+--  Delete a team member for good: the sign-in account too, so the address is
+--  released and can be registered again. Missing from projects that ran an
+--  earlier version of this patch, which is why the Team screen's "Delete
+--  account" button had nothing to call. The guards match the two above: admin
+--  only, never yourself, never the last admin.
+create or replace function public.admin_delete_staff_account(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role    text;
+  v_email   text;
+  v_deleted integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select sm.role, u.email
+    into v_role, v_email
+    from public.staff_members sm
+    left join auth.users u on u.id = sm.user_id
+   where sm.user_id = p_user_id;
+
+  if v_role is null and v_email is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if p_user_id = auth.uid() then
+    raise exception 'You cannot delete the account you are signed in with.';
+  end if;
+
+  if v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be deleted.';
+  end if;
+
+  delete from public.staff_member_roles where user_id = p_user_id;
+  delete from public.staff_members where user_id = p_user_id;
+
+  delete from auth.users where id = p_user_id;
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted = 0 then
+    raise exception
+      'The sign-in account could not be deleted from the database. Remove it in the Supabase dashboard under Authentication → Users, then try again.';
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
+end $$;
+
 --  Grant a specific role to an existing team member. The role is added to the
 --  junction table, and the primary role is promoted to admin when the new role
 --  is admin — never the other way round, so this cannot take access away by
@@ -422,10 +475,12 @@ end $$;
 --  Taken from PUBLIC and handed to `authenticated`. Leaving out the second half
 --  of that pair is what made the role buttons unusable on an older project.
 revoke all on function public.admin_remove_staff(uuid) from public;
+revoke all on function public.admin_delete_staff_account(uuid) from public;
 revoke all on function public.admin_grant_role(uuid, text) from public;
 revoke all on function public.admin_remove_role(uuid, text) from public;
 
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
+grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
 grant execute on function public.admin_grant_role(uuid, text) to authenticated;
 grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 

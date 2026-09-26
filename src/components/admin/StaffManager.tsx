@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import type { StaffRole } from "@/hooks/use-staff-auth";
 import {
   addStaffAccount,
+  deleteStaffAccount,
   grantRole,
   isMissingFunction,
   listStaff,
@@ -17,6 +18,7 @@ import { motion } from "framer-motion";
 import {
   AlertCircle,
   Check,
+  Copy,
   KeyRound,
   Loader2,
   MailPlus,
@@ -40,13 +42,19 @@ import { toast } from "sonner";
  * silent success, which is why hiding the tab is a convenience rather than the
  * security boundary.
  *
- * Nobody's password is shown or stored: the optional field below is the initial
- * password the owner hands over in person, and leaving it empty means the member
- * picks their own from a reset link instead.
+ * On credentials. Supabase Auth keeps a one-way bcrypt hash and hands the
+ * plaintext to nobody, so an existing password cannot be displayed here — not
+ * to this panel, not to the owner, not to anyone with dashboard access either.
+ * What the panel can do is show the two halves of the truth: the sign-in address
+ * is visible on every row, and the password is either the one the owner just
+ * assigned (printed once, in the handover card, to be copied into a message) or
+ * one the member chooses themselves from a setup link.
  */
 export function StaffManager() {
   const [members, setMembers] = useState<StaffMember[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<StaffRole>("staff");
@@ -55,23 +63,37 @@ export function StaffManager() {
   const [addError, setAddError] = useState<string | null>(null);
   const [addDone, setAddDone] = useState<string | null>(null);
   const [confirmingAdd, setConfirmingAdd] = useState(false);
+  /**
+   * The credentials the owner just created, shown once so they can be copied
+   * into a message and then dismissed. `password` is null when the account was
+   * made without one, because the member picks their own from a setup link.
+   */
+  const [handover, setHandover] = useState<{
+    email: string;
+    password: string | null;
+  } | null>(null);
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   /** Bumping this re-runs the fetch below — the only way this panel reloads. */
   const [reloadToken, setReloadToken] = useState(0);
   const refresh = () => setReloadToken((count) => count + 1);
 
   // The result is applied from the promise callback rather than the effect body,
-  // so mounting the panel does not set state on its way in.
+  // so mounting the panel does not set state on its way in. The Refresh button
+  // drives the same path, so a press always re-queries the database — there is
+  // no cached list to fall back on and nothing to reload the page for.
   useEffect(() => {
     let active = true;
+    setRefreshing(true);
     listStaff()
       .then((rows) => {
         if (!active) return;
         setMembers(rows);
         setListError(null);
+        setSyncedAt(new Date().toLocaleTimeString());
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -83,6 +105,9 @@ export function StaffManager() {
               ? error.message
               : "Could not load the team.",
         );
+      })
+      .finally(() => {
+        if (active) setRefreshing(false);
       });
     return () => {
       active = false;
@@ -93,11 +118,18 @@ export function StaffManager() {
     setAddBusy(true);
     setAddError(null);
     setAddDone(null);
+    // Captured before the fields are cleared: this is the only moment the
+    // plaintext exists anywhere the owner can still read it.
+    const address = email.trim().toLowerCase();
+    const chosen = initialPassword.trim();
     try {
       const result = await addStaffAccount(email, role, initialPassword);
       setConfirmingAdd(false);
       setEmail("");
       setInitialPassword("");
+      setHandover(
+        result.createdSignIn ? { email: address, password: chosen || null } : null,
+      );
       setAddDone(
         !result.createdSignIn
           ? "That account already existed — the role has been granted to it."
@@ -135,6 +167,7 @@ export function StaffManager() {
     } finally {
       setBusyId(null);
       setPendingRemove(null);
+      setConfirmingDelete(null);
     }
   };
 
@@ -150,8 +183,7 @@ export function StaffManager() {
         <p className="text-sm text-muted-foreground">
           Who may open these portals, and as what. Staff work the floor desk;
           admins also control the menu, photos, promotions and this list. Only an
-          admin can change any of it, and nobody&apos;s password is ever visible
-          here.
+          admin can change any of it.
         </p>
       </div>
 
@@ -252,6 +284,38 @@ export function StaffManager() {
           </p>
         ) : null}
 
+        {/* The credentials, printed once. This is the only place the owner's
+            chosen password is ever legible — not stored by the app, not written
+            to the database, and gone the moment this card is dismissed. */}
+        {handover ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-gold/40 bg-gold/[0.08] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-xs leading-relaxed text-gold">
+                <span className="font-semibold">Credentials to hand over.</span>{" "}
+                Copy these into a message now — this card is not saved anywhere,
+                and the password cannot be shown again afterwards.
+              </p>
+              <button
+                type="button"
+                aria-label="Hide the credentials"
+                onClick={() => setHandover(null)}
+                className="shrink-0 cursor-pointer rounded-lg p-1 text-gold/70 transition-colors hover:text-gold"
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </div>
+            <CredentialRow label="Sign-in email" value={handover.email} />
+            {handover.password ? (
+              <CredentialRow label="Password" value={handover.password} />
+            ) : (
+              <p className="text-xs text-gold/80">
+                No password was set, so a setup link was emailed instead — they
+                choose their own.
+              </p>
+            )}
+          </div>
+        ) : null}
+
         {confirmingAdd ? (
           <motion.div
             initial={{ opacity: 0, y: 4 }}
@@ -314,16 +378,27 @@ export function StaffManager() {
               </span>
             ) : null}
           </h3>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-2"
-            onClick={refresh}
-          >
-            <RefreshCw className="size-3.5" aria-hidden />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-3">
+            {syncedAt ? (
+              <span className="text-[0.7rem] text-muted-foreground tabular-nums">
+                Synced {syncedAt}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="gap-2"
+              disabled={refreshing}
+              onClick={refresh}
+            >
+              <RefreshCw
+                className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}
+                aria-hidden
+              />
+              {refreshing ? "Syncing…" : "Refresh"}
+            </Button>
+          </div>
         </div>
 
         {listError ? (
@@ -362,8 +437,14 @@ export function StaffManager() {
                     <ShieldCheck className="size-4" aria-hidden />
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {member.email ?? "—"}
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <span className="truncate">{member.email ?? "—"}</span>
+                      {member.email ? (
+                        <CopyButton
+                          value={member.email}
+                          label={`Copy the sign-in email for ${member.email}`}
+                        />
+                      ) : null}
                     </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       {(member.roles.length > 0 ? member.roles : [member.role]).map((r) => (
@@ -388,6 +469,15 @@ export function StaffManager() {
                         {member.active ? "active" : "suspended"}
                       </span>
                       {member.displayName ? <span>{member.displayName}</span> : null}
+                    </p>
+                    {/* The other half of the sign-in details, said plainly: the
+                        address is the row above; the password is not something
+                        this panel can show, because Supabase stores only a
+                        hash. Setup link is the way back in. */}
+                    <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                      Password: not retrievable — use{" "}
+                      <span className="text-gold/90">Send setup link</span> to let
+                      them choose a new one.
                     </p>
                   </div>
                 </div>
@@ -504,6 +594,58 @@ export function StaffManager() {
                     Send setup link
                   </Button>
 
+                  {/* Removing keeps the sign-in account; deleting erases it,
+                      which is the only way the address becomes reusable. The
+                      two are kept apart so the permanent one is never the
+                      button a stray click lands on. */}
+                  {confirmingDelete === member.userId ? (
+                    <>
+                      <span className="w-full rounded-xl border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-rose-300">
+                        This erases the sign-in account from the database, not
+                        just the team entry. The address is released and can be
+                        registered again from scratch. It cannot be undone.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmingDelete(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="gap-1.5 bg-rose-500/90 font-semibold text-white hover:bg-rose-500"
+                        disabled={busyId === member.userId}
+                        onClick={() =>
+                          void run(member.userId, "Account deleted", () =>
+                            deleteStaffAccount(member.userId),
+                          )
+                        }
+                      >
+                        {busyId === member.userId ? (
+                          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <Trash2 className="size-3.5" aria-hidden />
+                        )}
+                        Delete permanently
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-muted-foreground hover:text-rose-300"
+                      disabled={busyId === member.userId}
+                      onClick={() => setConfirmingDelete(member.userId)}
+                    >
+                      <UserX className="size-3.5" aria-hidden />
+                      Delete account
+                    </Button>
+                  )}
+
                   {pendingRemove === member.userId ? (
                     <>
                       <Button
@@ -561,11 +703,68 @@ export function StaffManager() {
         )}
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Removing someone takes away their portal access and leaves their
-          sign-in account alone. The last admin cannot be demoted, suspended or
-          removed — promote someone else first.
+          <span className="text-foreground">Remove</span> takes away portal
+          access and leaves the sign-in account standing, so the person can be
+          added back. <span className="text-foreground">Delete account</span>{" "}
+          erases the sign-in account too and frees the address for a fresh
+          registration. The last admin cannot be demoted, suspended, removed or
+          deleted — promote someone else first, and nobody can delete the
+          account they are signed in with.
         </p>
       </div>
     </section>
+  );
+}
+
+/** A label/value line with a copy button — used for the handover card. */
+function CredentialRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gold/25 bg-background/50 px-3 py-2">
+      <span className="text-[0.65rem] tracking-[0.18em] text-gold/70 uppercase">
+        {label}
+      </span>
+      <span className="flex items-center gap-2">
+        <span className="font-mono text-sm text-foreground select-all">
+          {value}
+        </span>
+        <CopyButton value={value} label={`Copy the ${label.toLowerCase()}`} />
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Copy to clipboard, and say so honestly: a browser that refuses the
+ * permission is reported as a failure rather than as a silent success.
+ */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(value)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1600);
+          })
+          .catch(() => {
+            toast.error("Could not copy", {
+              description: "Select the text and copy it by hand.",
+            });
+          });
+      }}
+      className="inline-flex shrink-0 cursor-pointer items-center rounded-lg border border-gold/30 p-1 text-gold transition-colors hover:bg-gold/15"
+    >
+      {copied ? (
+        <Check className="size-3" aria-hidden />
+      ) : (
+        <Copy className="size-3" aria-hidden />
+      )}
+    </button>
   );
 }

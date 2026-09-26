@@ -7,7 +7,7 @@ import { useGoToSection } from "@/hooks/use-go-to-section";
 import { useLiveSite, type LiveDish } from "@/hooks/use-live-site";
 import { formatPkr, photoThumb, type MenuIcon } from "@/lib/menu";
 import { motion } from "framer-motion";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -143,21 +143,9 @@ export function LiveCounters() {
                   </div>
 
                   <div className="flex flex-col gap-3 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="font-display text-xl font-semibold">
-                        {counter.name}
-                      </h3>
-                      {/* A working link, not a label: the whole priced board,
-                          scrolled to rather than opened in place. */}
-                      <button
-                        type="button"
-                        onClick={() => goToSection("menu")}
-                        className="inline-flex shrink-0 items-center gap-1.5 text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:text-gold"
-                      >
-                        Full menu
-                        <ArrowUpRight className="size-3.5" aria-hidden />
-                      </button>
-                    </div>
+                    <h3 className="font-display text-xl font-semibold">
+                      {counter.name}
+                    </h3>
                     <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                       {counter.blurb}
                     </p>

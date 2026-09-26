@@ -946,6 +946,76 @@ begin
   return jsonb_build_object('ok', true, 'userId', p_user_id);
 end $$;
 
+--  Erase a team member for good — the sign-in account as well as the team rows.
+--
+--  `admin_remove_staff` above takes away access and leaves the Auth account
+--  standing, which is the right default: it is reversible. This one is not. It
+--  deletes the row in `auth.users` — the identities go with it by cascade — so
+--  the email address is released and can be registered again from scratch. It
+--  is the action behind "delete this person properly" when someone leaves for
+--  good and their address should be reusable.
+--
+--  Three guards, and they are the reason this is safe to offer from a panel:
+--  the caller must be an admin, nobody may delete the account they are signed
+--  in with, and the last admin cannot be deleted. Nothing outside
+--  `staff_members`, `staff_member_roles` and the one auth row is touched.
+--
+--  Deleting from `auth.users` needs rights this function has only because it is
+--  `security definer` and owned by the role that runs the SQL editor. A
+--  publishable key can never do this — which is exactly why it is a function in
+--  Postgres rather than a call from the browser.
+create or replace function public.admin_delete_staff_account(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role    text;
+  v_email   text;
+  v_deleted integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select sm.role, u.email
+    into v_role, v_email
+    from public.staff_members sm
+    left join auth.users u on u.id = sm.user_id
+   where sm.user_id = p_user_id;
+
+  if v_role is null and v_email is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  -- A mis-click must not lock the panel out with no way back in.
+  if p_user_id = auth.uid() then
+    raise exception 'You cannot delete the account you are signed in with.';
+  end if;
+
+  if v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be deleted.';
+  end if;
+
+  -- The team rows first, so a project whose foreign keys are missing still
+  -- ends up clean. Both tables also cascade from auth.users; doing it here
+  -- first means the cascade has nothing left to do.
+  delete from public.staff_member_roles where user_id = p_user_id;
+  delete from public.staff_members where user_id = p_user_id;
+
+  delete from auth.users where id = p_user_id;
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted = 0 then
+    raise exception
+      'The sign-in account could not be deleted from the database. Remove it in the Supabase dashboard under Authentication → Users, then try again.';
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
+end $$;
+
 -- --------------------------------------- multi-role management -----------
 --  Grant a specific role to an existing team member.
 --  The role is added to the junction table; the primary role in staff_members
@@ -1053,6 +1123,7 @@ revoke all on function public.admin_remove_role(uuid, text) from public;
 revoke all on function public.staff_get_roles(uuid) from public;
 revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
 revoke all on function public.admin_remove_staff(uuid) from public;
+revoke all on function public.admin_delete_staff_account(uuid) from public;
 revoke all on function public.tribe_active_admins() from public;
 
 grant execute on function public.staff_sync_email() to authenticated;
@@ -1061,6 +1132,7 @@ grant execute on function public.admin_add_staff(text, text) to authenticated;
 grant execute on function public.admin_set_staff_role(uuid, text) to authenticated;
 grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
+grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
 --  These two were revoked from PUBLIC without being handed to anyone, which
 --  meant the Team screen's role buttons failed with "permission denied for
 --  function" for every caller, the owner included.

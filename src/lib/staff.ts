@@ -153,6 +153,20 @@ export async function removeStaff(userId: string) {
   await rpc("admin_remove_staff", { p_user_id: userId });
 }
 
+/**
+ * Erase a team member for good — team rows *and* the Supabase Auth account.
+ *
+ * Reversible, unlike `removeStaff()`: the address is released, so the same
+ * person can be added again from scratch afterwards. The row in `auth.users` is
+ * removed by a `security definer` function in Postgres, because a publishable
+ * key cannot reach the auth schema from the browser and a service-role key must
+ * never live in a page. Three guards sit in the database, not here: admin only,
+ * never the caller's own account, never the last admin.
+ */
+export async function deleteStaffAccount(userId: string): Promise<void> {
+  await rpc("admin_delete_staff_account", { p_user_id: userId });
+}
+
 export async function grantRole(userId: string, role: StaffRole) {
   await rpc("admin_grant_role", { p_user_id: userId, p_role: role });
 }
