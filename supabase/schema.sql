@@ -1016,6 +1016,64 @@ begin
     'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
 end $$;
 
+--  Mark a team member's address as confirmed.
+--
+--  A project with "Confirm email" switched on will not let a new staff account
+--  sign in until the address is confirmed, which is what turns "add a member"
+--  into "the new account cannot log in". `signUp` has no `email_confirm` option
+--  and the admin API that does needs a service-role key — which must never be
+--  in a page — so the confirmation is done here instead, by the role that owns
+--  the database.
+--
+--  The trust model is the same as `admin_add_staff`: only an admin can call it,
+--  and only for an address already on *this* team, so it can never be used to
+--  confirm a stranger's account. Both timestamps are written with `coalesce`,
+--  so an already-confirmed address is left exactly as it was and re-running the
+--  file changes nothing.
+create or replace function public.admin_confirm_staff_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id  uuid;
+  v_updated  integer := 0;
+  v_was_open boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_email is null or position('@' in p_email) = 0 then
+    raise exception 'Enter a valid email address.';
+  end if;
+
+  select u.id, u.email_confirmed_at is null
+    into v_user_id, v_was_open
+    from auth.users u
+   where lower(u.email) = lower(p_email);
+
+  if v_user_id is null then
+    raise exception 'No sign-in account exists for that address yet.';
+  end if;
+
+  if not exists (
+    select 1 from public.staff_members where user_id = v_user_id
+  ) then
+    raise exception 'That address is not on this team.';
+  end if;
+
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now())
+   where id = v_user_id;
+  get diagnostics v_updated = row_count;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', v_user_id, 'confirmed', v_was_open);
+end $$;
+
 -- --------------------------------------- multi-role management -----------
 --  Grant a specific role to an existing team member.
 --  The role is added to the junction table; the primary role in staff_members
@@ -1124,6 +1182,7 @@ revoke all on function public.staff_get_roles(uuid) from public;
 revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
 revoke all on function public.admin_remove_staff(uuid) from public;
 revoke all on function public.admin_delete_staff_account(uuid) from public;
+revoke all on function public.admin_confirm_staff_email(text) from public;
 revoke all on function public.tribe_active_admins() from public;
 
 grant execute on function public.staff_sync_email() to authenticated;
@@ -1133,6 +1192,7 @@ grant execute on function public.admin_set_staff_role(uuid, text) to authenticat
 grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
 grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
+grant execute on function public.admin_confirm_staff_email(text) to authenticated;
 --  These two were revoked from PUBLIC without being handed to anyone, which
 --  meant the Team screen's role buttons failed with "permission denied for
 --  function" for every caller, the owner included.

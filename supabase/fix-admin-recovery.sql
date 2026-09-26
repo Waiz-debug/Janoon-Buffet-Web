@@ -396,6 +396,55 @@ begin
     'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
 end $$;
 
+--  Confirm a team member's email address, so a new account can sign in on a
+--  project that asks new accounts to confirm first. `signUp` cannot do this
+--  (no `email_confirm` option) and the admin API that can needs a service-role
+--  key, which must never be in a page. Admin-only, and only for an address
+--  already on this team.
+create or replace function public.admin_confirm_staff_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id  uuid;
+  v_updated  integer := 0;
+  v_was_open boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_email is null or position('@' in p_email) = 0 then
+    raise exception 'Enter a valid email address.';
+  end if;
+
+  select u.id, u.email_confirmed_at is null
+    into v_user_id, v_was_open
+    from auth.users u
+   where lower(u.email) = lower(p_email);
+
+  if v_user_id is null then
+    raise exception 'No sign-in account exists for that address yet.';
+  end if;
+
+  if not exists (
+    select 1 from public.staff_members where user_id = v_user_id
+  ) then
+    raise exception 'That address is not on this team.';
+  end if;
+
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now())
+   where id = v_user_id;
+  get diagnostics v_updated = row_count;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', v_user_id, 'confirmed', v_was_open);
+end $$;
+
 --  Grant a specific role to an existing team member. The role is added to the
 --  junction table, and the primary role is promoted to admin when the new role
 --  is admin — never the other way round, so this cannot take access away by
@@ -476,11 +525,13 @@ end $$;
 --  of that pair is what made the role buttons unusable on an older project.
 revoke all on function public.admin_remove_staff(uuid) from public;
 revoke all on function public.admin_delete_staff_account(uuid) from public;
+revoke all on function public.admin_confirm_staff_email(text) from public;
 revoke all on function public.admin_grant_role(uuid, text) from public;
 revoke all on function public.admin_remove_role(uuid, text) from public;
 
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
 grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
+grant execute on function public.admin_confirm_staff_email(text) to authenticated;
 grant execute on function public.admin_grant_role(uuid, text) to authenticated;
 grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 

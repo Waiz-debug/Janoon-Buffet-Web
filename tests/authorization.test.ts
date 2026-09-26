@@ -386,6 +386,7 @@ describe("addStaffAccount", () => {
       usedResetLink: false,
       passwordApplied: true,
       needsConfirmation: false,
+      confirmedByPortal: false,
     });
     // The address is normalised, and the password goes to Auth — never to a table.
     expect(inviteSignUps).toEqual([
@@ -411,6 +412,7 @@ describe("addStaffAccount", () => {
       usedResetLink: true,
       passwordApplied: true,
       needsConfirmation: false,
+      confirmedByPortal: false,
     });
     expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
     // A generated password exists only long enough to create the account.
@@ -441,6 +443,7 @@ describe("addStaffAccount", () => {
       usedResetLink: true,
       passwordApplied: false,
       needsConfirmation: false,
+      confirmedByPortal: false,
     });
     // The role is still granted, and the setup link is the recovery path.
     expect(rpcCalls).toEqual([
@@ -464,6 +467,67 @@ describe("addStaffAccount", () => {
       usedResetLink: true,
       passwordApplied: true,
       needsConfirmation: true,
+      confirmedByPortal: false,
+    });
+  });
+
+  /**
+   * The permanent fix for "the new account cannot log in".
+   *
+   * When the project asks new accounts to confirm their address, the panel
+   * confirms it there and then through an admin-gated database function, so the
+   * member signs in with the password the owner just chose instead of waiting
+   * on a mail that may never arrive. Nothing is confirmed without the owner's
+   * call going to Postgres first, and the setup link is skipped once it is done.
+   */
+  test("an unconfirmed address is confirmed by the portal, so the first sign-in works", async () => {
+    inviteSignUpReply = {
+      data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
+      error: null,
+    };
+    rpcReplies.admin_confirm_staff_email = {
+      data: { ok: true, confirmed: true },
+      error: null,
+    };
+
+    const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
+
+    expect(result).toEqual({
+      createdSignIn: true,
+      usedResetLink: false,
+      passwordApplied: true,
+      needsConfirmation: false,
+      confirmedByPortal: true,
+    });
+    // The owner-set password is the one that works, so no reset mail is needed.
+    expect(authCalls).toEqual([]);
+    expect(rpcCalls.map((call) => call.name)).toEqual([
+      "admin_add_staff",
+      "admin_confirm_staff_email",
+    ]);
+    // The address is the only thing that travels, never the password.
+    expect(JSON.stringify(rpcCalls)).not.toContain("SharedSecret1!");
+  });
+
+  test("a database without the confirm function falls back to the setup link", async () => {
+    inviteSignUpReply = {
+      data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
+      error: null,
+    };
+    rpcReplies.admin_confirm_staff_email = {
+      data: null,
+      error: { message: "Could not find the function admin_confirm_staff_email" },
+    };
+
+    const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
+
+    // An older project is never left worse off: the mail is the way in.
+    expect(result).toEqual({
+      createdSignIn: true,
+      usedResetLink: true,
+      passwordApplied: true,
+      needsConfirmation: true,
+      confirmedByPortal: false,
     });
   });
 });
@@ -1291,6 +1355,7 @@ describe("the security schema", () => {
     "admin_set_staff_active",
     "admin_remove_staff",
     "admin_delete_staff_account",
+    "admin_confirm_staff_email",
     "admin_grant_role",
     "admin_remove_role",
   ];

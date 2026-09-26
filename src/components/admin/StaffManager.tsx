@@ -141,7 +141,9 @@ export function StaffManager() {
                 : "Use Send setup link on their row to email one."
             }`
           : result.needsConfirmation
-            ? "Account created. The address has to be confirmed before the first sign-in — have them open the link in their inbox, then the password below is the one that works."
+            ? "Account created, but the address still has to be confirmed before the first sign-in — a setup link has been emailed, or press Confirm address on their row in the Credentials tab."
+            : result.confirmedByPortal
+              ? "Account created and the address confirmed — they can sign in straight away with the password below."
             : result.usedResetLink
               ? "Account created and a password-setup link emailed. Their role is live already."
               : "Account created. They sign in with the password you set, and can change it from Your account.",

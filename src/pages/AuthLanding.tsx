@@ -6,6 +6,7 @@ import {
   ChefHat,
   ChevronDown,
   Flame,
+  KeyRound,
   Loader2,
   Lock,
   Mail,
@@ -41,6 +42,7 @@ import {
 } from "@/hooks/use-staff-auth";
 import { useLiveSite } from "@/hooks/use-live-site";
 import { RESTAURANT } from "@/lib/restaurant";
+import { supabase } from "@/lib/supabase";
 
 /**
  * Three facts the house can stand behind: the menu is served counter by
@@ -139,6 +141,15 @@ export default function AuthLanding() {
   const modalRole = searchParams.get("unlock");
 
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The escape hatch offered after a refused password: the address that was
+   * refused, whether a reset mail has gone out, and whether one is on its way.
+   */
+  const [recovery, setRecovery] = useState<{
+    email: string;
+    sent: string | null;
+    busy: boolean;
+  } | null>(null);
   const [attempts, setAttempts] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
@@ -234,6 +245,7 @@ export default function AuthLanding() {
     }
     setAttempts((count) => count + 1);
     setSubmitting(false);
+    setRecovery(null);
 
     // Password accepted, address not confirmed. The way forward is a fresh
     // link, so one is sent before the card says anything — and if the send
@@ -256,6 +268,47 @@ export default function AuthLanding() {
     }
 
     setError(signInMessage(result.reason, claim !== "closed" && claim !== "checking"));
+
+    // A refused password is a dead end on its own: the member is standing at a
+    // till with a credential nobody can look up, because Supabase stores only a
+    // hash. So the card offers the way out rather than leaving them there — one
+    // tap emails a reset link, they choose their own password, and the role on
+    // the account is untouched.
+    if (result.reason === "credentials") {
+      setRecovery({ email: email.trim(), sent: null, busy: false });
+    }
+  };
+
+  /**
+   * Email a password reset to the address that was just refused.
+   *
+   * A failure here is reported as a failure. Saying "check your inbox" when no
+   * mail went out is the same mistake as blaming somebody's password for an
+   * account that never existed.
+   */
+  const sendPasswordRecovery = async () => {
+    if (!recovery || recovery.busy) return;
+    setRecovery({ ...recovery, busy: true, sent: null });
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(recovery.email, {
+        redirectTo:
+          typeof window === "undefined" ? undefined : window.location.origin,
+      });
+      if (error) throw new Error(error.message);
+      setRecovery({
+        ...recovery,
+        busy: false,
+        sent: `Check ${recovery.email} for the reset link — it opens a page where you choose a new password, and your role is unchanged.`,
+      });
+    } catch (error) {
+      setRecovery({
+        ...recovery,
+        busy: false,
+        sent: `The reset email could not be sent: ${
+          error instanceof Error ? error.message.split("\n")[0] : "try again in a moment"
+        }. Ask an admin to confirm the address from the Credentials tab.`,
+      });
+    }
   };
 
   /**
@@ -302,6 +355,12 @@ export default function AuthLanding() {
           shake={attempts}
           submitting={submitting}
           onSignIn={(email, password) => void handleSignIn(email, password)}
+          recovery={{
+            available: recovery !== null,
+            busy: recovery?.busy ?? false,
+            message: recovery?.sent ?? null,
+            onSend: () => void sendPasswordRecovery(),
+          }}
           onClearError={() => {
             setError(null);
             setSetupError(null);
@@ -590,6 +649,7 @@ function SignInModal({
   onSignIn,
   onClearError,
   onClose,
+  recovery,
   owner,
 }: {
   role: StaffRole;
@@ -600,6 +660,17 @@ function SignInModal({
   onSignIn: (email: string, password: string) => void;
   onClearError: () => void;
   onClose: () => void;
+  /**
+   * The way out of a refused password, offered on the card rather than left for
+   * the member to guess at: one tap emails a reset link, they choose their own
+   * password from it, and nothing about their role changes.
+   */
+  recovery: {
+    available: boolean;
+    busy: boolean;
+    message: string | null;
+    onSend: () => void;
+  };
   /** The one-time owner setup, driven by the page that owns the auth state. */
   owner: {
     /**
@@ -928,6 +999,36 @@ function SignInModal({
               <AlertCircle className="size-4 shrink-0" aria-hidden />
               {shownError}
             </motion.p>
+          ) : null}
+
+          {/* The way out of a refused password. Without it the card is a dead
+              end: nobody — the member, the owner, the dashboard — can read a
+              password back, so "wrong password" has to come with a way to set a
+              new one. */}
+          {!settingUp && recovery.available ? (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={recovery.onSend}
+                disabled={recovery.busy}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gold/40 bg-gold/[0.08] px-4 py-2 text-xs font-medium tracking-[0.12em] text-gold uppercase transition-colors hover:bg-gold/15 disabled:opacity-60"
+              >
+                {recovery.busy ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <KeyRound className="size-3.5" aria-hidden />
+                )}
+                {recovery.busy ? "Sending…" : "Set or reset my password"}
+              </button>
+              {recovery.message ? (
+                <p
+                  className="text-center text-xs leading-relaxed text-muted-foreground"
+                  role="status"
+                >
+                  {recovery.message}
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           {!settingUp && owner.successMessage ? (

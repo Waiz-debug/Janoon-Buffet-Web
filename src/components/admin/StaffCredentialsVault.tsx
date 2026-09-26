@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  confirmStaffEmail,
   isMissingFunction,
   listStaff,
   sendPasswordReset,
@@ -156,9 +157,38 @@ function CredentialsRow({ member }: { member: StaffMember }) {
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const [result, setResult] = useState<SignInCheck | null>(null);
 
   const address = member.email ?? "";
+
+  const confirm = async () => {
+    setConfirming(true);
+    setNote(null);
+    try {
+      const changed = await confirmStaffEmail(address);
+      setNote(
+        changed
+          ? `${address} is confirmed. The member can sign in now, with the password they were given.`
+          : `${address} was already confirmed — nothing to change.`,
+      );
+      toast.success(
+        changed ? "Address confirmed" : "Already confirmed",
+        { description: address },
+      );
+    } catch (error) {
+      const detail = isMissingFunction(error)
+        ? "This project has not been patched yet — run supabase/fix-admin-recovery.sql."
+        : error instanceof Error
+          ? error.message
+          : "Try again in a moment.";
+      setNote(detail);
+      toast.error("Could not confirm the address", { description: detail });
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const verify = async () => {
     setChecking(true);
@@ -171,6 +201,12 @@ function CredentialsRow({ member }: { member: StaffMember }) {
         setPassword("");
         setOpen(false);
       }
+    } catch (error) {
+      setResult({
+        ok: false,
+        reason:
+          error instanceof Error ? error.message : "The check could not run.",
+      });
     } finally {
       setChecking(false);
     }
@@ -213,6 +249,9 @@ function CredentialsRow({ member }: { member: StaffMember }) {
               {address ? <CopyButton value={address} /> : null}
             </p>
             <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {note ? (
+                <span className="w-full leading-relaxed text-gold/90">{note}</span>
+              ) : null}
               {(member.roles.length > 0 ? member.roles : [member.role]).map((r) => (
                 <span
                   key={r}
@@ -252,6 +291,27 @@ function CredentialsRow({ member }: { member: StaffMember }) {
           >
             <KeyRound className="size-3.5" aria-hidden />
             Verify
+          </Button>
+          {/* The cure for the failure `Verify` reports as "address never
+              confirmed": an admin-gated function stamps the confirmation, so
+              the account signs in without anyone waiting on a mail. Offered on
+              every row because an account created before this existed — or
+              before this project was patched — may still need it. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!address || confirming}
+            title="Mark this address as confirmed so the member can sign in"
+            onClick={() => void confirm()}
+          >
+            {confirming ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <ShieldCheck className="size-3.5" aria-hidden />
+            )}
+            Confirm address
           </Button>
           <Button
             type="button"

@@ -111,6 +111,12 @@ export type StaffAccountResult = {
    * would otherwise report as a wrong password.
    */
   needsConfirmation: boolean;
+  /**
+   * True when this call confirmed the address itself, so the member can sign in
+   * straight away with the password above. Set only when the database could do
+   * it; otherwise the setup link below is the route in.
+   */
+  confirmedByPortal: boolean;
 };
 
 export async function addStaffAccount(
@@ -152,17 +158,36 @@ export async function addStaffAccount(
   // difference between an admin who waits for a confirmation mail and one who
   // concludes the password was wrong. An absent field is treated as "no
   // problem reported" rather than as a refusal: only an explicit null is a yes.
-  const needsConfirmation =
+  let needsConfirmation =
     createdSignIn && signUpData?.user?.email_confirmed_at === null;
 
   // The role is decided in Postgres, by `admin_add_staff`, which refuses any
   // caller who is not an admin. This call cannot promote anybody by itself.
   await rpc("admin_add_staff", { p_email: address, p_role: role });
 
+  // …and the address is confirmed there too, immediately, for the same reason:
+  // a member the admin has just created should be able to sign in with the
+  // password the admin just chose, not sit waiting on a mail. If the project
+  // predates this function the failure is ignored and the setup link below
+  // becomes the way in, so an older database is never worse off.
+  let confirmedByPortal = false;
+  if (needsConfirmation) {
+    try {
+      const outcome = await rpc("admin_confirm_staff_email", {
+        p_email: address,
+      });
+      confirmedByPortal = outcome.confirmed === true;
+      if (confirmedByPortal) needsConfirmation = false;
+    } catch (error) {
+      if (!isMissingFunction(error)) throw error;
+    }
+  }
+
   // A setup link goes out whenever the owner was not left holding a password
   // they can hand over: none was typed, the account already existed so the
-  // typed one was ignored, or the address still has to be confirmed. This is
-  // the only recovery path the panel has, and an extra mail costs nothing.
+  // typed one was ignored, or the address could not be confirmed from here.
+  // This is the only recovery path the panel has, and an extra mail costs
+  // nothing.
   const needsOwnPassword =
     !initialPassword?.trim() || alreadyRegistered || needsConfirmation;
 
@@ -180,7 +205,21 @@ export async function addStaffAccount(
     usedResetLink,
     passwordApplied: createdSignIn,
     needsConfirmation,
+    confirmedByPortal,
   };
+}
+
+/**
+ * Confirm a member's address by hand — the same call creation makes, exposed
+ * for the case where an address was confirmed by mail days later and the portal
+ * still has not caught up, or where a project gained the function after the
+ * account was created.
+ */
+export async function confirmStaffEmail(email: string): Promise<boolean> {
+  const outcome = await rpc("admin_confirm_staff_email", {
+    p_email: email.trim().toLowerCase(),
+  });
+  return outcome.confirmed === true;
 }
 
 export type SignInCheck = { ok: true } | { ok: false; reason: string };
