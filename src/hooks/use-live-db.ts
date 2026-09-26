@@ -7,7 +7,6 @@ import {
   fetchDeliveryOrders,
   fetchDishes,
   fetchPreorders,
-  fetchPromotions,
   fetchPublicAddOnCategories,
   fetchPublicAddOns,
   fetchPublicCategories,
@@ -37,6 +36,7 @@ import {
   refreshLive,
   subscribeLive,
 } from "@/lib/live-sync";
+import { fetchPromotions } from "@/lib/promotions";
 import { TABLES } from "@/lib/supabase";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
@@ -352,8 +352,9 @@ export function usePreorders(): Preorder[] | undefined {
  * Promotions. `activeOnly` drops anything switched off or past its expiry —
  * the admin list asks for every row, the public banner only for live offers.
  *
- * Seeded demo offers are excluded from every guest feed by default; the admin
- * panel passes `includeDemo` so the team can see and delete them.
+ * While the restaurant has no offers of its own, the newest seeded sample
+ * stands in so the board is never empty; the admin panel passes `includeDemo`
+ * so the team can always see and delete a sample.
  */
 export function usePromotions(
   activeOnly: boolean,

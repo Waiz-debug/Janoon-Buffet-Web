@@ -161,27 +161,14 @@ create table if not exists public.site_content (
   updated_at bigint not null default 0
 );
 
--- Remove the offer copy an earlier revision of this file published. The line
--- was "Seasons Special High Tea — Rs 1,895 + tax | 03:30–05:00 pm &
--- 05:15–06:45 pm": a price and two sitting times the restaurant never gave us,
--- drawn under the hero and again over the counters. A guest plans an evening
--- around a price, so it is deleted rather than re-seeded.
-delete from public.site_content where key = 'high-tea-offer';
-
--- The rest of the demo content an earlier revision left in the database: a
--- sample offer with an invented price and a caption on each demo photograph.
--- The photographs stay — real ones replace them from the admin panel — but a
--- caption or an offer the house never wrote does not. Guarded, because this
--- file can be pasted before the tables exist.
-do $$
-begin
-  if to_regclass('public.promotions') is not null then
-    delete from public.promotions where demo;
-  end if;
-  if to_regclass('public.site_media') is not null then
-    update public.site_media set caption = null where demo and caption is not null;
-  end if;
-end $$;
+-- ---------------------------------------------------------------------------
+--  Demo content is kept on purpose while the site is being previewed: the
+--  offers board and the gallery read the seeded sample rows, so a fresh
+--  install looks like a finished restaurant instead of empty sections. When
+--  the house's own copy and photographs are live, run
+--  supabase/remove-demo-content.sql once to clear the samples and switch the
+--  sample banner off for good.
+-- ---------------------------------------------------------------------------
 
 -- The app addresses every dish by slug. Refuse an ambiguous legacy table
 -- rather than silently updating the wrong row.

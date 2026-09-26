@@ -13,11 +13,11 @@ import { useEffect, useMemo, useState } from "react";
  *
  * The strip above it surfaces the newest offer mid-scroll; this is the part a
  * guest reaches by scrolling further, so it holds the whole collection rather
- * than only the newest one. Both read the same `promotions` table and both
- * ignore seeded demo rows, so the board can only ever show what the restaurant
- * itself has published. Publish an entry in the admin panel and it appears on
- * the strip *and* on this board with no redeploy and no refresh on the guest's
- * side.
+ * than only the newest one. Both read the same `promotions` table: the
+ * restaurant's own offers whenever it has any, and the newest seeded sample
+ * as a stand-in while it has none. Publish an entry in the admin panel and it
+ * appears on the strip *and* on this board with no redeploy and no refresh on
+ * the guest's side.
  *
  * This is a guest surface and nothing else. It used to hide a "Manage
  * promotions" link behind an admin check, which put an editing control on the
@@ -62,7 +62,7 @@ export function PromotionsSection() {
         <SectionHeading
           eyebrow="Offers"
           title="What's on"
-          description="Offers published by the restaurant itself — each one runs while it is live and leaves the board when its time is up. Nothing appears here that the restaurant has not published."
+          description="What's running right now — each offer stays on the board while it is live and leaves when its time is up."
         />
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

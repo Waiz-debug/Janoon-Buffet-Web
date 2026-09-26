@@ -25,8 +25,9 @@ import { CalendarCheck, Phone } from "lucide-react";
  * Everything below the reservation block renders nothing at all when there is
  * nothing to show, so a restaurant with no live offers, no pre-orders and no
  * gallery photos never carries an empty band. The offer strip and the offers
- * board are the clearest case: the seeded demo promotion is filtered out in
- * `fetchPromotions()`, so nothing appears until the house publishes a real one.
+ * board stand in with the seeded sample banner while the house has published
+ * no offer of its own — see `fetchPromotions()` in `src/lib/promotions.ts` —
+ * and step aside the moment a real one is published.
  */
 export default function Landing() {
   const goToSection = useGoToSection();

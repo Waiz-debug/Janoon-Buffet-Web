@@ -71,9 +71,9 @@ function toDatetimeLocal(ms: number): string {
 }
 
 export function PromotionsManager() {
-  // `includeDemo`: the panel is the one place a seeded demo offer is still
-  // visible, because it is the one place it can be deleted from. Every guest
-  // surface drops demo rows outright.
+  // `includeDemo`: the panel sees every row, a seeded sample included, so the
+  // team can edit or delete it. Guest surfaces show the sample as a stand-in
+  // only while the restaurant has no offers of its own.
   const promos = usePromotions(false, true);
 
   const [draft, setDraft] = useState<PromotionDraft | null>(null);

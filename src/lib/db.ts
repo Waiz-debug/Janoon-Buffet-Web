@@ -1,3 +1,12 @@
+/**
+ * The data layer.
+ *
+ * Promotion reading lives in `src/lib/promotions.ts` — promotions are the one
+ * table whose guest behaviour needs a stand-in sample rather than a plain
+ * read, so both readers are kept there. The copies of `fetchPromotions()` and
+ * `seedDemoPromotion()` further down this file are superseded: import the
+ * promotion functions from `@/lib/promotions`.
+ */
 import {
   ADDONS,
   DISHES,

@@ -27,9 +27,9 @@ import {
   ensureSignatureDishes,
   seedAddOns,
   seedDemoGallery,
-  seedDemoPromotion,
   seedMenuCatalog,
 } from "@/lib/db";
+import { seedDemoPromotion } from "@/lib/promotions";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
