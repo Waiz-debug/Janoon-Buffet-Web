@@ -1016,6 +1016,56 @@ begin
     'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
 end $$;
 
+--  Put the three stores back in step.
+--
+--  A staff account lives in three places at once: `auth.users` (the sign-in),
+--  `staff_members` (the row that lets a portal open) and `staff_member_roles`
+--  (which roles it holds). They are written by different calls, and a project
+--  that has been through a few versions of this schema can end up with a member
+--  whose primary row exists but whose junction entry does not — which reads as
+--  somebody who is on the team and holds no role at all.
+--
+--  This repairs that, idempotently: every primary role with no matching
+--  junction row is written. It also counts rows whose sign-in account has gone,
+--  because those members can never get in and no amount of syncing will change
+--  it — they are reported, not deleted: what to do with an orphaned record is
+--  the owner's decision, not a function's.
+create or replace function public.admin_sync_staff_roles()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_added   integer := 0;
+  v_missing integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role, created_at)
+  select sm.user_id, sm.role, sm.created_at
+    from public.staff_members sm
+   where not exists (
+     select 1
+       from public.staff_member_roles r
+      where r.user_id = sm.user_id
+        and r.role = sm.role
+   )
+  on conflict (user_id, role) do nothing;
+  get diagnostics v_added = row_count;
+
+  select count(*) into v_missing
+    from public.staff_members sm
+   where not exists (
+     select 1 from auth.users u where u.id = sm.user_id
+   );
+
+  return jsonb_build_object(
+    'ok', true, 'rolesAdded', v_added, 'accountsMissing', v_missing);
+end $$;
+
 --  Mark a team member's address as confirmed.
 --
 --  A project with "Confirm email" switched on will not let a new staff account
@@ -1183,6 +1233,7 @@ revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
 revoke all on function public.admin_remove_staff(uuid) from public;
 revoke all on function public.admin_delete_staff_account(uuid) from public;
 revoke all on function public.admin_confirm_staff_email(text) from public;
+revoke all on function public.admin_sync_staff_roles() from public;
 revoke all on function public.tribe_active_admins() from public;
 
 grant execute on function public.staff_sync_email() to authenticated;
@@ -1193,6 +1244,7 @@ grant execute on function public.admin_set_staff_active(uuid, boolean) to authen
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
 grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
 grant execute on function public.admin_confirm_staff_email(text) to authenticated;
+grant execute on function public.admin_sync_staff_roles() to authenticated;
 --  These two were revoked from PUBLIC without being handed to anyone, which
 --  meant the Team screen's role buttons failed with "permission denied for
 --  function" for every caller, the owner included.

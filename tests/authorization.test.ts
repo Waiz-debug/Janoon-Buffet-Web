@@ -672,6 +672,50 @@ describe("verifyStaffSignIn", () => {
     expect(inviteSignIns).toEqual([]);
   });
 
+  /**
+   * The race that leaves an account with no team record.
+   *
+   * A role is granted by looking the address up in `auth.users`, on a different
+   * connection from the one that created the account moments earlier. When that
+   * row has not landed yet the grant is refused — leaving an account that signs
+   * in perfectly well and is then turned away at every portal door as somebody
+   * who is not staff. The grant is therefore looked at again once, and the
+   * account is never created twice while that happens.
+   */
+  test("a role grant that cannot see the account yet is retried once", async () => {
+    rpcReplies.admin_add_staff = {
+      data: null,
+      error: { message: "No Sign-in account exists for new@janoon.pk." },
+    };
+    // The row "lands" while the retry is waiting.
+    setTimeout(() => {
+      rpcReplies.admin_add_staff = { data: { ok: true }, error: null };
+    }, 50);
+
+    const result = await staff.addStaffAccount(
+      "new@janoon.pk",
+      "staff",
+      "SharedSecret1!",
+    );
+
+    expect(result.passwordApplied).toBe(true);
+    // One account, not two: the retry re-reads the team, it does not re-sign-up.
+    expect(inviteSignUps).toHaveLength(1);
+  });
+
+  test("a role grant that stays blind says what to do, not a database sentence", async () => {
+    rpcReplies.admin_add_staff = {
+      data: null,
+      error: { message: "No Sign-in account exists for new@janoon.pk." },
+    };
+
+    const attempt = staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
+
+    await expect(attempt).rejects.toThrow("Press “Add to team” once more");
+    // The raw sentence is replaced, not passed through to the screen.
+    await expect(attempt).rejects.not.toThrow("No Sign-in account exists");
+  });
+
   test("an invalid address is refused before anything is sent anywhere", async () => {
     await expect(staff.addStaffAccount("not-an-email", "staff")).rejects.toThrow(
       "Enter a valid email address.",
@@ -1471,6 +1515,7 @@ describe("the security schema", () => {
     "admin_remove_staff",
     "admin_delete_staff_account",
     "admin_confirm_staff_email",
+    "admin_sync_staff_roles",
     "admin_grant_role",
     "admin_remove_role",
   ];

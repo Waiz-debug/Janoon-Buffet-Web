@@ -32,6 +32,51 @@ function firstLine(message: string): string {
   return message.split("\n")[0].trim();
 }
 
+/** The message of anything thrown or returned by Supabase. */
+function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === "string" ? message : String(error);
+}
+
+/**
+ * Record the role for a brand-new account, and put the race out of reach.
+ *
+ * A role is granted by looking the address up in `auth.users` — a different
+ * connection from the one that created the account a moment earlier, so the row
+ * can still be catching up. When that happens the grant fails with "No Sign-in
+ * account exists", and the result is the exact state this panel keeps being
+ * blamed for: an account in `auth.users` with **no row in `staff_members`**,
+ * which signs in perfectly well and is then refused at every portal door as
+ * somebody who is not staff.
+ *
+ * So the grant is retried once, and if it still cannot be seen the sentence
+ * says what actually happened and what to do — press Add again, which grants
+ * the role and does not create a second account. A refusal because the caller
+ * is not an admin is never retried: that one is real.
+ */
+async function grantStaffRole(address: string, role: StaffRole): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await rpc("admin_add_staff", { p_email: address, p_role: role });
+      return;
+    } catch (error) {
+      const message = messageOf(error);
+      const willAppear = /no sign-in account exists/i.test(message);
+      if (!willAppear || attempt === 1) {
+        if (willAppear) {
+          throw new Error(
+            "The sign-in account was created, but the database had not caught up when its role was written, so it has no team record yet. Press “Add to team” once more — that grants the role without creating a second account, and the password is still the one you set.",
+          );
+        }
+        throw error instanceof Error ? error : new Error(firstLine(message));
+      }
+      // A moment's wait, then look again.
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+  }
+}
+
 async function rpc(
   name: string,
   args: Record<string, unknown> = {},
@@ -188,6 +233,27 @@ export async function listStaff(): Promise<StaffMember[]> {
   }));
 }
 
+/**
+ * Put the three stores back in step with each other.
+ *
+ * Two things can be out of line, and neither is visible from the browser: a
+ * member with a row in `staff_members` but no entry in the junction table reads
+ * as holding no role at all, and a row whose `auth.users` account is gone is a
+ * member who can never sign in. The function counts both and repairs the
+ * first. The second is only *reported* — deciding what to do with an orphaned
+ * record is the owner's call, not this screen's.
+ */
+export async function syncStaffRoles(): Promise<{
+  rolesAdded: number;
+  accountsMissing: number;
+}> {
+  const outcome = await rpc("admin_sync_staff_roles");
+  return {
+    rolesAdded: Number(outcome.rolesAdded ?? 0),
+    accountsMissing: Number(outcome.accountsMissing ?? 0),
+  };
+}
+
 /* ------------------------------------------------------ team management --- */
 
 /**
@@ -274,7 +340,7 @@ export async function addStaffAccount(
 
   // The role is decided in Postgres, by `admin_add_staff`, which refuses any
   // caller who is not an admin. This call cannot promote anybody by itself.
-  await rpc("admin_add_staff", { p_email: address, p_role: role });
+  await grantStaffRole(address, role);
 
   // …and the address is confirmed there too, immediately, for the same reason:
   // a member the admin has just created should be able to sign in with the

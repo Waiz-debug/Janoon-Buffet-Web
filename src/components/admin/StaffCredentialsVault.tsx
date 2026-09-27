@@ -7,6 +7,7 @@ import {
   replaceStaffAccount,
   sendPasswordReset,
   StaffListError,
+  syncStaffRoles,
   verifyStaffSignIn,
   type SignInCheck,
   type StaffMember,
@@ -22,6 +23,7 @@ import {
   Mail,
   RefreshCw,
   ShieldCheck,
+  Wrench,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -56,7 +58,36 @@ export function StaffCredentialsVault() {
   const [members, setMembers] = useState<StaffMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [repairNote, setRepairNote] = useState<string | null>(null);
+
+  /** Repair the junction table, then read the team again so the list is fresh. */
+  const repair = async () => {
+    setRepairing(true);
+    setRepairNote(null);
+    try {
+      const outcome = await syncStaffRoles();
+      setRepairNote(
+        outcome.rolesAdded > 0
+          ? `${outcome.rolesAdded} role${
+              outcome.rolesAdded === 1 ? " was" : "s were"
+            } written to match the team rows.`
+          : "Every member already had their role recorded — nothing to repair.",
+      );
+      await load();
+    } catch (error) {
+      setRepairNote(
+        isMissingFunction(error)
+          ? "This project has not been patched yet — run supabase/fix-admin-recovery.sql."
+          : error instanceof Error
+            ? error.message
+            : "Try again in a moment.",
+      );
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -132,17 +163,38 @@ export function StaffCredentialsVault() {
           {members ? `${members.length} account${members.length === 1 ? "" : "s"}` : "—"}
           {syncedAt ? ` · synced ${syncedAt}` : ""}
         </p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="gap-2"
-          disabled={busy}
-          onClick={() => void load()}
-        >
-          <RefreshCw className={`size-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden />
-          {busy ? "Syncing…" : "Refresh"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Repairs the store that actually goes out of step: a member with a
+              primary row but no role in the junction table reads as holding no
+              role at all. Safe to run at any time — it only ever writes a role
+              that is already on their row. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={repairing}
+            onClick={() => void repair()}
+          >
+            {repairing ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Wrench className="size-3.5" aria-hidden />
+            )}
+            {repairing ? "Syncing roles…" : "Sync roles"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-2"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            <RefreshCw className={`size-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden />
+            {busy ? "Syncing…" : "Refresh"}
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -152,6 +204,16 @@ export function StaffCredentialsVault() {
         >
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           {error}
+        </p>
+      ) : null}
+
+      {repairNote ? (
+        <p
+          className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold"
+          role="status"
+        >
+          <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {repairNote}
         </p>
       ) : null}
 

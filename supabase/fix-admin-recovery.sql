@@ -396,6 +396,48 @@ begin
     'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
 end $$;
 
+--  Put the three stores back in step.
+--
+--  Writes any primary role that has no matching row in the junction table, and
+--  counts the members whose sign-in account no longer exists. Idempotent, and
+--  reported rather than guessed at: the second number is something only the
+--  owner can act on.
+create or replace function public.admin_sync_staff_roles()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_added   integer := 0;
+  v_missing integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role, created_at)
+  select sm.user_id, sm.role, sm.created_at
+    from public.staff_members sm
+   where not exists (
+     select 1
+       from public.staff_member_roles r
+      where r.user_id = sm.user_id
+        and r.role = sm.role
+   )
+  on conflict (user_id, role) do nothing;
+  get diagnostics v_added = row_count;
+
+  select count(*) into v_missing
+    from public.staff_members sm
+   where not exists (
+     select 1 from auth.users u where u.id = sm.user_id
+   );
+
+  return jsonb_build_object(
+    'ok', true, 'rolesAdded', v_added, 'accountsMissing', v_missing);
+end $$;
+
 --  Confirm a team member's email address, so a new account can sign in on a
 --  project that asks new accounts to confirm first. `signUp` cannot do this
 --  (no `email_confirm` option) and the admin API that can needs a service-role
@@ -526,12 +568,14 @@ end $$;
 revoke all on function public.admin_remove_staff(uuid) from public;
 revoke all on function public.admin_delete_staff_account(uuid) from public;
 revoke all on function public.admin_confirm_staff_email(text) from public;
+revoke all on function public.admin_sync_staff_roles() from public;
 revoke all on function public.admin_grant_role(uuid, text) from public;
 revoke all on function public.admin_remove_role(uuid, text) from public;
 
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
 grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
 grant execute on function public.admin_confirm_staff_email(text) to authenticated;
+grant execute on function public.admin_sync_staff_roles() to authenticated;
 grant execute on function public.admin_grant_role(uuid, text) to authenticated;
 grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 
