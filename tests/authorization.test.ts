@@ -1279,6 +1279,80 @@ describe("claimFirstAdmin", () => {
     });
   });
 
+  /**
+   * A valid address must never be reported as a rejected one.
+   *
+   * Several of Supabase's refusals mention "email" while having nothing to say
+   * about the address — an account that already exists, a spent rate limit —
+   * and a classifier that reached for the word first told the owner their
+   * address was not accepted. That is how a perfectly good
+   * `admin@junoon.com` came back as "not accepted".
+   */
+  test("an address that is only mentioned in the complaint is not called invalid", async () => {
+    const cases: [string, string | undefined, string][] = [
+      [
+        "A user with this email address has already been registered",
+        "user_already_exists",
+        "email-taken",
+      ],
+      ["User already registered", undefined, "email-taken"],
+      ["Email rate limit exceeded", "email_rate_limit", "rate-limited"],
+      [
+        "For security purposes, you can only request this after 60 seconds",
+        "over_request_rate_limit",
+        "rate-limited",
+      ],
+      ["Unable to validate email address: bad format", undefined, "invalid-email"],
+      ["Password should be at least 6 characters", undefined, "weak-password"],
+    ];
+
+    // A duplicate address falls through to a sign-in attempt, and that is where
+    // the password typed into the setup card is found not to be the account's.
+    authReplies.signInWithPassword = {
+      data: null,
+      error: { message: "Invalid login credentials" },
+    };
+
+    for (const [message, code, expected] of cases) {
+      // Auth answers a refused sign-up with an error and no payload at all, so
+      // this is the shape the app really has to survive.
+      authReplies.signUp = { data: null, error: { message, code } };
+      const outcome = await claimFirstAdmin("admin@junoon.com", "secret123");
+
+      expect([message, outcome.ok === false && outcome.reason]).toEqual([
+        message,
+        expected,
+      ]);
+    }
+  });
+
+  test("a duplicate address is offered the sign-in route, not a typo", async () => {
+    // The rule is installed and grants nothing: the address is genuinely free
+    // for sign-up, and Auth is the one refusing it.
+    rpcReplies.claim_admin_for_email = {
+      data: null,
+      error: { message: "No account found for that email address." },
+    };
+    authReplies.signUp = {
+      data: { user: null, session: null },
+      error: {
+        message: "A user with this email address has already been registered",
+        code: "user_already_exists",
+      },
+    };
+
+    authReplies.signInWithPassword = {
+      data: null,
+      error: { message: "Invalid login credentials" },
+    };
+
+    const outcome = await claimFirstAdmin("admin@junoon.com", "secret123");
+
+    expect(outcome.ok).toBe(false);
+    // The point: never blamed on the address, which is perfectly well formed.
+    expect(outcome.ok === false && outcome.reason).toBe("email-taken");
+  });
+
   test("an address that needs confirming is not a failure", async () => {
     rpcReplies = { claim_admin_for_email: { data: null, error: NO_ACCOUNT } };
     authReplies.signUp = {

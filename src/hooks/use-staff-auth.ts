@@ -353,6 +353,8 @@ export type OwnerSetupFailure = {
     | "existing-account"
     /** The email already has an account whose password was not accepted. */
     | "email-taken"
+    /** Too many attempts in a short time — the address is not the problem. */
+    | "rate-limited"
     /** No admin was recorded — the database rule is not installed. */
     | "setup-required"
     | "weak-password"
@@ -371,14 +373,71 @@ export type OwnerClaim =
 /** What the setup card is told once the hook has stored the session. */
 export type OwnerSetupResult = { ok: true; role: StaffRole } | OwnerSetupFailure;
 
-/** Turn a Supabase Auth complaint into something the form can act on. */
-function classifyAuthError(message: string): OwnerSetupFailure {
+/**
+ * Turn a Supabase Auth complaint into something the form can act on.
+ *
+ * The order matters more than anything else here, because several of the
+ * service's refusals *mention* the word "email" without having anything to say
+ * about the address. "A user with this email address has already been
+ * registered" and "Email rate limit exceeded" are both about an address that is
+ * perfectly well formed, and a classifier that reached for "email" first told
+ * the owner their address was not accepted — which is how a valid
+ * `admin@junoon.com` ended up refused for looking like a typo.
+ *
+ * So each case is matched by what it actually says, in this order:
+ *
+ *   1. too many attempts        — a pause, not a correction
+ *   2. the address is taken     — a different account, not a bad one
+ *   3. the password is refused  — a length or strength rule
+ *   4. the address is malformed — the one case that really is the address
+ *   5. the service is unreachable
+ *
+ * Anything unrecognised stays `unknown`, and its own words are kept for the
+ * console. Nothing is guessed into "your email is wrong" any more.
+ */
+function classifyAuthError(
+  message: string,
+  code?: string,
+): OwnerSetupFailure {
   const text = message.toLowerCase();
-  if (text.includes("password")) return { ok: false, reason: "weak-password" };
-  if (text.includes("email")) return { ok: false, reason: "invalid-email" };
-  if (text.includes("fetch") || text.includes("network")) {
-    return { ok: false, reason: "unreachable" };
+  const reason = (code ?? "").toLowerCase();
+
+  if (
+    /rate limit|too many|security purposes|over_request_rate_limit|email_rate_limit/.test(
+      text,
+    ) ||
+    reason === "over_request_rate_limit" ||
+    reason === "email_rate_limit"
+  ) {
+    return { ok: false, reason: "rate-limited", message };
   }
+
+  // The service's wordings for "this address already has an account":
+  // "User already registered", "A user with this email address has already
+  // been registered", "Email address x has already been taken".
+  if (
+    /already\s+(been\s+)?registered|already\s+exists|already\s+been\s+taken|has\s+already\s+been/.test(
+      text,
+    ) ||
+    reason === "user_already_exists" ||
+    reason === "email_exists"
+  ) {
+    return { ok: false, reason: "email-taken", message };
+  }
+
+  if (/password/.test(text)) return { ok: false, reason: "weak-password", message };
+
+  // Only these actually say the address itself is the problem.
+  if (
+    /unable to validate email|invalid email|is not a valid email|email.*format|malformed/.test(
+      text,
+    )
+  ) {
+    return { ok: false, reason: "invalid-email", message };
+  }
+
+  if (/fetch|network/.test(text)) return { ok: false, reason: "unreachable", message };
+
   return { ok: false, reason: "unknown", message };
 }
 
@@ -577,12 +636,25 @@ export async function claimFirstAdmin(
     options: { emailRedirectTo },
   });
 
-  if (error && !/already registered|already exists/i.test(error.message)) {
-    return classifyAuthError(error.message);
+  // The service words "this address already has an account" several ways, and
+  // the wording has changed between versions. A narrow test here is what sent
+  // "A user with this email address has already been registered" on to the
+  // classifier below, which reported it as a rejected address.
+  const alreadyHasAccount =
+    /already\s+(been\s+)?registered|already\s+exists|has\s+already\s+been/.test(
+      error?.message ?? "",
+    ) || error?.code === "user_already_exists";
+
+  if (error && !alreadyHasAccount) {
+    return classifyAuthError(error.message, error.code);
   }
 
-  let user = data.user;
-  if (!data.session) {
+  // `data` is not guaranteed to be an object when Auth answered with an error —
+  // a duplicate sign-up comes back as an error and no payload at all. Reading
+  // through it unconditionally threw a TypeError, which the card reported as
+  // "something went wrong" for an address that was merely already taken.
+  let user = data?.user ?? null;
+  if (!data?.session) {
     const attempt = await supabase.auth.signInWithPassword({
       email: address,
       password,

@@ -116,6 +116,8 @@ function ownerSetupMessage(
       return "Choose a password with at least six characters.";
     case "invalid-email":
       return "That email address was not accepted. Check it and try again.";
+    case "rate-limited":
+      return "Too many attempts just now, so the service has paused. Wait a minute, then try again — the address itself is fine.";
     case "unreachable":
       return "Could not reach the sign-up service. Check your connection and try again.";
     case "existing-account":
