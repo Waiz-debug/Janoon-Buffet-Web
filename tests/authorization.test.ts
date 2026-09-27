@@ -335,6 +335,89 @@ describe("listStaff", () => {
 
     await expect(staff.listStaff()).rejects.toThrow("Only an admin can read the team.");
   });
+
+  /**
+   * A missing helper must not look like an empty team.
+   *
+   * A project can hold `staff_members` and still not have `admin_list_staff`
+   * — which is how the Credentials tab once rendered "no team accounts yet" for
+   * a team that plainly existed. The read falls back to the tables, and the
+   * policies on them (`is_staff()`) are what still decides who sees what, so the
+   * fallback grants nothing the function would have refused.
+   */
+  test("a project without the helper reads the team from the tables", async () => {
+    rpcReply = {
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function public.admin_list_staff" },
+    };
+    tableReplies.staff_members = {
+      data: [
+        {
+          user_id: "admin-id",
+          email: "owner@janoon.pk",
+          display_name: "Owner",
+          role: "admin",
+          active: true,
+          created_at: 5,
+        },
+        {
+          user_id: "legacy-id",
+          email: null,
+          display_name: null,
+          // An unrecognised role grants nothing, and `active` is only false
+          // when it is explicitly false.
+          role: "owner",
+          created_at: 0,
+        },
+      ],
+      error: null,
+    };
+    tableReplies.staff_member_roles = {
+      data: [
+        { user_id: "admin-id", role: "admin" },
+        { user_id: "admin-id", role: "staff" },
+        { user_id: "legacy-id", role: "not-a-role" },
+      ],
+      error: null,
+    };
+
+    const team = await staff.listStaff();
+
+    expect(team[0]).toEqual({
+      userId: "admin-id",
+      email: "owner@janoon.pk",
+      displayName: "Owner",
+      role: "admin",
+      roles: ["admin", "staff"],
+      active: true,
+      createdAt: 5,
+    });
+    // No junction row, so the primary role stands on its own rather than the
+    // member reading as having no role at all.
+    expect(team[1]).toEqual({
+      userId: "legacy-id",
+      email: null,
+      displayName: null,
+      role: "staff",
+      roles: ["staff"],
+      active: true,
+      createdAt: 0,
+    });
+  });
+
+  test("a refused read is reported as a refusal, not as an empty list", async () => {
+    rpcReply = {
+      data: null,
+      error: { message: "Only an admin can manage the team.", code: "42501" },
+    };
+
+    const attempt = await staff.listStaff().catch((error: unknown) => error);
+
+    expect(attempt).toBeInstanceOf(staff.StaffListError);
+    expect(attempt.reason).toBe("not-admin");
+    // Nothing was read, so an empty array could never be mistaken for a team.
+    expect(Array.isArray(attempt)).toBe(false);
+  });
 });
 
 /* --------------------------------------------------------- role changes --- */

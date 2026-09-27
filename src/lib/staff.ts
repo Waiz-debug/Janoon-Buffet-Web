@@ -1,6 +1,6 @@
 import type { StaffRole } from "@/hooks/use-staff-auth";
 import { recoveryRedirect } from "@/lib/redirects";
-import { SUPABASE_KEY, SUPABASE_URL, supabase } from "@/lib/supabase";
+import { SUPABASE_KEY, SUPABASE_URL, TABLES, supabase } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
 
 /**
@@ -41,21 +41,131 @@ async function rpc(
   return (data ?? {}) as Record<string, unknown>;
 }
 
-/** PostgREST says this when the schema has not been applied yet. */
+/**
+ * PostgREST says this when the schema has not been applied yet.
+ *
+ * The error is a plain object, not an `Error` — `supabase-js` hands back
+ * `{ code, message, details, hint }` — so the message has to be read off the
+ * object. Reading it with `String(error)` yields `"[object Object]"`, which
+ * matches nothing, and every "this function is not installed" check in the app
+ * then silently said "no" and took the wrong branch: the team list looked
+ * empty, the confirm step threw instead of falling back to an email, and the
+ * warning in `syncOwnStaffEmail` was never suppressed. Both shapes are accepted
+ * so a real `Error` thrown by a wrapper reads the same way.
+ */
 export function isMissingFunction(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown })?.message === "string"
+        ? (error as { message: string }).message
+        : String(error);
   return /does not exist|Could not find the function|schema cache/i.test(message);
 }
 
 /* ------------------------------------------------------------- team list --- */
 
+/** Why the team could not be read — the three answers mean different things. */
+export type TeamListFailure = "not-admin" | "missing-function" | "unknown";
+
+/** Carries the reason alongside the sentence, so the screen can explain itself. */
+export class StaffListError extends Error {
+  readonly reason: TeamListFailure;
+
+  constructor(reason: TeamListFailure, message: string) {
+    super(message);
+    this.name = "StaffListError";
+    this.reason = reason;
+  }
+}
+
+/** Tell a "you are not an admin" refusal apart from everything else. */
+function refusalReason(message: string): TeamListFailure {
+  if (/only an admin|admin only|42501/i.test(message)) return "not-admin";
+  return "unknown";
+}
+
+/**
+ * Read the team straight from the tables, for a project that has the schema but
+ * not the helper function.
+ *
+ * This is not a way around anything: `staff_members` is protected by the same
+ * `is_staff()` policy the function relies on, so a signed-in member reads the
+ * team and a stranger still reads only their own row — or nothing. It exists so
+ * that "the function is missing" degrades to a working list instead of an empty
+ * panel, which is the difference between a visible problem and a silent one.
+ */
+async function listStaffFromTables(): Promise<StaffMember[]> {
+  const { data, error } = await supabase
+    .from(TABLES.staffMembers)
+    .select("*");
+  if (error) {
+    console.error(`[Junoon] staff table read failed: ${error.message}`);
+    throw new StaffListError("unknown", firstLine(error.message));
+  }
+
+  const { data: roleRows } = await supabase
+    .from("staff_member_roles")
+    .select("user_id, role");
+
+  const rolesByUser = new Map<string, StaffRole[]>();
+  for (const row of (roleRows ?? []) as { user_id?: string; role?: string }[]) {
+    if (!row.user_id) continue;
+    if (row.role !== "admin" && row.role !== "staff") continue;
+    const held = rolesByUser.get(row.user_id) ?? [];
+    if (!held.includes(row.role)) held.push(row.role);
+    rolesByUser.set(row.user_id, held);
+  }
+
+  return ((data ?? []) as Record<string, unknown>[])
+    .map((row) => {
+      const userId = typeof row.user_id === "string" ? row.user_id : "";
+      const role: StaffRole = row.role === "admin" ? "admin" : "staff";
+      const roles = rolesByUser.get(userId) ?? [];
+      return {
+        userId,
+        email: typeof row.email === "string" ? row.email : null,
+        displayName:
+          typeof row.display_name === "string" ? row.display_name : null,
+        role,
+        // A row with no junction entry still holds its primary role, so the
+        // list never shows somebody as having no role at all.
+        roles: roles.length > 0 ? roles : [role],
+        // Only an explicit `false` is suspended, as everywhere else.
+        active: row.active !== false,
+        createdAt: typeof row.created_at === "number" ? row.created_at : 0,
+      } satisfies StaffMember;
+    })
+    .filter((member) => member.userId.length > 0)
+    .sort(
+      (a, b) =>
+        (a.role === "admin" ? 0 : 1) - (b.role === "admin" ? 0 : 1) ||
+        (a.email ?? "").localeCompare(b.email ?? ""),
+    );
+}
+
 /** The team, for the admin panel. Emails and roles only — never a password. */
 export async function listStaff(): Promise<StaffMember[]> {
   const { data, error } = await supabase.rpc("admin_list_staff");
   if (error) {
-    // Reads must not throw: the panel renders an empty list with the reason.
-    console.warn(`[Junoon] staff list failed: ${error.message}`);
-    throw new Error(firstLine(error.message));
+    // A project without the helper is not a project without the team: fall back
+    // to the tables the same policies already guard.
+    if (isMissingFunction(error)) {
+      console.warn(
+        "[Junoon] admin_list_staff is not installed — reading the team tables directly.",
+      );
+      try {
+        return await listStaffFromTables();
+      } catch (fallbackError) {
+        if (fallbackError instanceof StaffListError) throw fallbackError;
+        throw new StaffListError("missing-function", firstLine(error.message));
+      }
+    }
+    // Reads must not throw an anonymous Error: the panel has to be able to say
+    // *which* failure it was, because "not an admin" and "not installed" call
+    // for completely different advice.
+    console.error(`[Junoon] staff list failed: ${error.message}`);
+    throw new StaffListError(refusalReason(error.message), firstLine(error.message));
   }
   const rows = (data ?? []) as {
     userId: string;

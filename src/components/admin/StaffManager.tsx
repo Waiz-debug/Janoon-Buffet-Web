@@ -12,6 +12,7 @@ import {
   removeStaff,
   sendPasswordReset,
   setStaffActive,
+  StaffListError,
   type StaffMember,
 } from "@/lib/staff";
 import { motion } from "framer-motion";
@@ -98,12 +99,22 @@ export function StaffManager() {
       .catch((error: unknown) => {
         if (!active) return;
         setMembers([]);
+        // The reason is kept rather than flattened: a refused read and a
+        // missing function need completely different advice, and neither is
+        // the same thing as an empty team.
+        const reason =
+          error instanceof StaffListError ? error.reason : "unknown";
+        console.error(`[Junoon] team list failed (${reason}):`, error);
         setListError(
-          isMissingFunction(error)
-            ? "The team functions are not on this project yet — run supabase/schema.sql once, then press Refresh."
-            : error instanceof Error
-              ? error.message
-              : "Could not load the team.",
+          reason === "not-admin"
+            ? "This account is not an admin, so the team list is not shown here. Use the admin door."
+            : reason === "missing-function"
+              ? "The team functions are not on this project yet — paste supabase/fix-admin-recovery.sql into the SQL editor, then press Refresh."
+              : isMissingFunction(error)
+                ? "The team functions are not on this project yet — run supabase/schema.sql once, then press Refresh."
+                : error instanceof Error
+                  ? error.message
+                  : "Could not load the team.",
         );
       })
       .finally(() => {

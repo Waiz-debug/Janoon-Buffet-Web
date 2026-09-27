@@ -6,10 +6,12 @@ import {
   listStaff,
   replaceStaffAccount,
   sendPasswordReset,
+  StaffListError,
   verifyStaffSignIn,
   type SignInCheck,
   type StaffMember,
 } from "@/lib/staff";
+import { useStaffAuth } from "@/hooks/use-staff-auth";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
@@ -50,6 +52,7 @@ import { toast } from "sonner";
  * anywhere at all.
  */
 export function StaffCredentialsVault() {
+  const { session } = useStaffAuth();
   const [members, setMembers] = useState<StaffMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,21 +66,49 @@ export function StaffCredentialsVault() {
       setError(null);
       setSyncedAt(new Date().toLocaleTimeString());
     } catch (caught) {
+      // A refused read is a *different* problem from an empty team, and the two
+      // need different advice — so the reason is kept, not flattened into one
+      // sentence. The full error also goes to the console with its PostgREST
+      // code, so a failure is never silent.
+      const reason =
+        caught instanceof StaffListError ? caught.reason : "unknown";
+      const detail = caught instanceof Error ? caught.message : String(caught);
+      console.error(`[Junoon] credentials list failed (${reason}):`, caught);
       setMembers([]);
       setError(
-        isMissingFunction(caught)
-          ? "The team functions are not on this project yet — run supabase/schema.sql, then press Refresh."
-          : caught instanceof Error
-            ? caught.message
-            : "Could not load the team.",
+        reason === "not-admin"
+          ? `Signed in as ${session?.email ?? "this account"}, which is not on the team as an admin — the team list is admin-only. Sign in at the admin door instead.`
+          : reason === "missing-function"
+            ? "This project has the tables but not the team functions. Paste supabase/fix-admin-recovery.sql into the Supabase SQL editor, then press Refresh."
+            : `The team could not be read: ${detail}`,
       );
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [session?.email]);
 
+  // Fetches as soon as the tab is opened — the panel is only mounted while it
+  // is the active tab, so this is the first thing it does.
   useEffect(() => {
     void load();
+  }, [load]);
+
+  /**
+   * And again when the tab regains focus.
+   *
+   * A panel that mounted before the session settled used to keep the empty
+   * answer it was given: the read was refused, nothing re-asked, and the list
+   * stayed blank until somebody pressed Refresh. Re-asking on focus is cheap and
+   * makes a stale blank impossible to sit with.
+   */
+  useEffect(() => {
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
   }, [load]);
 
   return (
@@ -121,6 +152,14 @@ export function StaffCredentialsVault() {
         >
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           {error}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          The list is read through a database function that checks your role, so
+          a refusal here is a real answer rather than an empty team. The browser
+          console has the full error and its code.
         </p>
       ) : null}
 
