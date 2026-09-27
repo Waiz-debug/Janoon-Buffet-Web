@@ -78,6 +78,7 @@ const AdminPortal = lazyWithRetry("admin", () => import("./pages/AdminPortal.tsx
 const OrderPage = lazyWithRetry("order", () => import("./pages/Order.tsx"));
 const Deliveries = lazyWithRetry("deliveries", () => import("./pages/Deliveries.tsx"));
 const NotFound = lazyWithRetry("not-found", () => import("./pages/NotFound.tsx"));
+const UpdatePassword = lazyWithRetry("update-password", () => import("./pages/UpdatePassword.tsx"));
 
 // Simple loading fallback for route transitions — the restaurant's own mark
 // rather than a bare "Loading…", so a slow chunk still looks like JUNOON.
@@ -272,6 +273,10 @@ createRoot(document.getElementById("root")!).render(
                   </RequireRole>
                 }
               />
+              {/* Where a Supabase recovery link lands. Deliberately outside
+                  every auth guard: the visitor arrives mid-flow, carrying the
+                  session the link granted, and must be able to finish it. */}
+              <Route path="/update-password" element={<UpdatePassword />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

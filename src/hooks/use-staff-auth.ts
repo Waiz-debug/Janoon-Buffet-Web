@@ -1,3 +1,4 @@
+import * as redirects from "@/lib/redirects";
 import { TABLES, supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
@@ -92,12 +93,7 @@ export const CONFIRMATION_UNDELIVERABLE_MESSAGE =
  * the fallback for links that carry no redirect at all.
  */
 export function confirmationRedirect(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  const configured = (
-    import.meta.env?.VITE_SITE_URL as string | undefined
-  )?.replace(/\/+$/, "");
-  const origin = configured || window.location.origin;
-  return `${origin}/?unlock=admin`;
+  return redirects.confirmationRedirect();
 }
 
 export const UNCONFIGURED_MESSAGE =

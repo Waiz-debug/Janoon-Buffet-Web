@@ -903,17 +903,49 @@ describe("sign-in refusals", () => {
     }
   });
 
-  test("the confirmation link prefers the configured restaurant address", () => {
-    const src = readFileSync(
-      new URL("../src/hooks/use-staff-auth.ts", import.meta.url),
+  test("every email link is built from one configurable, real address", () => {
+    const redirects = readFileSync(
+      new URL("../src/lib/redirects.ts", import.meta.url),
       "utf8",
     );
 
     // Supabase rewrites a redirect it does not recognise to the project's Site
     // URL, so the address the link is built from has to be configurable rather
-    // than "whatever origin the preview happens to be on".
-    expect(src).toContain("VITE_SITE_URL");
-    expect(src).toContain("/?unlock=admin");
+    // than "whatever origin the preview happens to be on". The fallback is the
+    // origin the page is actually running on, which is what keeps a link sent
+    // from a preview off a `localhost` port.
+    expect(redirects).toContain("VITE_SITE_URL");
+    expect(redirects).toContain("window.location.origin");
+    // A confirmation link finishes at the admin door, signed in.
+    expect(redirects).toContain("/?unlock=admin");
+    // A recovery link finishes at the page that can set a password. Sending it
+    // anywhere else is what made a reset look like it had done nothing.
+    expect(redirects).toContain("/update-password");
+
+    // And the one place a link is sent from the team screen uses it.
+    const staff = readFileSync(
+      new URL("../src/lib/staff.ts", import.meta.url),
+      "utf8",
+    );
+    expect(staff).toContain("redirectTo: recoveryRedirect()");
+    expect(staff).not.toContain("window.location.origin");
+  });
+
+  test("a recovery link has a page that can actually finish it", () => {
+    const route = readFileSync(
+      new URL("../src/main.tsx", import.meta.url),
+      "utf8",
+    );
+    const page = readFileSync(
+      new URL("../src/pages/UpdatePassword.tsx", import.meta.url),
+      "utf8",
+    );
+
+    // Routed outside every auth guard, and able to finish the job from either
+    // shape of link the service sends.
+    expect(route).toContain('path="/update-password"');
+    expect(page).toContain("exchangeCodeForSession");
+    expect(page).toContain("updateUser({ password })");
   });
 });
 

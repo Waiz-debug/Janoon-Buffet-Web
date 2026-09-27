@@ -4,6 +4,7 @@ import {
   confirmStaffEmail,
   isMissingFunction,
   listStaff,
+  replaceStaffAccount,
   sendPasswordReset,
   verifyStaffSignIn,
   type SignInCheck,
@@ -135,7 +136,11 @@ export function StaffCredentialsVault() {
       ) : (
         <ul className="flex flex-col gap-3">
           {members.map((member) => (
-            <CredentialsRow key={member.userId} member={member} />
+            <CredentialsRow
+              key={member.userId}
+              member={member}
+              onChanged={() => void load()}
+            />
           ))}
         </ul>
       )}
@@ -152,12 +157,21 @@ export function StaffCredentialsVault() {
 }
 
 /** One member: the address, and the two things that actually help. */
-function CredentialsRow({ member }: { member: StaffMember }) {
+function CredentialsRow({
+  member,
+  onChanged,
+}: {
+  member: StaffMember;
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [working, setWorking] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [result, setResult] = useState<SignInCheck | null>(null);
 
@@ -187,6 +201,51 @@ function CredentialsRow({ member }: { member: StaffMember }) {
       toast.error("Could not confirm the address", { description: detail });
     } finally {
       setConfirming(false);
+    }
+  };
+
+  /**
+   * The no-email route in: erase the sign-in account and make a new one for the
+   * same address with a password the owner types here.
+   *
+   * The only route that needs no working mail provider, no confirmation link
+   * and no patience — which is exactly what a member locked out of the till
+   * needs. The account is genuinely replaced, so it gets a new user id; the
+   * warning above the field says so before anything is deleted.
+   */
+  const replace = async () => {
+    if (newPassword.length < 8) {
+      setNote("Use at least 8 characters for the new password.");
+      return;
+    }
+    setWorking(true);
+    setNote(null);
+    try {
+      const outcome = await replaceStaffAccount(
+        member.userId,
+        address,
+        member.role,
+        newPassword,
+      );
+      setNewPassword("");
+      setReplacing(false);
+      setNote(
+        outcome.needsConfirmation
+          ? `New account created for ${address}. Confirm the address on this row, and the password you just typed is the one that works.`
+          : `New account created for ${address}. They can sign in now with the password you just typed, and their role is unchanged.`,
+      );
+      toast.success("Password set", { description: address });
+      onChanged();
+    } catch (error) {
+      const detail = isMissingFunction(error)
+        ? "This project has not been patched yet — run supabase/fix-admin-recovery.sql."
+        : error instanceof Error
+          ? error.message
+          : "Try again in a moment.";
+      setNote(detail);
+      toast.error("Could not set that password", { description: detail });
+    } finally {
+      setWorking(false);
     }
   };
 
@@ -328,8 +387,90 @@ function CredentialsRow({ member }: { member: StaffMember }) {
             )}
             Send setup link
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!address}
+            title="Replace the sign-in account with one that has a password you choose"
+            onClick={() => {
+              setReplacing((value) => !value);
+              setNote(null);
+            }}
+          >
+            <KeyRound className="size-3.5" aria-hidden />
+            Set a password now
+          </Button>
         </div>
       </div>
+
+      {replacing ? (
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col gap-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.05] p-3.5"
+        >
+          <p className="text-xs leading-relaxed text-foreground/85">
+            This <span className="text-foreground">replaces the sign-in
+            account</span>: the old one is deleted and a new one is created for{" "}
+            <span className="text-foreground">{address}</span> with the password
+            you type here. No email is involved, so it works even when mail
+            cannot be delivered — and the account gets a new user id, so its
+            start date and anything filed under the old id begin again. Their
+            role is carried across.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label
+                htmlFor={`new-password-${member.userId}`}
+                className="text-[0.65rem] tracking-[0.18em] text-rose-200/80 uppercase"
+              >
+                The password to set
+              </label>
+              <Input
+                id={`new-password-${member.userId}`}
+                type="text"
+                value={newPassword}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="At least 8 characters"
+                className="h-10 rounded-xl bg-background/60 font-mono"
+                onChange={(event) => {
+                  setNote(null);
+                  setNewPassword(event.target.value);
+                }}
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-10 gap-1.5"
+              disabled={newPassword.length < 8 || working}
+              onClick={() => void replace()}
+            >
+              {working ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <KeyRound className="size-3.5" aria-hidden />
+              )}
+              Replace the account
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-10"
+              onClick={() => {
+                setReplacing(false);
+                setNewPassword("");
+              }}
+            >
+              <X className="size-3.5" aria-hidden />
+            </Button>
+          </div>
+        </motion.div>
+      ) : null}
 
       {open ? (
         <motion.div

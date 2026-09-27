@@ -1,4 +1,5 @@
 import type { StaffRole } from "@/hooks/use-staff-auth";
+import { recoveryRedirect } from "@/lib/redirects";
 import { SUPABASE_KEY, SUPABASE_URL, supabase } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
 
@@ -194,8 +195,7 @@ export async function addStaffAccount(
   let usedResetLink = false;
   if (needsOwnPassword) {
     const { error } = await supabase.auth.resetPasswordForEmail(address, {
-      redirectTo:
-        typeof window === "undefined" ? undefined : window.location.origin,
+      redirectTo: recoveryRedirect(),
     });
     usedResetLink = !error;
   }
@@ -313,13 +313,66 @@ export async function removeRole(userId: string, role: StaffRole) {
   await rpc("admin_remove_role", { p_user_id: userId, p_role: role });
 }
 
-/** Send a member a link to set a new password. Their role is untouched. */
+/**
+ * Send a member a link to set a new password. Their role is untouched.
+ *
+ * The link lands on `/update-password`, the page that can actually finish the
+ * change — sending it to the bare origin is what made a reset look like it had
+ * done nothing, because the gateway cannot set a password for a signed-out
+ * visitor. See `recoveryRedirect()` in `src/lib/redirects.ts`.
+ */
 export async function sendPasswordReset(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo:
-      typeof window === "undefined" ? undefined : window.location.origin,
+    redirectTo: recoveryRedirect(),
   });
   if (error) throw new Error(firstLine(error.message));
+}
+
+/**
+ * Give a locked-out member a known password, without any email in the loop.
+ *
+ * Supabase's public API has exactly one rule for passwords: you may change the
+ * password of the account you are signed in with. `auth.admin.updateUserById`
+ * can set anybody's, and it is the only route — which needs a **service-role
+ * key**, and a service-role key in a web page hands every visitor the ability
+ * to rewrite any account in the project. So there is no honest "set this
+ * member's password" button, and pretending otherwise with a stored password
+ * would be worse.
+ *
+ * What *is* possible is to replace the sign-in account: the old one is deleted
+ * outright, and a new one is created for the same address with the password the
+ * owner types now. The email never leaves the building, the member signs in on
+ * their next attempt, and the role is re-granted as part of the same action.
+ * The cost is honest and stated: the account gets a new user id, so anything
+ * keyed to the old one (their created date, the id behind a record they handled)
+ * starts again. For a member who cannot get in at all, that is the right trade.
+ */
+export async function replaceStaffAccount(
+  userId: string,
+  email: string,
+  role: StaffRole,
+  newPassword: string,
+): Promise<{ passwordApplied: boolean; needsConfirmation: boolean }> {
+  const password = newPassword.trim();
+  if (password.length < 8) {
+    throw new Error("Use at least 8 characters for the new password.");
+  }
+  const address = email.trim().toLowerCase();
+  if (!address.includes("@")) {
+    throw new Error("That address is not a valid email address.");
+  }
+
+  await deleteStaffAccount(userId);
+  const result = await addStaffAccount(address, role, password);
+  if (!result.passwordApplied) {
+    throw new Error(
+      "The old sign-in account was removed, but the new one could not be created. Add the member again from the Team tab.",
+    );
+  }
+  return {
+    passwordApplied: true,
+    needsConfirmation: result.needsConfirmation,
+  };
 }
 
 /** Sixty-four bits of entropy, from the platform's own CSPRNG. */

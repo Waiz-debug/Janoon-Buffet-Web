@@ -41,6 +41,7 @@ import {
   type StaffRole,
 } from "@/hooks/use-staff-auth";
 import { useLiveSite } from "@/hooks/use-live-site";
+import { recoveryRedirect } from "@/lib/redirects";
 import { RESTAURANT } from "@/lib/restaurant";
 import { supabase } from "@/lib/supabase";
 
@@ -291,8 +292,7 @@ export default function AuthLanding() {
     setRecovery({ ...recovery, busy: true, sent: null });
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(recovery.email, {
-        redirectTo:
-          typeof window === "undefined" ? undefined : window.location.origin,
+        redirectTo: recoveryRedirect(),
       });
       if (error) throw new Error(error.message);
       setRecovery({
