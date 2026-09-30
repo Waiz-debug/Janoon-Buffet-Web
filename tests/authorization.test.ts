@@ -1324,6 +1324,24 @@ describe("claimFirstAdmin", () => {
     message:
       "Could not find the function public.claim_admin_for_email in the schema cache",
   };
+  /**
+   * The staff-auth migration is not installed, so the email-free bootstrap is
+   * unavailable and the older signUp path is what runs.
+   *
+   * The default for this block on purpose: everything below it is about the
+   * fallback — what happens when the database cannot create the owner itself.
+   * The bootstrap route has its own describe further down, where the function is
+   * installed and the mail is never involved.
+   */
+  const NO_BOOTSTRAP = {
+    code: "PGRST202",
+    message:
+      "Could not find the function public.admin_bootstrap_owner in the schema cache",
+  };
+
+  beforeEach(() => {
+    rpcReplies.admin_bootstrap_owner = { data: null, error: NO_BOOTSTRAP };
+  });
 
   test("a new address is created, then claimed, and only Auth ever sees the password", async () => {
     // `emailRedirectTo` is only built where `window` exists.
@@ -1333,6 +1351,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
       claim_admin: { data: { ok: true, role: "admin" }, error: null },
     };
     authReplies.signUp = {
@@ -1355,15 +1375,31 @@ describe("claimFirstAdmin", () => {
         email: "owner@janoon.pk",
         roles: ["admin"],
       });
-      // The address is trimmed, the password goes to Supabase Auth and nowhere
-      // else, and the confirmation link comes back to the admin card so the
-      // claim can be finished in one press.
+      // The address is trimmed, and the password goes to Supabase Auth and to
+      // the one database function that hashes it — the confirmation link comes
+      // back to the admin card so the claim can be finished in one press.
       expect(authCalls[0].args[0]).toMatchObject({
         email: "owner@janoon.pk",
         password: "brand-new-secret",
       });
       expect(JSON.stringify(authCalls[0].args)).toContain("unlock=admin");
-      expect(JSON.stringify(rpcCalls)).not.toContain("brand-new-secret");
+      // The password reaches exactly one function, and it is the one whose only
+      // job is to turn it into a bcrypt digest. Everywhere else it must not
+      // appear — a table read, a log line, or another rpc.
+      const carried = JSON.stringify(rpcCalls).match(/brand-new-secret/g) ?? [];
+      expect(carried.length).toBe(1);
+      expect(
+        rpcCalls.filter((call) => JSON.stringify(call).includes("brand-new-secret")),
+      ).toEqual([
+        {
+          name: "admin_bootstrap_owner",
+          args: {
+            p_email: "owner@janoon.pk",
+            p_password: "brand-new-secret",
+            p_display_name: null,
+          },
+        },
+      ]);
       // The grant is confirmed by reading the caller's own staff rows back —
       // those two tables and nothing else, and never the password.
       expect([...new Set(tableTouches.map((touch) => touch.table))].sort()).toEqual([
@@ -1393,6 +1429,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
       // No error — and no row behind it.
       claim_admin: { data: { ok: true }, error: null },
     };
@@ -1410,6 +1448,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: { ok: true, role: "admin" }, error: null },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
     };
 
     expect(await claimFirstAdmin("owner@janoon.pk", "whatever-they-typed")).toEqual({
@@ -1422,6 +1462,14 @@ describe("claimFirstAdmin", () => {
     expect(authCalls).toEqual([]);
     expect(rpcCalls).toEqual([
       { name: "staff_bootstrap_state", args: {} },
+      {
+        name: "admin_bootstrap_owner",
+        args: {
+          p_email: "owner@janoon.pk",
+          p_password: "whatever-they-typed",
+          p_display_name: null,
+        },
+      },
       { name: "claim_admin_for_email", args: { p_email: "owner@janoon.pk" } },
     ]);
   });
@@ -1430,6 +1478,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
     };
     authReplies.signUp = {
       data: { user: { id: "ghost", email: "taken@janoon.pk" }, session: null },
@@ -1451,6 +1501,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_RULE },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
     };
     authReplies.signUp = {
       data: { user: { id: "ghost", email: "owner@janoon.pk" }, session: null },
@@ -1483,6 +1535,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
       claim_admin: {
         data: null,
         error: { message: "Only the first account can claim owner access." },
@@ -1511,6 +1565,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
       claim_admin: {
         data: null,
         error: { code: "23505", message: "An admin account already exists for this restaurant." },
@@ -1603,6 +1659,8 @@ describe("claimFirstAdmin", () => {
     rpcReplies = {
       staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+      // The email-free route is not installed here, so this test exercises the fallback.
+      admin_bootstrap_owner: { data: null, error: NO_BOOTSTRAP },
     };
     authReplies.signUp = {
       data: { user: { id: "pending", email: "owner@janoon.pk" }, session: null },
@@ -1621,8 +1679,201 @@ describe("claimFirstAdmin", () => {
     expect(authCalls.map((call) => call.method)).toContain("resend");
     expect(rpcCalls.map((call) => call.name)).toEqual([
       "staff_bootstrap_state",
+      "admin_bootstrap_owner",
       "claim_admin_for_email",
     ]);
+  });
+});
+
+/* --------------------------------------------------- the email-free setup --- */
+
+/**
+ * Setting the restaurant up, with no confirmation mail anywhere.
+ *
+ * This is the path the whole change exists for. The old one began with
+ * `supabase.auth.signUp`, which makes Supabase send a message, and that call is
+ * refused with "Too many attempts just now" once the project's hourly quota is
+ * spent — a complaint about the quota, on an address that was fine, which cannot
+ * be fixed from here and does not clear when you wait a minute.
+ *
+ * So the checks below are about a route that never sends anything: the identity
+ * is created in Postgres, the address is confirmed there, and the only network
+ * call is an ordinary sign-in.
+ */
+describe("the first admin is created without sending any mail", () => {
+  /** What the function returns on success, with the admin role recorded. */
+  const CREATED = {
+    data: {
+      ok: true,
+      userId: "owner-uuid",
+      email: "owner@janoon.pk",
+      role: "admin",
+      active: true,
+      authCreated: true,
+      confirmed: true,
+    },
+    error: null,
+  };
+
+  beforeEach(() => {
+    rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
+      admin_bootstrap_owner: CREATED,
+    };
+    // The row the claim is supposed to have written, read back before the card
+    // is allowed to call the account created.
+    tableReplies.staff_members = { data: { role: "admin", active: true }, error: null };
+    authReplies.signInWithPassword = {
+      data: { user: { id: "owner-uuid", email: "owner@janoon.pk" }, session: { access_token: "t" } },
+      error: null,
+    };
+  });
+
+  test("the account is created, signed in to, and never signed up or mailed", async () => {
+    const outcome = await claimFirstAdmin("  owner@janoon.pk  ", "brand-new-secret");
+
+    expect(outcome).toEqual({
+      ok: true,
+      userId: "owner-uuid",
+      email: "owner@janoon.pk",
+      roles: ["admin"],
+    });
+
+    // The one function that does the work, with the password and the trimmed
+    // address and nothing else.
+    expect(rpcCalls).toEqual([
+      { name: "staff_bootstrap_state", args: {} },
+      {
+        name: "admin_bootstrap_owner",
+        args: {
+          p_email: "owner@janoon.pk",
+          p_password: "brand-new-secret",
+          p_display_name: null,
+        },
+      },
+    ]);
+
+    // The whole point: no signUp, so no mail, and no confirmation to wait for.
+    // The only Auth call is the sign-in that gets a session.
+    expect(authCalls.map((call) => call.method)).toEqual(["signInWithPassword"]);
+    expect(authCalls[0].args[0]).toEqual({
+      email: "owner@janoon.pk",
+      password: "brand-new-secret",
+    });
+    // And the fallback is never reached, so nothing asks for a confirmation or
+    // re-sends one.
+    expect(rpcCalls.map((call) => call.name)).not.toContain("claim_admin_for_email");
+    expect(rpcCalls.map((call) => call.name)).not.toContain("claim_admin");
+  });
+
+  test("a database without the function still falls back to the older path", async () => {
+    // The migration has not been pasted. Setup has to keep working, so the
+    // signUp path takes over — and it does need a deliverable mail, which is
+    // exactly why the migration is the fix rather than this fallback.
+    rpcReplies.admin_bootstrap_owner = {
+      data: null,
+      error: {
+        code: "PGRST202",
+        message: "Could not find the function public.admin_bootstrap_owner in the schema cache",
+      },
+    };
+    rpcReplies.claim_admin_for_email = {
+      data: null,
+      error: { code: "23503", message: "No account found for that email address." },
+    };
+    rpcReplies.claim_admin = { data: { ok: true, role: "admin" }, error: null };
+    authReplies.signUp = {
+      data: {
+        user: { id: "fallback-admin", email: "owner@janoon.pk" },
+        session: { access_token: "t" },
+      },
+      error: null,
+    };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "brand-new-secret")).toEqual({
+      ok: true,
+      userId: "fallback-admin",
+      email: "owner@janoon.pk",
+      roles: ["admin"],
+    });
+    expect(authCalls.map((call) => call.method)).toContain("signUp");
+  });
+
+  /**
+   * The function's own refusals are the answer, and are not re-asked.
+   *
+   * Passing these down to the fallback would mean calling signUp — and sending
+   * the mail — after the database had already said no.
+   */
+  test("a refusal from the database is reported, never retried through signUp", async () => {
+    for (const [message, reason] of [
+      ["An admin account already exists for this restaurant.", "claimed"],
+      ["Staff accounts cannot claim admin access. Ask an admin to grant it.", "claimed"],
+      [
+        "A password of at least 8 characters is required to create a sign-in account.",
+        "weak-password",
+      ],
+      ["A valid email address is required.", "invalid-email"],
+    ] as const) {
+      rpcCalls.length = 0;
+      authCalls.length = 0;
+      rpcReplies.admin_bootstrap_owner = {
+        data: null,
+        error: { code: "P0001", message },
+      };
+
+      expect(await claimFirstAdmin("owner@janoon.pk", "pw")).toEqual({
+        ok: false,
+        reason,
+        message,
+      });
+      // Not one signUp, so not one mail.
+      expect(authCalls).toEqual([]);
+    }
+  });
+
+  test("a call that succeeds but grants nothing is a failure, not a created admin", async () => {
+    // `ok: true` with no role behind it: a function returning without having
+    // written anything. Believing it hands the card a success and then refuses
+    // the person at the sign-in gate.
+    rpcReplies.admin_bootstrap_owner = {
+      data: { ok: true },
+      error: null,
+    };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "pw")).toEqual({
+      ok: false,
+      reason: "setup-required",
+    });
+    expect(authCalls).toEqual([]);
+  });
+
+  test("an owner whose role was not really recorded is signed out again", async () => {
+    // The account exists and the sign-in worked, but the row is not there.
+    // The session is closed rather than handed to an account with no access.
+    tableReplies.staff_members = { data: { role: "staff", active: true }, error: null };
+
+    expect(await claimFirstAdmin("owner@janoon.pk", "pw")).toEqual({
+      ok: false,
+      reason: "setup-required",
+    });
+    expect(authCalls.map((call) => call.method)).toContain("signInWithPassword");
+    expect(authCalls.map((call) => call.method)).toContain("signOut");
+  });
+
+  test("the one-time rule is asked of the database before anything is created", async () => {
+    // Even with the function installed, an admin that already exists is refused
+    // before the call — the card being hidden is not the boundary.
+    rpcReplies.staff_bootstrap_state = {
+      data: { claimable: false, version: 2 },
+      error: null,
+    };
+
+    const outcome = await claimFirstAdmin("owner@janoon.pk", "pw");
+
+    expect(outcome).toMatchObject({ ok: false, reason: "claimed" });
+    expect(rpcCalls.map((call) => call.name)).toEqual(["staff_bootstrap_state"]);
+    expect(authCalls).toEqual([]);
   });
 });
 
@@ -1911,8 +2162,18 @@ describe("sql grants", () => {
 
   const REVOKED = /revoke all on function\s+([^\n;]+?)\s+from public\s*;/g;
   const GRANTED = /grant execute on function\s+([^\n;]+?)\s+to\s+[^\n;]+\s*;/g;
-  /** Revoked on purpose: nothing in the app calls it. */
-  const INTERNAL_ONLY = new Set(["public.staff_get_roles(uuid)"]);
+  /**
+   * Revoked on purpose: nothing in the app calls it, and nothing should be able
+   * to. `staff_get_roles` is a leftover helper. `staff_ensure_auth_user` is the
+   * one that matters — it is the function that creates an Auth identity, so it
+   * is granted to no role at all and is reachable only from inside the two
+   * functions that check their own guards first. Granting it to `authenticated`
+   * would hand every signed-in staff member the ability to mint an account.
+   */
+  const INTERNAL_ONLY = new Set([
+    "public.staff_get_roles(uuid)",
+    "public.staff_ensure_auth_user(text, text, text)",
+  ]);
 
   for (const file of ["schema.sql", "fix-admin-recovery.sql"]) {
     test(`${file} grants every function it revokes`, () => {
@@ -2024,6 +2285,10 @@ describe("the security schema", () => {
     const sql = readSql("staff-auth.sql");
 
     for (const name of [
+      // The identity helper and the two entry points that use it. Setup goes
+      // through admin_bootstrap_owner precisely so no mail is involved.
+      "staff_ensure_auth_user",
+      "admin_bootstrap_owner",
       "admin_upsert_staff_account",
       "admin_confirm_staff_email",
       "admin_delete_staff_account",
@@ -2038,29 +2303,75 @@ describe("the security schema", () => {
       ]);
     }
 
-    // The one call the app makes is also defined in the two files that ship it.
+    // Each is defined once, not spliced in twice — a file that defines the
+    // same function repeatedly is a file that has been spliced badly.
+    for (const name of ["staff_ensure_auth_user", "admin_bootstrap_owner"]) {
+      const count = sql.split(`create or replace function public.${name}(`).length - 1;
+      expect([name, count]).toEqual([name, 1]);
+    }
+
+    // The same definitions are in the two files that ship them, so whichever
+    // one gets pasted the behaviour is identical.
     for (const file of ["schema.sql", "fix-admin-recovery.sql"]) {
-      expect([
-        file,
-        readSql(file).includes(
-          "create or replace function public.admin_upsert_staff_account(",
-        ),
-      ]).toEqual([file, true]);
+      for (const name of [
+        "staff_ensure_auth_user",
+        "admin_bootstrap_owner",
+        "admin_upsert_staff_account",
+      ]) {
+        expect([
+          file,
+          name,
+          readSql(file).includes(`create or replace function public.${name}(`),
+        ]).toEqual([file, name, true]);
+      }
     }
   });
 
-  /** The body of the one call the Team screen makes. */
-  const upsertBody = () => {
+  /** The body of one function, comments and layout left in. */
+  const bodyOf = (name: string) => {
     const sql = readSql("staff-auth.sql");
-    const start = sql.indexOf(
-      "create or replace function public.admin_upsert_staff_account(",
-    );
+    const start = sql.indexOf(`create or replace function public.${name}(`);
     return sql.slice(start, sql.indexOf("$$;", start));
   };
 
-  /** Reuses an identity by address, and never creates a second one. */
-  test("the account is found before it is created, and creation needs a password", () => {
-    const body = upsertBody();
+  /** The body of the one call the Team screen makes. */
+  const upsertBody = () => bodyOf("admin_upsert_staff_account");
+
+  /**
+   * Setup must not depend on a mail being deliverable.
+   *
+   * The whole reason this route exists: the browser used to call
+   * `auth.signUp`, which makes Supabase send a confirmation message, and that
+   * is refused with "Too many attempts just now" once the hourly quota is spent.
+   * The address was never the problem. So the identity is created here, already
+   * confirmed, and nothing is sent.
+   */
+  test("the first admin is created in Postgres, with no confirmation mail", () => {
+    const body = bodyOf("admin_bootstrap_owner");
+
+    // It creates the identity itself rather than asking the browser to.
+    expect(body).toContain("public.staff_ensure_auth_user(v_email, p_password, v_name)");
+    // And confirms the address by hand, for this one account.
+    expect(body).toContain(
+      "email_confirmed_at = coalesce(email_confirmed_at, now())",
+    );
+    // The one-time rule is asked of the database, inside this transaction —
+    // not left to the card having been hidden.
+    expect(body).toContain("lock table public.staff_members in exclusive mode");
+    expect(body).toContain("if public.tribe_active_admins() > 0 then");
+    // And it is never a route from staff to admin.
+    expect(body).toContain("Staff accounts cannot claim admin access.");
+    // Records the role as a real row, not a flag.
+    expect(body).toContain("insert into public.staff_members");
+    expect(body).toContain("insert into public.staff_member_roles");
+  });
+
+  /**
+   * The identity helper is the only thing that writes to auth.users, and it is
+   * reachable from nowhere but the two functions that guard themselves.
+   */
+  test("the identity helper is found before it is created, and needs a password", () => {
+    const body = bodyOf("staff_ensure_auth_user");
 
     // The lookup by address comes before the insert, and it is inside the same
     // function, so the check and the write cannot drift apart.
@@ -2071,7 +2382,32 @@ describe("the security schema", () => {
     // Creating an identity with no password is refused rather than producing an
     // account nobody can sign in to.
     expect(body).toContain("if length(v_password) < 8 then");
-    // And the team row is keyed by the UUID, so one identity cannot hold two.
+    // GoTrue needs the identities row too. Without it the account exists and
+    // still cannot sign in, which looks exactly like a missing account.
+    expect(body).toContain("insert into auth.identities");
+
+    // Granted to no role, so a browser cannot call it on its own.
+    const sql = readSql("staff-auth.sql");
+    expect(sql).toContain(
+      "revoke all on function public.staff_ensure_auth_user(text, text, text) from public;",
+    );
+    expect(sql).not.toMatch(
+      /grant execute on function public\.staff_ensure_auth_user\(/,
+    );
+  });
+
+  /** Reuses an identity by address, and never creates a second one. */
+  test("the Team screen's one call reuses the identity and writes one team row", () => {
+    const body = upsertBody();
+
+    // It goes through the shared helper rather than repeating the auth insert.
+    expect(body).toContain("public.staff_ensure_auth_user(v_email, p_password, v_name)");
+    expect(body).not.toContain("insert into auth.users");
+    // It confirms the address, so the member is not left unable to sign in.
+    expect(body).toContain(
+      "email_confirmed_at = coalesce(email_confirmed_at, now())",
+    );
+    // The team row is keyed by the UUID, so one identity cannot hold two.
     expect(body).toContain("on conflict (user_id) do update");
   });
 
@@ -2085,14 +2421,25 @@ describe("the security schema", () => {
       "extensions.crypt(v_password, extensions.gen_salt('bf', 10))",
     );
     expect(sql).toContain("encrypted_password");
-    // No column of our own ever holds a password: the only one in the file is
-    // the function argument, which exists for the length of the call.
+    // No column of our own ever holds a password. The only mentions are function
+    // arguments, which exist for the length of the call — one per function that
+    // sets a password, and nothing else in the file.
     const parameters = [...sql.matchAll(/^\s{2,4}p_\w+\s+[\w, ]+\)?$/gm)].map((m) =>
       m[0].trim(),
     );
     expect(parameters.filter((line) => /password/i.test(line))).toEqual([
       "p_password     text,",
+      "p_password     text,",
+      "p_password     text,",
     ]);
+    // And no parameter is named anything that could be stored rather than passed.
+    // The allow-list is the whole set the nine functions take, so a new argument
+    // has to be added here deliberately rather than slipping in.
+    expect(
+      parameters.filter(
+        (line) => !/^p_(email|password|display_name|role|user_id|active)\b/.test(line),
+      ),
+    ).toEqual([]);
     // No service-role key, and no grant of one.
     expect(sql).not.toMatch(/service_role/i);
   });

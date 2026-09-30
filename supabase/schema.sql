@@ -863,19 +863,249 @@ begin
   );
 end $$;
 
---  Create OR reuse the sign-in account, and record it — all in one call.
+-- ============================================================================
+--  staff_ensure_auth_user — find or create the Supabase Auth identity.
 --
---  `admin_add_staff` above only grants a role to an account that already exists,
---  which leaves the browser to create the Auth user first. On a project with
---  "Confirm email" switched on that account is created unconfirmed and cannot
---  sign in — the state reported as "incorrect credentials". This function does
---  the whole job in Postgres: reuse the existing UUID for an address that has
---  one, create the identity here when it does not, hash the password with
---  bcrypt (the plaintext is never stored anywhere), confirm the address, write
---  exactly one `staff_members` row under that UUID, and return what was written.
+--  Deliberately not callable by anyone. It is revoked from PUBLIC and granted to
+--  no role, so it can only ever be reached from inside the two functions below
+--  — which check their own guards first. That is what keeps "create an account"
+--  from being a capability a browser can use on its own.
 --
---  No service-role key is involved: a browser can only ask, and this function
---  refuses any caller whose own row is not an active admin.
+--  Returns the UUID, whether it was created, and whether the address had to be
+--  confirmed. An address that already has an identity is returned untouched:
+--  the same UUID, the same password, no second account for one address.
+-- ============================================================================
+create or replace function public.staff_ensure_auth_user(
+  p_email        text,
+  p_password     text,
+  p_display_name text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_email    text := lower(trim(coalesce(p_email, '')));
+  v_password text := coalesce(p_password, '');
+  v_name     text := nullif(trim(coalesce(p_display_name, '')), '');
+  v_uid      uuid;
+  v_created  boolean := false;
+  v_stored   boolean := false;   -- did that account already have a password?
+begin
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  if v_name is null then
+    v_name := coalesce(nullif(split_part(v_email, '@', 1), ''), 'Team');
+  end if;
+
+  -- Reuse. This lookup is what makes a second account for one address
+  -- impossible: the create below only runs when it finds nothing.
+  select u.id, u.encrypted_password is not null
+    into v_uid, v_stored
+    from auth.users u
+   where lower(u.email) = v_email
+   limit 1;
+
+  if v_uid is not null then
+    return jsonb_build_object(
+      'userId', v_uid, 'email', v_email, 'displayName', v_name,
+      'created', false, 'hadPassword', v_stored, 'confirmed', false);
+  end if;
+
+  -- Create. A password of less than eight characters is refused here rather
+  -- than producing an account nobody can sign in to.
+  if length(v_password) < 8 then
+    raise exception
+      'A password of at least 8 characters is required to create a sign-in account.';
+  end if;
+
+  v_uid := gen_random_uuid();
+
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, email_change, email_change_token_new, recovery_token
+  )
+  values (
+    coalesce(
+      (select u2.instance_id from auth.users u2 limit 1),
+      '00000000-0000-0000-0000-000000000000'::uuid
+    ),
+    v_uid,
+    'authenticated',
+    'authenticated',
+    v_email,
+    -- Hashed in this statement. The plaintext exists only as the argument of
+    -- this call and survives nowhere else.
+    extensions.crypt(v_password, extensions.gen_salt('bf', 10)),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('full_name', v_name),
+    now(), now(),
+    '', '', '', ''
+  );
+
+  -- GoTrue expects one identity row per provider. Without it the account exists
+  -- but cannot sign in, which looks exactly like a missing account.
+  insert into auth.identities (
+    id, user_id, provider_id, identity_data, provider,
+    last_sign_in_at, created_at, updated_at
+  )
+  values (
+    v_uid, v_uid, v_uid,
+    jsonb_build_object(
+      'sub', v_uid,
+      'email', v_email,
+      'email_verified', true,
+      'phone_verified', false
+    ),
+    'email',
+    now(), now(), now()
+  );
+
+  return jsonb_build_object(
+    'userId', v_uid, 'email', v_email, 'displayName', v_name,
+    'created', true, 'hadPassword', true, 'confirmed', true);
+end $$;
+
+revoke all on function public.staff_ensure_auth_user(text, text, text) from public;
+
+
+-- ============================================================================
+--  admin_bootstrap_owner — create the FIRST administrator.
+--
+--  The door before anybody holds the role, so it cannot ask "is the caller an
+--  admin" — there is none yet. What it asks instead is the only question that
+--  matters here:
+--
+--      does this restaurant already have an active administrator?
+--
+--  While the answer is no, the setup card offers the action and this function
+--  performs it. The moment an admin exists the answer is yes, and both the card
+--  and this function refuse — so the window is not merely hidden, it is shut in
+--  the database. It reopens only if that admin is later removed or deactivated
+--  through the legitimate team workflow.
+--
+--  No email is sent and none is needed: the identity is created confirmed, so
+--  the person signs in immediately with the password they just chose. That is
+--  the whole point of this function — setup must not be blocked by a mail quota.
+--
+--  Two further guards, both in the database:
+--    • An account that is already on the team as staff is refused. This is never
+--      a route from staff to admin, however empty the admin list is.
+--    • An address that already has an account keeps its UUID and its own
+--      password; nothing is overwritten and no second account is created.
+-- ============================================================================
+create or replace function public.admin_bootstrap_owner(
+  p_email        text,
+  p_password     text,
+  p_display_name text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_email  text := lower(trim(coalesce(p_email, '')));
+  v_name   text;
+  v_uid    uuid;
+  v_auth   jsonb;
+  v_role   text;
+begin
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  v_name := nullif(trim(coalesce(p_display_name, '')), '');
+  if v_name is null then
+    v_name := coalesce(nullif(split_part(v_email, '@', 1), ''), 'Owner');
+  end if;
+
+  -- The one-time rule, asked of the database rather than of the browser.
+  lock table public.staff_members in exclusive mode;
+  if public.tribe_active_admins() > 0 then
+    raise exception 'An admin account already exists for this restaurant.'
+      using errcode = '23505';
+  end if;
+
+  -- No route from staff to admin, even while the admin list is empty.
+  select role into v_role from public.staff_members where user_id = (
+    select u.id from auth.users u where lower(u.email) = v_email limit 1
+  );
+  if v_role = 'staff' then
+    raise exception
+      'Staff accounts cannot claim admin access. Ask an admin to grant it.'
+      using errcode = '42501';
+  end if;
+
+  -- Create the sign-in identity, or reuse the one this address already has.
+  v_auth := public.staff_ensure_auth_user(v_email, p_password, v_name);
+  v_uid := (v_auth ->> 'userId')::uuid;
+
+  -- Confirm the address, for this one account, by hand. `coalesce` leaves an
+  -- already-confirmed address exactly as it was. There is no project-wide
+  -- switch here: turning confirmation off for everyone would also confirm
+  -- strangers, and that is not this function's decision to make.
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now()),
+         updated_at         = now()
+   where id = v_uid;
+
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, 'admin', (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, v_name, 'admin', true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set email        = excluded.email,
+        display_name = excluded.display_name,
+        role         = 'admin',
+        active       = true;
+
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', 'admin',
+    'active', true,
+    'authCreated', (v_auth ->> 'created')::boolean,
+    'confirmed', true,
+    'passwordApplied', (v_auth ->> 'created')::boolean
+                   or not (v_auth ->> 'hadPassword')::boolean
+  );
+end $$;
+
+--  Open to `anon` because the person setting the restaurant up has no session
+--  yet — that is the whole point of this function. It creates no session and
+--  grants nothing once an admin exists, which the check above enforces in the
+--  database rather than here.
+revoke all on function public.admin_bootstrap_owner(text, text, text) from public;
+grant execute on function public.admin_bootstrap_owner(text, text, text) to anon, authenticated;
+
+
+-- ============================================================================
+--  admin_upsert_staff_account — create or reuse an identity, and record it.
+--
+--  The single call the Team screen makes for everybody after the owner. In
+--  order: refuse a caller who is not an active admin; reuse the exact UUID for
+--  an address that has an account; create the identity here when it does not;
+--  confirm the address, so the member is not left in the state this project
+--  refuses at sign-in; upsert exactly one `staff_members` row under that UUID
+--  and maintain `staff_member_roles`; and return the row as stored rather than
+--  as requested.
+-- ============================================================================
 create or replace function public.admin_upsert_staff_account(
   p_email        text,
   p_password     text,
@@ -888,14 +1118,11 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  v_email    text := lower(trim(coalesce(p_email, '')));
-  v_role     text := case when p_role = 'admin' then 'admin' else 'staff' end;
-  v_name     text;
-  v_password text := coalesce(p_password, '');
-  v_uid      uuid;
-  v_created  boolean := false;
-  v_stored   boolean := false;   -- was the supplied password actually set?
-  v_confirmed boolean := false;  -- was the address unconfirmed a moment ago?
+  v_email text := lower(trim(coalesce(p_email, '')));
+  v_role  text := case when p_role = 'admin' then 'admin' else 'staff' end;
+  v_name  text;
+  v_auth  jsonb;
+  v_uid   uuid;
 begin
   if not public.is_admin() then
     raise exception 'Only an admin can manage the team.' using errcode = '42501';
@@ -910,81 +1137,18 @@ begin
     v_name := coalesce(nullif(split_part(v_email, '@', 1), ''), 'Team');
   end if;
 
-  -- 2. The identity for this address, if there is one. Reused as-is.
-  select u.id, u.email_confirmed_at is null, u.encrypted_password is not null
-    into v_uid, v_confirmed, v_stored
-    from auth.users u
-   where lower(u.email) = v_email
-   limit 1;
+  v_auth := public.staff_ensure_auth_user(v_email, p_password, v_name);
+  v_uid := (v_auth ->> 'userId')::uuid;
 
-  -- 3. No identity: make one here. The password is hashed in this statement and
-  --    survives only as the bcrypt digest GoTrue itself keeps.
-  if v_uid is null then
-    if length(v_password) < 8 then
-      raise exception
-        'A password of at least 8 characters is required to create a new sign-in account.';
-    end if;
-
-    v_uid := gen_random_uuid();
-
-    insert into auth.users (
-      instance_id, id, aud, role, email, encrypted_password,
-      email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-      created_at, updated_at,
-      confirmation_token, email_change, email_change_token_new, recovery_token
-    )
-    values (
-      coalesce(
-        (select u2.instance_id from auth.users u2 limit 1),
-        '00000000-0000-0000-0000-000000000000'::uuid
-      ),
-      v_uid,
-      'authenticated',
-      'authenticated',
-      v_email,
-      extensions.crypt(v_password, extensions.gen_salt('bf', 10)),
-      now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,
-      jsonb_build_object('full_name', v_name),
-      now(), now(),
-      '', '', '', ''
-    );
-
-    -- GoTrue expects one identity row per provider. Without it the account
-    -- exists but cannot sign in, which looks exactly like a missing account.
-    insert into auth.identities (
-      id, user_id, provider_id, identity_data, provider,
-      last_sign_in_at, created_at, updated_at
-    )
-    values (
-      v_uid, v_uid, v_uid,
-      jsonb_build_object(
-        'sub', v_uid,
-        'email', v_email,
-        'email_verified', true,
-        'phone_verified', false
-      ),
-      'email',
-      now(), now(), now()
-    );
-
-    v_created := true;
-    v_stored := true;
-  end if;
-
-  -- 4. Confirm the address. Only ever for an address this admin has just
-  --    resolved, and only while they are an admin — never a blanket switch, and
-  --    never a confirmation of a stranger's account. `coalesce` leaves an
-  --    already-confirmed address exactly as it was.
+  -- Confirm, for this one address, by an admin. Never a project-wide switch.
   update auth.users
      set email_confirmed_at = coalesce(email_confirmed_at, now()),
          confirmed_at       = coalesce(confirmed_at, now()),
          updated_at         = now()
    where id = v_uid;
-  get diagnostics v_confirmed = row_count;
 
-  -- 5. Exactly one team row, keyed by the Auth UUID, with the role maintained in
-  --    the junction table.
+  -- Exactly one team row, keyed by the Auth UUID, with the role maintained in
+  -- the junction table.
   insert into public.staff_member_roles (user_id, role, created_at)
   values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
   on conflict (user_id, role) do nothing;
@@ -1006,7 +1170,6 @@ begin
                  else excluded.role
                end;
 
-  -- 6. The row as stored, not as requested.
   return jsonb_build_object(
     'ok', true,
     'userId', v_uid,
@@ -1014,9 +1177,10 @@ begin
     'displayName', v_name,
     'role', v_role,
     'active', true,
-    'authCreated', v_created,
-    'passwordApplied', v_created or not v_stored,
-    'confirmed', v_confirmed
+    'authCreated', (v_auth ->> 'created')::boolean,
+    'passwordApplied', (v_auth ->> 'created')::boolean
+                   or not (v_auth ->> 'hadPassword')::boolean,
+    'confirmed', true
   );
 end $$;
 

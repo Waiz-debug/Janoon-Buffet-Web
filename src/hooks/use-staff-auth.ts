@@ -568,16 +568,28 @@ export async function authenticate(
 /**
  * Create the admin account from the website — no dashboard step.
  *
- * Three things happen, in order:
- *   1. Supabase Auth creates the user with the ordinary publishable key.
- *   2. We hold the auth UUID it hands back.
- *   3. `claim_admin()` records that UUID in `staff_members` as an admin.
+ * What happens first, and by default:
+ *   1. `admin_bootstrap_owner()` creates the Auth identity in Postgres, already
+ *      confirmed, with the password hashed there. No mail is sent.
+ *   2. We sign in with that password to get a real session.
+ *   3. `staffLookup()` reads the caller's own roles back, and the setup is
+ *      reported as done only once the row is really there.
  *
- * Step 3 is decided in Postgres, and only while the table holds no active
- * admin, so the door is shut as soon as one exists — and reopens if the last one
- * is removed. An account already on the team as staff is refused, so this is
- * never a route from staff to admin. No service-role key is involved, and none
- * could be, since it would have to ship in the bundle.
+ * The mail is the point. The original path used `supabase.auth.signUp()`, which
+ * makes Supabase send a confirmation message, and that call is refused with
+ * "Too many attempts just now" once the project's hourly quota is spent — an
+ * error about the quota, not about the address, on an address that was fine.
+ * `admin_bootstrap_owner` sends nothing, so setup cannot be blocked by it.
+ *
+ * Everything else in this function is the fallback for a database that has not
+ * been given that function yet, and is reached only when it reports itself
+ * missing. Those paths still sign up, and still need a deliverable mail.
+ *
+ * The one-time rule is decided in Postgres, and only while the table holds no
+ * active admin, so the door is shut as soon as one exists — and reopens if the
+ * last one is removed. An account already on the team as staff is refused, so
+ * this is never a route from staff to admin. No service-role key is involved,
+ * and none could be, since it would have to ship in the bundle.
  *
  * Calling this twice with the same details is safe — the second time round
  * `signUp` reports the account already exists, we sign in instead, and the claim
@@ -587,6 +599,103 @@ export async function authenticate(
  * Nothing is reported as created until the role is really recorded: every path
  * that cannot reach the grant ends in a failure the card can explain.
  */
+/**
+ * Create the first admin in Postgres, where no mail is involved.
+ *
+ * Returns `null` — and only `null` — when this database cannot do it, so the
+ * caller falls back to the signUp path. Every other outcome is a finished
+ * answer, including the refusals: passing one of those down to the fallback
+ * would re-ask a question the database has already answered, and the fallback's
+ * signUp would send the mail this function exists to avoid.
+ *
+ * Three things can come back, and they are told apart deliberately:
+ *   • the function is not installed   → null, fall back
+ *   • the one-time rule refuses        → that refusal, reported as-is
+ *   • anything else went wrong         → reported, never guessed at
+ */
+async function bootstrapOwner(
+  address: string,
+  password: string,
+): Promise<OwnerClaim | null> {
+  const { data, error } = await supabase.rpc("admin_bootstrap_owner", {
+    p_email: address,
+    p_password: password,
+    p_display_name: null,
+  });
+
+  if (error) {
+    // "Could not find the function" means this project has not run the
+    // staff-auth migration yet. That is the one case the older flow can still
+    // handle, so it is the one case worth handing back.
+    if (isMissingFunction(error)) {
+      console.warn(
+        "[Junoon] admin_bootstrap_owner is not installed — falling back to the signUp path, which needs a deliverable email.",
+      );
+      return null;
+    }
+
+    // The database refused, and its reason is the answer. The one-time rule and
+    // the staff self-promotion guard both land here, and both are correct.
+    if (/already exists|staff accounts cannot/i.test(error.message)) {
+      return { ok: false, reason: "claimed", message: error.message };
+    }
+    // A password the function would refuse to set is the caller's to correct.
+    if (/at least 8 characters/i.test(error.message)) {
+      return { ok: false, reason: "weak-password", message: error.message };
+    }
+    if (/valid email address/i.test(error.message)) {
+      return { ok: false, reason: "invalid-email", message: error.message };
+    }
+    // Anything else — including a failure inside the auth.users insert — is
+    // surfaced rather than retried down a path that would send a mail.
+    console.warn(
+      `[Junoon] admin_bootstrap_owner failed: ${error.message}`,
+    );
+    return { ok: false, reason: "setup-required", message: error.message };
+  }
+
+  const result = data as
+    | { ok?: boolean; userId?: string; email?: string; authCreated?: boolean }
+    | null;
+
+  if (!result?.ok || !result.userId) {
+    // The call succeeded but granted nothing. Believing it would hand the card
+    // a success and then refuse the person at the sign-in gate.
+    return { ok: false, reason: "setup-required" };
+  }
+
+  // The account exists and is confirmed, so this is an ordinary sign-in. If it
+  // fails, the row is not being written the way a sign-in expects — which is
+  // worth saying plainly rather than reporting as a bad password.
+  const attempt = await supabase.auth.signInWithPassword({
+    email: address,
+    password,
+  });
+
+  if (attempt.error) {
+    console.warn(
+      `[Junoon] the owner was created but could not be signed in: ${attempt.error.message}`,
+    );
+    return classifyAuthError(attempt.error.message, attempt.error.code);
+  }
+
+  // Believed only once the database agrees the role is really recorded.
+  const confirmed = await staffLookup(result.userId);
+  if (confirmed.ok && confirmed.roles.includes("admin")) {
+    return {
+      ok: true,
+      userId: result.userId,
+      email: result.email ?? address,
+      roles: confirmed.roles,
+    };
+  }
+
+  // No role: the account is there but access is not, so the session is closed
+  // again rather than handed to an account that cannot get in.
+  await supabase.auth.signOut();
+  return { ok: false, reason: "setup-required" };
+}
+
 export async function claimFirstAdmin(
   email: string,
   password: string,
@@ -616,6 +725,26 @@ export async function claimFirstAdmin(
           : "An admin account already exists for this restaurant.",
     };
   }
+
+  // ------------------------------------------------------------------
+  // PHASE 0 — Create the first admin in Postgres. No email.
+  //
+  // Everything below this line exists only as a fallback for a database that has
+  // not been given admin_bootstrap_owner yet. It goes through
+  // `supabase.auth.signUp()`, which makes Supabase send a confirmation mail, and
+  // that call is refused with "Too many attempts just now" once the project's
+  // hourly mail quota is spent. The address is perfectly valid; the quota is the
+  // problem, and it clears on Supabase's schedule rather than ours — so setup
+  // that needs a mail is setup that can be blocked by something no one here
+  // controls.
+  //
+  // This call creates the Auth identity, confirms the address, records the admin
+  // role and sends nothing at all. It performs its own one-time check inside the
+  // same transaction, so the gate above is belt-and-braces rather than the only
+  // guard.
+  // ------------------------------------------------------------------
+  const bootstrapped = await bootstrapOwner(address, password);
+  if (bootstrapped) return bootstrapped;
 
   // ------------------------------------------------------------------
   // PHASE 1 — Try to grant admin to an EXISTING auth user.
