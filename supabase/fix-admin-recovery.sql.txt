@@ -1,10 +1,6 @@
 -- ============================================================================
 --  Junoon — authorization & admin setup rules (copy-paste, idempotent)
 --
---  THIS IS THE VISIBLE COPY OF supabase/fix-admin-recovery.sql
---  (the file index in this project hides .sql files, so this .txt twin exists
---   to be opened — same convention as supabase/schema.sql.txt.)
---
 --  Run this whole file in the Supabase SQL Editor, then reload the website and
 --  open the Admin Portal. It adds one table if it is missing and replaces
 --  fourteen functions. No row is deleted and no business table is touched.
@@ -347,6 +343,150 @@ begin
   return jsonb_build_object('ok', true, 'userId', p_user_id);
 end $$;
 
+--  Delete a team member for good: the sign-in account too, so the address is
+--  released and can be registered again. Missing from projects that ran an
+--  earlier version of this patch, which is why the Team screen's "Delete
+--  account" button had nothing to call. The guards match the two above: admin
+--  only, never yourself, never the last admin.
+create or replace function public.admin_delete_staff_account(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role    text;
+  v_email   text;
+  v_deleted integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select sm.role, u.email
+    into v_role, v_email
+    from public.staff_members sm
+    left join auth.users u on u.id = sm.user_id
+   where sm.user_id = p_user_id;
+
+  if v_role is null and v_email is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  if p_user_id = auth.uid() then
+    raise exception 'You cannot delete the account you are signed in with.';
+  end if;
+
+  if v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be deleted.';
+  end if;
+
+  delete from public.staff_member_roles where user_id = p_user_id;
+  delete from public.staff_members where user_id = p_user_id;
+
+  delete from auth.users where id = p_user_id;
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted = 0 then
+    raise exception
+      'The sign-in account could not be deleted from the database. Remove it in the Supabase dashboard under Authentication → Users, then try again.';
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
+end $$;
+
+--  Put the three stores back in step.
+--
+--  Writes any primary role that has no matching row in the junction table, and
+--  counts the members whose sign-in account no longer exists. Idempotent, and
+--  reported rather than guessed at: the second number is something only the
+--  owner can act on.
+create or replace function public.admin_sync_staff_roles()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_added   integer := 0;
+  v_missing integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role, created_at)
+  select sm.user_id, sm.role, sm.created_at
+    from public.staff_members sm
+   where not exists (
+     select 1
+       from public.staff_member_roles r
+      where r.user_id = sm.user_id
+        and r.role = sm.role
+   )
+  on conflict (user_id, role) do nothing;
+  get diagnostics v_added = row_count;
+
+  select count(*) into v_missing
+    from public.staff_members sm
+   where not exists (
+     select 1 from auth.users u where u.id = sm.user_id
+   );
+
+  return jsonb_build_object(
+    'ok', true, 'rolesAdded', v_added, 'accountsMissing', v_missing);
+end $$;
+
+--  Confirm a team member's email address, so a new account can sign in on a
+--  project that asks new accounts to confirm first. `signUp` cannot do this
+--  (no `email_confirm` option) and the admin API that can needs a service-role
+--  key, which must never be in a page. Admin-only, and only for an address
+--  already on this team.
+create or replace function public.admin_confirm_staff_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id  uuid;
+  v_updated  integer := 0;
+  v_was_open boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_email is null or position('@' in p_email) = 0 then
+    raise exception 'Enter a valid email address.';
+  end if;
+
+  select u.id, u.email_confirmed_at is null
+    into v_user_id, v_was_open
+    from auth.users u
+   where lower(u.email) = lower(p_email);
+
+  if v_user_id is null then
+    raise exception 'No sign-in account exists for that address yet.';
+  end if;
+
+  if not exists (
+    select 1 from public.staff_members where user_id = v_user_id
+  ) then
+    raise exception 'That address is not on this team.';
+  end if;
+
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now())
+   where id = v_user_id;
+  get diagnostics v_updated = row_count;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', v_user_id, 'confirmed', v_was_open);
+end $$;
+
 --  Grant a specific role to an existing team member. The role is added to the
 --  junction table, and the primary role is promoted to admin when the new role
 --  is admin — never the other way round, so this cannot take access away by
@@ -426,10 +566,16 @@ end $$;
 --  Taken from PUBLIC and handed to `authenticated`. Leaving out the second half
 --  of that pair is what made the role buttons unusable on an older project.
 revoke all on function public.admin_remove_staff(uuid) from public;
+revoke all on function public.admin_delete_staff_account(uuid) from public;
+revoke all on function public.admin_confirm_staff_email(text) from public;
+revoke all on function public.admin_sync_staff_roles() from public;
 revoke all on function public.admin_grant_role(uuid, text) from public;
 revoke all on function public.admin_remove_role(uuid, text) from public;
 
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
+grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
+grant execute on function public.admin_confirm_staff_email(text) to authenticated;
+grant execute on function public.admin_sync_staff_roles() to authenticated;
 grant execute on function public.admin_grant_role(uuid, text) to authenticated;
 grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 
@@ -557,6 +703,14 @@ begin
   on conflict (user_id, role) do nothing;
 
   -- Also ensure a row in staff_members (legacy table).
+  --
+  -- `user_id` is the primary key, so this can never produce a second record for
+  -- one Auth identity — that is the whole reason the join is written this way
+  -- round rather than keyed by address. On a repeat call the row is refreshed
+  -- rather than replaced: the address and the active flag follow the account,
+  -- and the primary role is only ever promoted here (staff → admin). Demotion
+  -- is `admin_set_staff_role`'s job, and it carries the last-admin guard; doing
+  -- it from an "add" call would be a way around that guard.
   insert into public.staff_members
     (user_id, email, display_name, role, active, created_at)
   values (
@@ -564,10 +718,186 @@ begin
     (extract(epoch from now()) * 1000)::bigint
   )
   on conflict (user_id) do update
-    set email = excluded.email, active = true;
+    set email = excluded.email,
+        active = true,
+        role = case
+                 when public.staff_members.role = 'admin' then 'admin'
+                 else excluded.role
+               end;
 
-  return jsonb_build_object('ok', true, 'userId', v_uid, 'email', v_email, 'role', v_role);
+  -- The row is returned rather than a bare acknowledgement. The caller needs
+  -- the Auth UUID that was actually written, so it can read the same record
+  -- back and confirm the join before telling anybody the account was added —
+  -- `admin_add_staff` answering without an error is not proof the row exists.
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', v_role,
+    'active', true
+  );
 end $$;
+
+--  Create OR reuse the sign-in account, and record it — all in one call.
+--
+--  `admin_add_staff` above only grants a role to an account that already exists,
+--  which leaves the browser to create the Auth user first. On a project with
+--  "Confirm email" switched on that account is created unconfirmed and cannot
+--  sign in — the state reported as "incorrect credentials". This function does
+--  the whole job in Postgres: reuse the existing UUID for an address that has
+--  one, create the identity here when it does not, hash the password with
+--  bcrypt (the plaintext is never stored anywhere), confirm the address, write
+--  exactly one `staff_members` row under that UUID, and return what was written.
+--
+--  No service-role key is involved: a browser can only ask, and this function
+--  refuses any caller whose own row is not an active admin.
+create or replace function public.admin_upsert_staff_account(
+  p_email        text,
+  p_password     text,
+  p_display_name text default null,
+  p_role         text default 'staff'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_email    text := lower(trim(coalesce(p_email, '')));
+  v_role     text := case when p_role = 'admin' then 'admin' else 'staff' end;
+  v_name     text;
+  v_password text := coalesce(p_password, '');
+  v_uid      uuid;
+  v_created  boolean := false;
+  v_stored   boolean := false;   -- was the supplied password actually set?
+  v_confirmed boolean := false;  -- was the address unconfirmed a moment ago?
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  v_name := nullif(trim(coalesce(p_display_name, '')), '');
+  if v_name is null then
+    v_name := coalesce(nullif(split_part(v_email, '@', 1), ''), 'Team');
+  end if;
+
+  -- 2. The identity for this address, if there is one. Reused as-is.
+  select u.id, u.email_confirmed_at is null, u.encrypted_password is not null
+    into v_uid, v_confirmed, v_stored
+    from auth.users u
+   where lower(u.email) = v_email
+   limit 1;
+
+  -- 3. No identity: make one here. The password is hashed in this statement and
+  --    survives only as the bcrypt digest GoTrue itself keeps.
+  if v_uid is null then
+    if length(v_password) < 8 then
+      raise exception
+        'A password of at least 8 characters is required to create a new sign-in account.';
+    end if;
+
+    v_uid := gen_random_uuid();
+
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password,
+      email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at,
+      confirmation_token, email_change, email_change_token_new, recovery_token
+    )
+    values (
+      coalesce(
+        (select u2.instance_id from auth.users u2 limit 1),
+        '00000000-0000-0000-0000-000000000000'::uuid
+      ),
+      v_uid,
+      'authenticated',
+      'authenticated',
+      v_email,
+      extensions.crypt(v_password, extensions.gen_salt('bf', 10)),
+      now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      jsonb_build_object('full_name', v_name),
+      now(), now(),
+      '', '', '', ''
+    );
+
+    -- GoTrue expects one identity row per provider. Without it the account
+    -- exists but cannot sign in, which looks exactly like a missing account.
+    insert into auth.identities (
+      id, user_id, provider_id, identity_data, provider,
+      last_sign_in_at, created_at, updated_at
+    )
+    values (
+      v_uid, v_uid, v_uid,
+      jsonb_build_object(
+        'sub', v_uid,
+        'email', v_email,
+        'email_verified', true,
+        'phone_verified', false
+      ),
+      'email',
+      now(), now(), now()
+    );
+
+    v_created := true;
+    v_stored := true;
+  end if;
+
+  -- 4. Confirm the address. Only ever for an address this admin has just
+  --    resolved, and only while they are an admin — never a blanket switch, and
+  --    never a confirmation of a stranger's account. `coalesce` leaves an
+  --    already-confirmed address exactly as it was.
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now()),
+         updated_at         = now()
+   where id = v_uid;
+  get diagnostics v_confirmed = row_count;
+
+  -- 5. Exactly one team row, keyed by the Auth UUID, with the role maintained in
+  --    the junction table.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, v_name, v_role, true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set email        = excluded.email,
+        display_name = excluded.display_name,
+        active       = true,
+        -- Promotion only. Demotion is admin_set_staff_role's job, and it
+        -- carries the last-admin guard; doing it here would route around it.
+        role = case
+                 when public.staff_members.role = 'admin' then 'admin'
+                 else excluded.role
+               end;
+
+  -- 6. The row as stored, not as requested.
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', v_role,
+    'active', true,
+    'authCreated', v_created,
+    'passwordApplied', v_created or not v_stored,
+    'confirmed', v_confirmed
+  );
+end $$;
+
+revoke all on function public.admin_upsert_staff_account(text, text, text, text) from public;
+grant execute on function public.admin_upsert_staff_account(text, text, text, text) to authenticated;
 
 --  Change a role. Refuses to remove the last admin.
 create or replace function public.admin_set_staff_role(

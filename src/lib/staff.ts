@@ -387,6 +387,7 @@ export async function addStaffAccount(
   email: string,
   role: StaffRole,
   initialPassword?: string,
+  displayName?: string,
 ): Promise<StaffAccountResult> {
   const address = email.trim().toLowerCase();
   if (!address || !address.includes("@")) {
@@ -394,6 +395,99 @@ export async function addStaffAccount(
   }
 
   const password = initialPassword?.trim() || randomPassword();
+  const name = displayName?.trim() || "";
+
+  // ------------------------------------------------------------------
+  // ONE CALL, IN THE DATABASE — the route the app is built around.
+  //
+  // `admin_upsert_staff_account` creates the Supabase Auth identity when there
+  // isn't one, reuses the existing UUID when there is, hashes the password with
+  // bcrypt, confirms the address, writes exactly one `staff_members` row under
+  // that UUID and returns it. That matters here because this project has
+  // "Confirm email" switched on: an account created by the browser alone sits
+  // unconfirmed and is refused at sign-in with a message that reads like a
+  // wrong password.
+  //
+  // No service-role key is involved. The function is SECURITY DEFINER and
+  // refuses any caller whose own row is not an active admin, so a browser can
+  // only ask.
+  // ------------------------------------------------------------------
+  try {
+    return await upsertStaffAccount(address, role, password, name);
+  } catch (error) {
+    // A project that has not run supabase/staff-auth.sql yet. Fall through to
+    // the older two-call route rather than failing outright — an unpatched
+    // project is never worse off than it was.
+    if (!isMissingFunction(error)) throw error;
+    console.warn(
+      "[Junoon] admin_upsert_staff_account is not installed — falling back to creating the sign-in account from the browser.",
+    );
+  }
+
+  return await addStaffAccountViaBrowser(address, role, password, initialPassword);
+}
+
+/**
+ * The whole account, created and recorded by the database in one call.
+ *
+ * The row that comes back is the one the database holds, read back under the
+ * Auth UUID it wrote — so what the Team screen shows is what is really stored,
+ * and nothing is reported as created on the strength of a function that merely
+ * did not complain.
+ */
+async function upsertStaffAccount(
+  address: string,
+  role: StaffRole,
+  password: string,
+  displayName: string,
+): Promise<StaffAccountResult> {
+  const outcome = await rpc("admin_upsert_staff_account", {
+    p_email: address,
+    p_password: password,
+    p_display_name: displayName || null,
+    p_role: role,
+  });
+
+  const userId = typeof outcome.userId === "string" ? outcome.userId : "";
+  const member = userId ? await readStaffMember(userId) : null;
+  if (!member) {
+    throw new Error(
+      userId
+        ? `The database created ${address} but holds no team record for it under Auth id ${userId}, so it cannot be confirmed as added. Nothing has been added to the team.`
+        : `The database did not report which account it created for ${address}, so the team record cannot be checked. Nothing has been added to the team.`,
+    );
+  }
+
+  // `authCreated: false` means the address already had a Supabase account, whose
+  // own password this call leaves untouched. Saying so is the difference between
+  // handing over a credential that works and one that was never set.
+  const authCreated = outcome.authCreated === true;
+
+  return {
+    createdSignIn: authCreated,
+    // The database hashed the password into `encrypted_password`; it is not
+    // stored anywhere else, and never in `staff_members`.
+    passwordApplied: outcome.passwordApplied !== false,
+    needsConfirmation: false,
+    confirmedByPortal: true,
+    usedResetLink: false,
+    member,
+  };
+}
+
+/**
+ * The older route, kept for a database without `admin_upsert_staff_account`.
+ *
+ * Two calls: the browser creates the Auth account on a throwaway client (which
+ * never takes over the admin's own session), then `admin_add_staff` — which
+ * requires that account to exist — writes the role.
+ */
+async function addStaffAccountViaBrowser(
+  address: string,
+  role: StaffRole,
+  password: string,
+  typedPassword: string | undefined,
+): Promise<StaffAccountResult> {
 
   // A client of its own, and one that never touches storage: signing the new
   // member up must not swap the admin's own session out from under them, which
@@ -457,7 +551,7 @@ export async function addStaffAccount(
   // This is the only recovery path the panel has, and an extra mail costs
   // nothing.
   const needsOwnPassword =
-    !initialPassword?.trim() || alreadyRegistered || needsConfirmation;
+    !typedPassword?.trim() || alreadyRegistered || needsConfirmation;
 
   let usedResetLink = false;
   if (needsOwnPassword) {
@@ -482,6 +576,8 @@ export async function addStaffAccount(
   // record up by address through the same admin-only list the Team screen uses
   // — still a real read of a real row, never an assumption — and only a genuine
   // absence is a failure.
+  // Name is written by `admin_upsert_staff_account`; the older route derives it
+  // from the address, which is why the field above says the same.
   const member = grantedUserId
     ? await readStaffMember(grantedUserId)
     : await readStaffMemberByEmail(address);

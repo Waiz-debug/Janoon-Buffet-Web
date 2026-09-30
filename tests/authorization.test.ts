@@ -474,18 +474,23 @@ describe("role changes", () => {
 
 describe("addStaffAccount", () => {
   /**
-   * The team row `admin_add_staff` wrote, keyed by the Auth UUID it returned.
+   * The team row the database holds, keyed by the Auth UUID it wrote.
    *
    * The fake server answers every table read with the same shape, so this keeps
    * the read-back honest: it is only a *verification* step if the record it
-   * finds is the one under the id the grant handed over.
+   * finds is the one under the id the database itself handed over.
    */
-  const writtenRow = (userId: string, email: string, role = "staff") => {
+  const writtenRow = (
+    userId: string,
+    email: string,
+    role = "staff",
+    displayName?: string,
+  ) => {
     tableReplies.staff_members = {
       data: {
         user_id: userId,
         email,
-        display_name: email.split("@")[0],
+        display_name: displayName ?? email.split("@")[0],
         role,
         active: true,
         created_at: 1,
@@ -495,97 +500,218 @@ describe("addStaffAccount", () => {
     return {
       userId,
       email,
-      displayName: email.split("@")[0],
+      displayName: displayName ?? email.split("@")[0],
       role,
       roles: [role],
       active: true,
       createdAt: 1,
     };
   };
-  /** The grant's own answer: the UUID it wrote the row under. */
-  const granted = (userId: string, role = "staff") => {
-    rpcReplies.admin_add_staff = {
-      data: { ok: true, userId, email: "new.chef@janoon.pk", role },
+
+  /** What `admin_upsert_staff_account` answers after writing the row. */
+  const upserted = (
+    userId: string,
+    overrides: Record<string, unknown> = {},
+  ) => {
+    rpcReplies.admin_upsert_staff_account = {
+      data: {
+        ok: true,
+        userId,
+        email: "new.chef@janoon.pk",
+        displayName: "Imran Khan",
+        role: "staff",
+        active: true,
+        authCreated: true,
+        passwordApplied: true,
+        confirmed: true,
+        ...overrides,
+      },
       error: null,
     };
   };
 
-  test("creates the sign-in without taking over the admin's session", async () => {
-    granted("auth-uuid-1");
-    writtenRow("auth-uuid-1", "new.chef@janoon.pk");
+  /* ------------------------------------------------ the route the app uses -- */
 
-    const result = await staff.addStaffAccount("  New.Chef@Janoon.pk  ", "staff", "SharedSecret1!");
+  /**
+   * One call, and the whole job is done in the database.
+   *
+   * `admin_upsert_staff_account` creates the Auth identity when there isn't one,
+   * reuses the existing UUID when there is, hashes the password with bcrypt,
+   * confirms the address and writes one `staff_members` row. This project has
+   * "Confirm email" on, so creating the account from the browser alone left it
+   * unable to sign in — which is what the panel kept reporting as bad
+   * credentials.
+   */
+  test("one database call creates the account, records it, and returns the row", async () => {
+    upserted("auth-uuid-1");
+    writtenRow("auth-uuid-1", "new.chef@janoon.pk", "staff", "Imran Khan");
+
+    const result = await staff.addStaffAccount(
+      "  New.Chef@Janoon.pk  ",
+      "staff",
+      "SharedSecret1!",
+      "Imran Khan",
+    );
 
     expect(result).toEqual({
       createdSignIn: true,
       usedResetLink: false,
       passwordApplied: true,
+      // The database stamps the confirmation itself, so the address never sits
+      // in the unconfirmed state that blocks the first sign-in.
       needsConfirmation: false,
-      confirmedByPortal: false,
-      // Returned from the database, read back under the UUID the grant itself
-      // wrote — which is what lets the team list show the new member at once.
+      confirmedByPortal: true,
       member: {
         userId: "auth-uuid-1",
         email: "new.chef@janoon.pk",
-        displayName: "new.chef",
+        displayName: "Imran Khan",
         role: "staff",
         roles: ["staff"],
         active: true,
         createdAt: 1,
       },
     });
-    // The address is normalised, and the password goes to Auth — never to a table.
-    expect(inviteSignUps).toEqual([
-      { email: "new.chef@janoon.pk", password: "SharedSecret1!" },
-    ]);
-    expect(rpcCalls).toEqual([
-      { name: "admin_add_staff", args: { p_email: "new.chef@janoon.pk", p_role: "staff" } },
-    ]);
-    expect(JSON.stringify(rpcCalls)).not.toContain("SharedSecret1!");
 
-    // A client of its own, and one that never persists a session.
-    expect(clientOptions).toHaveLength(1);
-    expect(clientOptions[0]).toMatchObject({
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    // The address is normalised and the name travels with it.
+    expect(rpcCalls).toEqual([
+      {
+        name: "admin_upsert_staff_account",
+        args: {
+          p_email: "new.chef@janoon.pk",
+          p_password: "SharedSecret1!",
+          p_display_name: "Imran Khan",
+          p_role: "staff",
+        },
+      },
+    ]);
+    // Nothing is signed up from the browser, so no client is created and no
+    // second Auth user can ever appear for this address.
+    expect(inviteSignUps).toEqual([]);
+    expect(clientOptions).toEqual([]);
   });
 
-  test("with no password given, the member sets their own through a reset link", async () => {
-    granted("auth-uuid-2");
-    writtenRow("auth-uuid-2", "new@janoon.pk", "admin");
+  test("a role of admin is passed through, and the row is read back as admin", async () => {
+    upserted("auth-uuid-admin", { role: "admin" });
+    writtenRow("auth-uuid-admin", "head.chef@janoon.pk", "admin", "Ayesha");
 
-    const result = await staff.addStaffAccount("new@janoon.pk", "admin");
+    const result = await staff.addStaffAccount(
+      "head.chef@janoon.pk",
+      "admin",
+      "SharedSecret1!",
+      "Ayesha",
+    );
 
-    expect(result).toMatchObject({
-      createdSignIn: true,
-      usedResetLink: true,
-      passwordApplied: true,
-      needsConfirmation: false,
-      confirmedByPortal: false,
-      member: { userId: "auth-uuid-2", role: "admin", active: true },
-    });
-    expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
-    // A generated password exists only long enough to create the account.
-    expect(inviteSignUps[0].password.length).toBeGreaterThanOrEqual(8);
-    expect(JSON.stringify(rpcCalls)).not.toContain(inviteSignUps[0].password);
+    expect(rpcCalls[0].args).toMatchObject({ p_role: "admin" });
+    expect(result.member).toMatchObject({ role: "admin", active: true });
   });
 
   /**
-   * The trap behind "the new account cannot sign in".
+   * The join is verified, not assumed.
    *
-   * `signUp` answers "User already registered" for an address that has an
-   * account, and the password supplied with it is discarded — the old one stays.
-   * An admin who typed a password and was told "added" would hand over a
-   * credential that was never set, and the member would be refused at the till.
-   * So the call reports `passwordApplied: false` and emails a setup link, which
-   * is the only way to give that address a known password.
+   * The function answering without an error is not proof a row exists. It is
+   * read back under the Auth UUID the database itself returned, and a genuine
+   * absence is a failure with the real cause — never "added".
    */
+  test("a write with no team record behind it is a failure, not an added member", async () => {
+    upserted("auth-uuid-ghost");
+    tableReplies.staff_members = { data: null, error: null };
+
+    const attempt = staff.addStaffAccount(
+      "ghost@janoon.pk",
+      "staff",
+      "SharedSecret1!",
+    );
+
+    await expect(attempt).rejects.toThrow("no team record");
+    await expect(attempt).rejects.toThrow("auth-uuid-ghost");
+  });
+
+  test("an answer that names no Auth id is refused rather than reported as added", async () => {
+    rpcReplies.admin_upsert_staff_account = { data: { ok: true }, error: null };
+
+    await expect(
+      staff.addStaffAccount("nameless@janoon.pk", "staff", "SharedSecret1!"),
+    ).rejects.toThrow("cannot be checked");
+  });
+
+  /**
+   * An address that already has a Supabase account.
+   *
+   * The database reuses that identity — same UUID, same password — so no second
+   * Auth user is ever created for one address. The password typed here was
+   * never applied to that account, and saying so is the difference between
+   * handing over a credential that works and one that was never set.
+   */
+  test("an address that already has an account reuses it, and says the typed password was not applied", async () => {
+    upserted("auth-uuid-existing", {
+      authCreated: false,
+      passwordApplied: false,
+    });
+    writtenRow("auth-uuid-existing", "old@janoon.pk");
+
+    const result = await staff.addStaffAccount(
+      "old@janoon.pk",
+      "staff",
+      "BrandNew1!",
+    );
+
+    expect(result.createdSignIn).toBe(false);
+    expect(result.passwordApplied).toBe(false);
+    // The same UUID the account already had, so nothing was duplicated.
+    expect(result.member?.userId).toBe("auth-uuid-existing");
+  });
+
+  /* --------------------------------------------- the older-database fallback -- */
+
+  /** A project that has not run supabase/staff-auth.sql yet. */
+  const withoutUpsert = () => {
+    rpcReplies.admin_upsert_staff_account = {
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function" },
+    };
+  };
+
+  test("a project without the function falls back to the older two-call route", async () => {
+    withoutUpsert();
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId: "auth-uuid-old-path", role: "staff" },
+      error: null,
+    };
+    writtenRow("auth-uuid-old-path", "new.chef@janoon.pk");
+
+    const result = await staff.addStaffAccount(
+      "new.chef@janoon.pk",
+      "staff",
+      "SharedSecret1!",
+      "Imran Khan",
+    );
+
+    // The account is still created, on a throwaway client that cannot take over
+    // the admin's own session.
+    expect(inviteSignUps).toEqual([
+      { email: "new.chef@janoon.pk", password: "SharedSecret1!" },
+    ]);
+    expect(clientOptions).toHaveLength(1);
+    expect(clientOptions[0]).toMatchObject({ auth: { persistSession: false } });
+    expect(result.member).toMatchObject({ userId: "auth-uuid-old-path" });
+    // Both calls, in order, and the password never appears in either.
+    expect(rpcCalls.map((call) => call.name)).toEqual([
+      "admin_upsert_staff_account",
+      "admin_add_staff",
+    ]);
+    expect(JSON.stringify(rpcCalls.slice(1))).not.toContain("SharedSecret1!");
+  });
+
   test("an address that already has an account is reported, not quietly kept", async () => {
+    withoutUpsert();
     inviteSignUpReply = {
       data: { user: null, session: null },
       error: { message: "User already registered" },
     };
-    granted("auth-uuid-old");
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId: "auth-uuid-old", role: "staff" },
+      error: null,
+    };
     writtenRow("auth-uuid-old", "old@janoon.pk");
 
     const result = await staff.addStaffAccount("old@janoon.pk", "staff", "BrandNew1!");
@@ -594,29 +720,25 @@ describe("addStaffAccount", () => {
       createdSignIn: false,
       usedResetLink: true,
       passwordApplied: false,
-      needsConfirmation: false,
-      confirmedByPortal: false,
       member: { userId: "auth-uuid-old" },
     });
-    // The role is still granted, and the setup link is the recovery path.
-    expect(rpcCalls).toEqual([
-      { name: "admin_add_staff", args: { p_email: "old@janoon.pk", p_role: "staff" } },
-    ]);
     expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
   });
 
   test("an account that still has to confirm its address says so", async () => {
+    withoutUpsert();
     inviteSignUpReply = {
       data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
       error: null,
     };
-    granted("auth-uuid-3");
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId: "auth-uuid-3", role: "staff" },
+      error: null,
+    };
     writtenRow("auth-uuid-3", "new@janoon.pk");
 
     const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
 
-    // The password is set and will work — but not until the address is
-    // confirmed, which is the other reason a first sign-in is refused.
     expect(result).toMatchObject({
       createdSignIn: true,
       usedResetLink: true,
@@ -627,136 +749,16 @@ describe("addStaffAccount", () => {
     });
   });
 
-  /**
-   * The failure this whole read-back exists for.
-   *
-   * `admin_add_staff` can answer without an error and still leave nothing
-   * behind — an older copy of the function, a write the policies refused. The
-   * result is an account in `auth.users` with no row in `staff_members`: it
-   * signs in perfectly well and is then turned away at every portal door as
-   * somebody who is not staff. Reporting that as "added" is the false success
-   * the panel keeps being blamed for, so it throws with the real cause.
-   */
-  test("a grant that wrote no team record is a failure, not an added member", async () => {
-    granted("auth-uuid-ghost");
-    // The grant says fine; the row is not there.
-    tableReplies.staff_members = { data: null, error: null };
-
-    const attempt = staff.addStaffAccount("ghost@janoon.pk", "staff", "SharedSecret1!");
-
-    await expect(attempt).rejects.toThrow("no team record");
-    // The UUID the database handed back is named, so the gap is identifiable.
-    await expect(attempt).rejects.toThrow("auth-uuid-ghost");
-  });
-
-  /**
-   * An older database whose function answers without the Auth UUID.
-   *
-   * The read-back then falls back to the team list — still a real read of a real
-   * row, never an assumption — so the member is confirmed and shown. Only a
-   * genuine absence is a failure, which is the next test.
-   */
-  test("a grant that names no Auth id is confirmed through the team list", async () => {
-    rpcReplies.admin_add_staff = { data: { ok: true }, error: null };
-    rpcReplies.admin_list_staff = {
-      data: [
-        {
-          userId: "auth-uuid-found",
-          email: "nameless@janoon.pk",
-          displayName: "nameless",
-          role: "staff",
-          roles: ["staff"],
-          active: true,
-          createdAt: 1,
-        },
-      ],
-      error: null,
-    };
-
-    const result = await staff.addStaffAccount(
-      "nameless@janoon.pk",
-      "staff",
-      "SharedSecret1!",
-    );
-
-    expect(result.member).toEqual({
-      userId: "auth-uuid-found",
-      email: "nameless@janoon.pk",
-      displayName: "nameless",
-      role: "staff",
-      roles: ["staff"],
-      active: true,
-      createdAt: 1,
-    });
-  });
-
-  test("a member whose record is nowhere in the database is not reported as added", async () => {
-    // The grant says fine, and neither the UUID nor the team list has the row.
-    rpcReplies.admin_add_staff = {
-      data: { ok: true, userId: "auth-uuid-nowhere" },
-      error: null,
-    };
-    tableReplies.staff_members = { data: null, error: null };
-    rpcReplies.admin_list_staff = { data: [], error: null };
-
-    const attempt = staff.addStaffAccount(
-      "nameless@janoon.pk",
-      "staff",
-      "SharedSecret1!",
-    );
-
-    await expect(attempt).rejects.toThrow("no team record");
-    // And nothing is claimed on the panel's behalf.
-    await expect(attempt).rejects.toThrow("Add to team");
-  });
-
-  /**
-   * The permanent fix for "the new account cannot log in".
-   *
-   * When the project asks new accounts to confirm their address, the panel
-   * confirms it there and then through an admin-gated database function, so the
-   * member signs in with the password the owner just chose instead of waiting
-   * on a mail that may never arrive. Nothing is confirmed without the owner's
-   * call going to Postgres first, and the setup link is skipped once it is done.
-   */
-  test("an unconfirmed address is confirmed by the portal, so the first sign-in works", async () => {
-    inviteSignUpReply = {
-      data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
-      error: null,
-    };
-    granted("auth-uuid-4");
-    writtenRow("auth-uuid-4", "new@janoon.pk");
-    rpcReplies.admin_confirm_staff_email = {
-      data: { ok: true, confirmed: true },
-      error: null,
-    };
-
-    const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
-
-    expect(result).toMatchObject({
-      createdSignIn: true,
-      usedResetLink: false,
-      passwordApplied: true,
-      needsConfirmation: false,
-      confirmedByPortal: true,
-      member: { userId: "auth-uuid-4" },
-    });
-    // The owner-set password is the one that works, so no reset mail is needed.
-    expect(authCalls).toEqual([]);
-    expect(rpcCalls.map((call) => call.name)).toEqual([
-      "admin_add_staff",
-      "admin_confirm_staff_email",
-    ]);
-    // The address is the only thing that travels, never the password.
-    expect(JSON.stringify(rpcCalls)).not.toContain("SharedSecret1!");
-  });
-
   test("a database without the confirm function falls back to the setup link", async () => {
+    withoutUpsert();
     inviteSignUpReply = {
       data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
       error: null,
     };
-    granted("auth-uuid-5");
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId: "auth-uuid-5", role: "staff" },
+      error: null,
+    };
     writtenRow("auth-uuid-5", "new@janoon.pk");
     rpcReplies.admin_confirm_staff_email = {
       data: null,
@@ -769,10 +771,124 @@ describe("addStaffAccount", () => {
     expect(result).toMatchObject({
       createdSignIn: true,
       usedResetLink: true,
-      passwordApplied: true,
       needsConfirmation: true,
       confirmedByPortal: false,
       member: { userId: "auth-uuid-5" },
+    });
+  });
+
+  test("with no password given, the member sets their own through a reset link", async () => {
+    withoutUpsert();
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId: "auth-uuid-2", role: "admin" },
+      error: null,
+    };
+    writtenRow("auth-uuid-2", "new@janoon.pk", "admin");
+
+    const result = await staff.addStaffAccount("new@janoon.pk", "admin");
+
+    expect(result).toMatchObject({
+      createdSignIn: true,
+      usedResetLink: true,
+      passwordApplied: true,
+      member: { userId: "auth-uuid-2", role: "admin", active: true },
+    });
+    expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
+    // A generated password exists only long enough to create the account.
+    expect(inviteSignUps[0].password.length).toBeGreaterThanOrEqual(8);
+    expect(JSON.stringify(rpcCalls.slice(1))).not.toContain(inviteSignUps[0].password);
+  });
+
+  /**
+   * The race that leaves an account with no team record.
+   *
+   * A role is granted by looking the address up in `auth.users`, on a different
+   * connection from the one that created the account moments earlier. When that
+   * row has not landed yet the grant is refused — leaving an account that signs
+   * in perfectly well and is then turned away at every portal door as somebody
+   * who is not staff. The grant is therefore looked at again once, and the
+   * account is never created twice while that happens.
+   */
+  test("a role grant that cannot see the account yet is retried once", async () => {
+    withoutUpsert();
+    rpcReplies.admin_add_staff = {
+      data: null,
+      error: { message: "No Sign-in account exists for new@janoon.pk." },
+    };
+    // The row "lands" while the retry is waiting.
+    setTimeout(() => {
+      rpcReplies.admin_add_staff = {
+        data: { ok: true, userId: "auth-uuid-retry", role: "staff" },
+        error: null,
+      };
+    }, 50);
+    writtenRow("auth-uuid-retry", "new@janoon.pk");
+
+    const result = await staff.addStaffAccount(
+      "new@janoon.pk",
+      "staff",
+      "SharedSecret1!",
+    );
+
+    expect(result.passwordApplied).toBe(true);
+    expect(result.member?.userId).toBe("auth-uuid-retry");
+    // One account, not two: the retry re-reads the team, it does not re-sign-up.
+    expect(inviteSignUps).toHaveLength(1);
+  });
+
+  test("a role grant that stays blind says what to do, not a database sentence", async () => {
+    withoutUpsert();
+    rpcReplies.admin_add_staff = {
+      data: null,
+      error: { message: "No Sign-in account exists for new@janoon.pk." },
+    };
+
+    const attempt = staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
+
+    await expect(attempt).rejects.toThrow("Press “Add to team” once more");
+    // The raw sentence is replaced, not passed through to the screen.
+    await expect(attempt).rejects.not.toThrow("No Sign-in account exists");
+  });
+
+  test("an invalid address is refused before anything is sent anywhere", async () => {
+    await expect(staff.addStaffAccount("not-an-email", "staff")).rejects.toThrow(
+      "Enter a valid email address.",
+    );
+
+    expect(inviteSignUps).toEqual([]);
+    expect(rpcCalls).toEqual([]);
+    expect(clientOptions).toEqual([]);
+  });
+
+  /**
+   * No credential ever reaches a table.
+   *
+   * The password goes to exactly one place — the `admin_upsert_staff_account`
+   * argument, which hashes it with bcrypt inside the function. It is not
+   * written to `staff_members`, which has no column for it, and it is never
+   * sent to any other endpoint.
+   */
+  test("the password travels to one call and to no table", async () => {
+    upserted("auth-uuid-safe");
+    writtenRow("auth-uuid-safe", "new.chef@janoon.pk");
+
+    await staff.addStaffAccount("new.chef@janoon.pk", "staff", "SharedSecret1!");
+
+    const withSecret = JSON.stringify([
+      rpcCalls,
+      authCalls,
+      inviteSignUps,
+    ]);
+    expect((withSecret.match(/SharedSecret1!/g) ?? []).length).toBe(1);
+    // The one place it appears is the argument of the one database call.
+    expect(rpcCalls[0]).toEqual({
+      name: "admin_upsert_staff_account",
+      args: {
+        p_email: "new.chef@janoon.pk",
+        p_password: "SharedSecret1!",
+        p_display_name: null,
+        p_role: "staff",
+      },
     });
   });
 });
@@ -832,65 +948,6 @@ describe("verifyStaffSignIn", () => {
 
     expect(result.ok).toBe(false);
     expect(inviteSignIns).toEqual([]);
-  });
-
-  /**
-   * The race that leaves an account with no team record.
-   *
-   * A role is granted by looking the address up in `auth.users`, on a different
-   * connection from the one that created the account moments earlier. When that
-   * row has not landed yet the grant is refused — leaving an account that signs
-   * in perfectly well and is then turned away at every portal door as somebody
-   * who is not staff. The grant is therefore looked at again once, and the
-   * account is never created twice while that happens.
-   */
-  test("a role grant that cannot see the account yet is retried once", async () => {
-    rpcReplies.admin_add_staff = {
-      data: null,
-      error: { message: "No Sign-in account exists for new@janoon.pk." },
-    };
-    // The row "lands" while the retry is waiting.
-    setTimeout(() => {
-      rpcReplies.admin_add_staff = {
-        data: { ok: true, userId: "auth-uuid-retry" },
-        error: null,
-      };
-    }, 50);
-    tableReplies.staff_members = {
-      data: {
-        user_id: "auth-uuid-retry",
-        email: "new@janoon.pk",
-        display_name: "new",
-        role: "staff",
-        active: true,
-        created_at: 1,
-      },
-      error: null,
-    };
-
-    const result = await staff.addStaffAccount(
-      "new@janoon.pk",
-      "staff",
-      "SharedSecret1!",
-    );
-
-    expect(result.passwordApplied).toBe(true);
-    expect(result.member?.userId).toBe("auth-uuid-retry");
-    // One account, not two: the retry re-reads the team, it does not re-sign-up.
-    expect(inviteSignUps).toHaveLength(1);
-  });
-
-  test("a role grant that stays blind says what to do, not a database sentence", async () => {
-    rpcReplies.admin_add_staff = {
-      data: null,
-      error: { message: "No Sign-in account exists for new@janoon.pk." },
-    };
-
-    const attempt = staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
-
-    await expect(attempt).rejects.toThrow("Press “Add to team” once more");
-    // The raw sentence is replaced, not passed through to the screen.
-    await expect(attempt).rejects.not.toThrow("No Sign-in account exists");
   });
 
   test("an invalid address is refused before anything is sent anywhere", async () => {
@@ -1923,6 +1980,7 @@ describe("the security schema", () => {
     "staff_sync_email",
     "admin_list_staff",
     "admin_add_staff",
+    "admin_upsert_staff_account",
     "admin_set_staff_role",
     "admin_set_staff_active",
     "admin_remove_staff",
@@ -1952,6 +2010,211 @@ describe("the security schema", () => {
     expect(patch).toContain("'version', 2");
     // The setup card calls this while signed out, before it can sign anybody in.
     expect(patch).toMatch(/grant execute on function public\.claim_admin_for_email\(text\) to anon/);
+  });
+
+  /**
+   * The dedicated staff-auth migration.
+   *
+   * It is the file that has to be pasted, so its promises are read out of the
+   * SQL rather than trusted: one call that creates or reuses the Auth identity
+   * and writes the team row, an admin-only confirmation, and a rule that touches
+   * nothing outside the auth and staff tables.
+   */
+  test("the staff-auth migration defines every function the Team screen needs", () => {
+    const sql = readSql("staff-auth.sql");
+
+    for (const name of [
+      "admin_upsert_staff_account",
+      "admin_confirm_staff_email",
+      "admin_delete_staff_account",
+      "admin_sync_staff_roles",
+      "admin_set_staff_active",
+      "admin_set_staff_role",
+      "admin_remove_staff",
+    ]) {
+      expect([name, sql.includes(`create or replace function public.${name}(`)]).toEqual([
+        name,
+        true,
+      ]);
+    }
+
+    // The one call the app makes is also defined in the two files that ship it.
+    for (const file of ["schema.sql", "fix-admin-recovery.sql"]) {
+      expect([
+        file,
+        readSql(file).includes(
+          "create or replace function public.admin_upsert_staff_account(",
+        ),
+      ]).toEqual([file, true]);
+    }
+  });
+
+  /** The body of the one call the Team screen makes. */
+  const upsertBody = () => {
+    const sql = readSql("staff-auth.sql");
+    const start = sql.indexOf(
+      "create or replace function public.admin_upsert_staff_account(",
+    );
+    return sql.slice(start, sql.indexOf("$$;", start));
+  };
+
+  /** Reuses an identity by address, and never creates a second one. */
+  test("the account is found before it is created, and creation needs a password", () => {
+    const body = upsertBody();
+
+    // The lookup by address comes before the insert, and it is inside the same
+    // function, so the check and the write cannot drift apart.
+    const looked = body.indexOf("from auth.users u");
+    const inserted = body.indexOf("insert into auth.users");
+    expect([looked > -1, inserted > -1, looked < inserted]).toEqual([true, true, true]);
+    expect(body).toContain("where lower(u.email) = v_email");
+    // Creating an identity with no password is refused rather than producing an
+    // account nobody can sign in to.
+    expect(body).toContain("if length(v_password) < 8 then");
+    // And the team row is keyed by the UUID, so one identity cannot hold two.
+    expect(body).toContain("on conflict (user_id) do update");
+  });
+
+  /** No service-role key, no plaintext password column, ever. */
+  test("no secret is embedded and no password is stored in a readable column", () => {
+    const sql = readSql("staff-auth.sql");
+
+    // The password is hashed in the statement and only ever lands in the digest
+    // column GoTrue itself keeps.
+    expect(sql).toContain(
+      "extensions.crypt(v_password, extensions.gen_salt('bf', 10))",
+    );
+    expect(sql).toContain("encrypted_password");
+    // No column of our own ever holds a password: the only one in the file is
+    // the function argument, which exists for the length of the call.
+    const parameters = [...sql.matchAll(/^\s{2,4}p_\w+\s+[\w, ]+\)?$/gm)].map((m) =>
+      m[0].trim(),
+    );
+    expect(parameters.filter((line) => /password/i.test(line))).toEqual([
+      "p_password     text,",
+    ]);
+    // No service-role key, and no grant of one.
+    expect(sql).not.toMatch(/service_role/i);
+  });
+
+  /** Confirmation is done for one address on this team, never globally. */
+  test("confirmation is admin-only and never a project-wide switch", () => {
+    // Statements only: the header explains the setting by name, and a mention in
+    // prose is not a statement that changes it — which is exactly the difference
+    // this guard is about.
+    const statements = readSql("staff-auth.sql")
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("--"))
+      .join("\n");
+
+    expect(upsertBody()).toContain("if not public.is_admin() then");
+    expect(upsertBody()).toContain(
+      "email_confirmed_at = coalesce(email_confirmed_at, now())",
+    );
+    // A blanket switch would confirm strangers too.
+    expect(statements).not.toMatch(
+      /mailer_autoconfirm|disable_confirmations|enable_signup|auth\.config/i,
+    );
+    // The hand-written one is admin-only and only for an address already on the
+    // team, so it cannot be used to confirm a stranger's account.
+    const schema = readSql("schema.sql");
+    const confirm = schema.slice(
+      schema.indexOf(
+        "create or replace function public.admin_confirm_staff_email(",
+      ),
+    );
+    expect(confirm).toContain("That address is not on this team.");
+  });
+
+  /** The last admin cannot be deactivated, removed or deleted. */
+  test("the last active admin is protected in every direction", () => {
+    const sql = readSql("staff-auth.sql");
+    const guards = sql.match(/tribe_active_admins\(\) <= 1/g) ?? [];
+
+    // Once in each of: deactivate, remove, delete, demote.
+    expect(guards.length).toBe(4);
+    expect(sql).toContain(
+      "This is the only admin account — it cannot be deactivated.",
+    );
+    expect(sql).toContain("This is the only admin account — it cannot be removed.");
+    expect(sql).toContain("This is the only admin account — it cannot be deleted.");
+    expect(sql).toContain(
+      "This is the only admin account — make someone else an admin first.",
+    );
+    // And nobody deletes the account they are signed in with.
+    expect(sql).toContain("You cannot delete the account you are signed in with.");
+  });
+
+  /**
+   * It touches the auth and staff tables, and nothing else.
+   *
+   * A migration that reads or writes a business table is a migration that can
+   * lose a customer's booking. The check is over every statement, so a comment
+   * mentioning one does not count and a statement writing one does not slip by.
+   */
+  test("no business table is read, written or deleted", () => {
+    const sql = readSql("staff-auth.sql");
+    const statements = sql
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("--"))
+      .join("\n");
+
+    for (const table of [
+      "menu_categories",
+      "menu_dishes",
+      "menu_addons",
+      "addon_categories",
+      "site_media",
+      "counter_media",
+      "site_content",
+      "reservations",
+      "preorders",
+      "pre_order_items",
+      "delivery_orders",
+      "promotions",
+      "orders",
+    ]) {
+      const writes = new RegExp(
+        `(delete from|insert into|update|truncate)\\s+\\w*\\.?${table}\\b`,
+        "i",
+      );
+      expect([table, writes.test(statements)]).toEqual([table, false]);
+    }
+
+    // The tables it is allowed to touch, and the ones it really does.
+    const touched = [
+      ...new Set(
+        [
+          ...statements.matchAll(
+            /(?:insert into|update|delete from)\s+((?:public|auth)\.[a-z_]+)/gi,
+          ),
+        ].map((match) => match[1].toLowerCase()),
+      ),
+    ].sort();
+    expect(touched).toEqual([
+      "auth.identities",
+      "auth.users",
+      "public.staff_member_roles",
+      "public.staff_members",
+    ]);
+  });
+
+  /**
+   * Idempotent, and the `.txt` twin is the same file.
+   *
+   * The two copies drifted apart once, and the stale one is exactly what a
+   * reader opens: it listed fourteen functions and none of the three that were
+   * actually needed. Every staff SQL file now has to ship with an identical
+   * `.txt`, so what is read is always what runs.
+   */
+  test("every staff SQL file ships an identical .txt twin", () => {
+    for (const file of ["staff-auth.sql", "fix-admin-recovery.sql", "schema.sql"]) {
+      const sql = readFileSync(new URL(`../supabase/${file}`, import.meta.url));
+      const twin = readFileSync(
+        new URL(`../supabase/${file}.txt`, import.meta.url),
+      );
+      expect([file, sql.equals(twin)]).toEqual([file, true]);
+    }
   });
 
   test("every function the patch installs is the schema's own definition", () => {

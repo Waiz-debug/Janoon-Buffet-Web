@@ -739,6 +739,166 @@ begin
   );
 end $$;
 
+--  Create OR reuse the sign-in account, and record it — all in one call.
+--
+--  `admin_add_staff` above only grants a role to an account that already exists,
+--  which leaves the browser to create the Auth user first. On a project with
+--  "Confirm email" switched on that account is created unconfirmed and cannot
+--  sign in — the state reported as "incorrect credentials". This function does
+--  the whole job in Postgres: reuse the existing UUID for an address that has
+--  one, create the identity here when it does not, hash the password with
+--  bcrypt (the plaintext is never stored anywhere), confirm the address, write
+--  exactly one `staff_members` row under that UUID, and return what was written.
+--
+--  No service-role key is involved: a browser can only ask, and this function
+--  refuses any caller whose own row is not an active admin.
+create or replace function public.admin_upsert_staff_account(
+  p_email        text,
+  p_password     text,
+  p_display_name text default null,
+  p_role         text default 'staff'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_email    text := lower(trim(coalesce(p_email, '')));
+  v_role     text := case when p_role = 'admin' then 'admin' else 'staff' end;
+  v_name     text;
+  v_password text := coalesce(p_password, '');
+  v_uid      uuid;
+  v_created  boolean := false;
+  v_stored   boolean := false;   -- was the supplied password actually set?
+  v_confirmed boolean := false;  -- was the address unconfirmed a moment ago?
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  v_name := nullif(trim(coalesce(p_display_name, '')), '');
+  if v_name is null then
+    v_name := coalesce(nullif(split_part(v_email, '@', 1), ''), 'Team');
+  end if;
+
+  -- 2. The identity for this address, if there is one. Reused as-is.
+  select u.id, u.email_confirmed_at is null, u.encrypted_password is not null
+    into v_uid, v_confirmed, v_stored
+    from auth.users u
+   where lower(u.email) = v_email
+   limit 1;
+
+  -- 3. No identity: make one here. The password is hashed in this statement and
+  --    survives only as the bcrypt digest GoTrue itself keeps.
+  if v_uid is null then
+    if length(v_password) < 8 then
+      raise exception
+        'A password of at least 8 characters is required to create a new sign-in account.';
+    end if;
+
+    v_uid := gen_random_uuid();
+
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password,
+      email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at,
+      confirmation_token, email_change, email_change_token_new, recovery_token
+    )
+    values (
+      coalesce(
+        (select u2.instance_id from auth.users u2 limit 1),
+        '00000000-0000-0000-0000-000000000000'::uuid
+      ),
+      v_uid,
+      'authenticated',
+      'authenticated',
+      v_email,
+      extensions.crypt(v_password, extensions.gen_salt('bf', 10)),
+      now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      jsonb_build_object('full_name', v_name),
+      now(), now(),
+      '', '', '', ''
+    );
+
+    -- GoTrue expects one identity row per provider. Without it the account
+    -- exists but cannot sign in, which looks exactly like a missing account.
+    insert into auth.identities (
+      id, user_id, provider_id, identity_data, provider,
+      last_sign_in_at, created_at, updated_at
+    )
+    values (
+      v_uid, v_uid, v_uid,
+      jsonb_build_object(
+        'sub', v_uid,
+        'email', v_email,
+        'email_verified', true,
+        'phone_verified', false
+      ),
+      'email',
+      now(), now(), now()
+    );
+
+    v_created := true;
+    v_stored := true;
+  end if;
+
+  -- 4. Confirm the address. Only ever for an address this admin has just
+  --    resolved, and only while they are an admin — never a blanket switch, and
+  --    never a confirmation of a stranger's account. `coalesce` leaves an
+  --    already-confirmed address exactly as it was.
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now()),
+         updated_at         = now()
+   where id = v_uid;
+  get diagnostics v_confirmed = row_count;
+
+  -- 5. Exactly one team row, keyed by the Auth UUID, with the role maintained in
+  --    the junction table.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, v_name, v_role, true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set email        = excluded.email,
+        display_name = excluded.display_name,
+        active       = true,
+        -- Promotion only. Demotion is admin_set_staff_role's job, and it
+        -- carries the last-admin guard; doing it here would route around it.
+        role = case
+                 when public.staff_members.role = 'admin' then 'admin'
+                 else excluded.role
+               end;
+
+  -- 6. The row as stored, not as requested.
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', v_role,
+    'active', true,
+    'authCreated', v_created,
+    'passwordApplied', v_created or not v_stored,
+    'confirmed', v_confirmed
+  );
+end $$;
+
+revoke all on function public.admin_upsert_staff_account(text, text, text, text) from public;
+grant execute on function public.admin_upsert_staff_account(text, text, text, text) to authenticated;
+
 --  Change a role. Refuses to remove the last admin.
 create or replace function public.admin_set_staff_role(
   p_user_id uuid,

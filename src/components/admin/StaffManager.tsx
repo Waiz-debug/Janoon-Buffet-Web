@@ -62,6 +62,7 @@ export function StaffManager() {
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<StaffRole>("staff");
   const [initialPassword, setInitialPassword] = useState("");
   const [addBusy, setAddBusy] = useState(false);
@@ -155,9 +156,10 @@ export function StaffManager() {
     const address = email.trim().toLowerCase();
     const chosen = initialPassword.trim();
     try {
-      const result = await addStaffAccount(email, role, initialPassword);
+      const result = await addStaffAccount(email, role, initialPassword, displayName);
       setConfirmingAdd(false);
       setEmail("");
+      setDisplayName("");
       setInitialPassword("");
       setHandover(
         result.createdSignIn ? { email: address, password: chosen || null } : null,
@@ -318,14 +320,33 @@ export function StaffManager() {
               Add a team member
             </p>
             <p className="text-xs text-muted-foreground">
-              This creates their sign-in account via Supabase Auth and records
-              the role — no service-role key, and nothing to configure in the
-              dashboard.
+              One call creates their sign-in account and writes their team
+              record under the same Auth ID — no service-role key, and nothing
+              to configure in the dashboard. An address that already has an
+              account keeps it, so nobody is ever created twice.
             </p>
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="team-name" className="text-xs">
+              Their name
+            </Label>
+            <Input
+              id="team-name"
+              value={displayName}
+              placeholder="Imran Khan"
+              autoComplete="off"
+              className="h-11 rounded-xl bg-background/60"
+              onChange={(event) => {
+                setAddError(null);
+                setAddDone(null);
+                setDisplayName(event.target.value);
+              }}
+            />
+          </div>
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="team-email" className="text-xs">
               Their email
@@ -444,7 +465,11 @@ export function StaffManager() {
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-3"
           >
             <p className="text-xs leading-relaxed text-foreground/90">
-              Add <span className="text-foreground">{email.trim()}</span> as{" "}
+              Add{" "}
+              <span className="text-foreground">
+                {displayName.trim() || email.trim()}
+              </span>
+              {displayName.trim() ? ` (${email.trim()})` : ""} as{" "}
               {role === "admin" ? "an admin" : "staff"}?
             </p>
             <div className="flex items-center gap-2">

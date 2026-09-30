@@ -1,13 +1,18 @@
 -- ============================================================================
 --  Junoon — Supabase schema
---
---  NOTE: this file differs from supabase/schema.sql only by the SQL-Editor-only
---  `factory_reset_staff()` block at the very end, whose comment is out of date:
---  reopening "Create Admin Account" no longer needs Supabase Auth users deleted —
---  an empty admin list is enough. Prefer supabase/schema.sql, and see
---  supabase/admin-recovery.sql for the recovery runbook.
---
 --  Paste this whole file into the Supabase SQL editor and run it once.
+--
+--  A project created by an earlier copy of this file is repaired by
+--  supabase/official-menu.sql: its section 1a lifts the requirements those
+--  revisions left on columns the app has never written, gives the dish key a
+--  default, and creates the counter hero-image table.
+--
+--  Run supabase/transactions.sql after this file. It is the current version of
+--  the transaction layer — the `JNX-XXXXX` reference codes every reservation,
+--  pre-order and delivery is given, the guest lookups, the rate limits, and
+--  the staff-only `tribe_find_by_reference()` behind the desks' "Find by Code"
+--  box. The copies further down are the originals; this file supersedes them.
+--
 --  It is idempotent: re-running it will not drop or duplicate anything.
 --
 --  Timestamps are stored as milliseconds since the epoch (bigint) so the
@@ -56,6 +61,19 @@ create table if not exists public.site_media (
   caption     text,
   -- `url` holds an external demo photo; `image_path` holds an uploaded object
   -- inside the tribe-media bucket. An upload always clears the other one.
+  url         text,
+  image_path  text,
+  demo        boolean not null default false,
+  updated_at  bigint not null default 0
+);
+
+-- Hero image attached to a counter (one row per counter id).
+-- Used by the admin Counters tab and the public counter section.
+-- Same storage model as site_media: `url` for a legacy/demo image, `image_path`
+-- for an uploaded object that owns the graphic outright.
+create table if not exists public.counter_media (
+  slot        text primary key,
+  caption     text,
   url         text,
   image_path  text,
   demo        boolean not null default false,
@@ -291,8 +309,8 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
-    'site_media', 'site_content', 'delivery_orders', 'reservations',
-    'promotions', 'preorders', 'pre_order_items'
+    'site_media', 'counter_media', 'site_content', 'delivery_orders',
+    'reservations', 'promotions', 'preorders', 'pre_order_items'
   ]
   loop
     begin
@@ -359,6 +377,23 @@ create table if not exists public.staff_members (
 
 alter table public.staff_members enable row level security;
 
+--  Junction table for multi-role support: one row per (user, role).
+--  A user can hold both admin and staff roles simultaneously.
+create table if not exists public.staff_member_roles (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  role       text not null check (role in ('staff', 'admin')),
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (user_id, role)
+);
+
+alter table public.staff_member_roles enable row level security;
+
+--  Seed junction table from existing staff_members data.
+insert into public.staff_member_roles (user_id, role, created_at)
+select sm.user_id, sm.role, sm.created_at
+  from public.staff_members sm
+  on conflict (user_id, role) do nothing;
+
 --  The policy that lets a member read their own row lives in the identity
 --  helpers section below, because it calls `is_staff()` — see the note there.
 
@@ -373,9 +408,22 @@ security definer
 set search_path = public
 stable
 as $$
+  --  One row decides, and `active` is part of that decision: an account whose
+  --  row has been switched off in the Team screen is not staff, so switching
+  --  somebody off really does close the door. The junction table still adds the
+  --  extra roles, but it never grants access on its own.
   select exists (
-    select 1 from public.staff_members
-     where user_id = auth.uid() and active
+    select 1
+      from public.staff_members sm
+     where sm.user_id = auth.uid()
+       and sm.active
+       and (
+         sm.role = 'admin'
+         or exists (
+           select 1 from public.staff_member_roles r
+            where r.user_id = sm.user_id
+         )
+       )
   );
 $$;
 
@@ -386,9 +434,21 @@ security definer
 set search_path = public
 stable
 as $$
+  --  Same rule as is_staff(): an active row in `staff_members`, whose role is
+  --  admin either as its primary role or through the junction table. A row
+  --  switched off is refused even while it still lists the admin role.
   select exists (
-    select 1 from public.staff_members
-     where user_id = auth.uid() and active and role = 'admin'
+    select 1
+      from public.staff_members sm
+     where sm.user_id = auth.uid()
+       and sm.active
+       and (
+         sm.role = 'admin'
+         or exists (
+           select 1 from public.staff_member_roles r
+            where r.user_id = sm.user_id and r.role = 'admin'
+         )
+       )
   );
 $$;
 
@@ -413,6 +473,12 @@ grant execute on function public.is_admin() to anon, authenticated;
 --  path to grant yourself access.
 drop policy if exists staff_members_select on public.staff_members;
 create policy staff_members_select on public.staff_members
+  for select to authenticated
+  using (user_id = auth.uid() or public.is_staff());
+
+-- staff_member_roles policy — same rules as staff_members.
+drop policy if exists staff_member_roles_select on public.staff_member_roles;
+create policy staff_member_roles_select on public.staff_member_roles
   for select to authenticated
   using (user_id = auth.uid() or public.is_staff());
 
@@ -456,8 +522,10 @@ as $$
       select 1 from public.staff_members
        where role = 'admin' and active
     ),
-    --  Rule marker: a database still on the first version of this function
-    --  answers without it, which is how the sign-in card spots a stale schema.
+    --  Rule marker. A database still carrying the first version of this
+    --  function answers without it, which is how the sign-in card knows the
+    --  schema has not been updated yet — an older build hid the setup action
+    --  whenever *any* staff row existed, which is a different question.
     'version', 2
   );
 $$;
@@ -494,13 +562,10 @@ begin
 
   lock table public.staff_members in exclusive mode;
 
-  --  Re-read after the lock: only an active admin closes the door. This is the
-  --  same test `staff_bootstrap_state()` reports, so the button and the claim
-  --  can never disagree.
-  if exists (
-    select 1 from public.staff_members
-     where role = 'admin' and active
-  ) then
+  --  Re-read after the lock, through the same helper the sign-in card asks, so
+  --  the button and the claim can never disagree: one active admin closes the
+  --  door.
+  if public.tribe_active_admins() > 0 then
     raise exception 'An admin account already exists for this restaurant.'
       using errcode = '23505';
   end if;
@@ -516,6 +581,11 @@ begin
   on conflict (user_id) do update
     set role = 'admin', active = true, email = excluded.email;
 
+  -- Also add to junction table.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, 'admin', (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
   return jsonb_build_object('ok', true, 'role', 'admin', 'email', v_email);
 end $$;
 
@@ -528,6 +598,89 @@ revoke all on function public.claim_admin() from public;
 grant execute on function public.claim_admin() to authenticated;
 
 grant execute on function public.staff_bootstrap_state() to anon, authenticated;
+
+-- ----------------------------------------------------------------- bootstrap --
+--  `claim_admin_for_email` is the recovery counterpart to `claim_admin`. The
+--  existing `claim_admin()` requires the caller to be signed in as the target
+--  user (`auth.uid()`), which means the password must already match. When the
+--  owner's email already exists in Supabase Auth (e.g. as a staff member or a
+--  customer who made a reservation) but they don't recall their password, the
+--  normal flow returns "An account already exists for that email, and that
+--  password does not match it."
+--
+--  This function grants admin to an existing auth user identified by email —
+--  no session needed. The guard is the same as `claim_admin`: it only works
+--  while no active admin exists. Once an admin exists, the door is shut and
+--  this function always refuses.
+--
+--  Security:
+--  • Only callable while `staff_bootstrap_state().claimable` is true.
+--  • The target email must exist in `auth.users`.
+--  • A staff account cannot self-promote (same rule as `claim_admin`).
+--  • No session is created — the user must still sign in with their existing
+--    password, so only the real account holder gains access.
+-- --------------------------------------------------------------------------
+create or replace function public.claim_admin_for_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid   uuid;
+  v_role  text;
+begin
+  -- Look up the auth user by email. SECURITY DEFINER lets us read auth.users.
+  select id into v_uid from auth.users where email = p_email;
+
+  if v_uid is null then
+    raise exception 'No account found for that email address.'
+      using errcode = '23503';
+  end if;
+
+  -- An account already on the team as staff may never promote itself.
+  select role into v_role
+    from public.staff_members
+   where user_id = v_uid;
+
+  if v_role = 'staff' then
+    raise exception
+      'Staff accounts cannot claim admin access. Ask an admin to grant it.'
+      using errcode = '42501';
+  end if;
+
+  lock table public.staff_members in exclusive mode;
+
+  --  Re-read after the lock, through the same helper the sign-in card asks, so
+  --  the button and the claim can never disagree: one active admin closes the
+  --  door.
+  if public.tribe_active_admins() > 0 then
+    raise exception 'An admin account already exists for this restaurant.'
+      using errcode = '23505';
+  end if;
+
+  -- Create or update the admin record for the existing auth user.
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, p_email, 'Owner', 'admin', true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set role = 'admin', active = true, email = excluded.email;
+
+  -- Also add to junction table for multi-role support.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, 'admin', (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  return jsonb_build_object('ok', true, 'role', 'admin', 'email', p_email);
+end $$;
+
+--  Open to both anon and authenticated: the function itself is gated by the
+--  "no admin exists" check, and it never creates a session — the caller must
+--  still authenticate with the real password to use the newly granted access.
+grant execute on function public.claim_admin_for_email(text) to anon, authenticated;
 
 -- ------------------------------------- staff self-service & team admin ----
 --  Two things live here, and they are deliberately different in who they ask:
@@ -594,6 +747,7 @@ begin
                'email',       sm.email,
                'displayName', sm.display_name,
                'role',        sm.role,
+               'roles',       coalesce(r.roles, jsonb_build_array(sm.role)),
                'active',      sm.active,
                'createdAt',   sm.created_at
              )
@@ -602,7 +756,12 @@ begin
            '[]'::jsonb
          )
     into v_rows
-    from public.staff_members sm;
+    from public.staff_members sm
+    left join lateral (
+      select jsonb_agg(r2.role) as roles
+        from public.staff_member_roles r2
+       where r2.user_id = sm.user_id
+    ) r on true;
 
   return v_rows;
 end $$;
@@ -662,6 +821,20 @@ begin
       v_email;
   end if;
 
+  -- Add to the junction table (multi-role support).
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  -- Also ensure a row in staff_members (legacy table).
+  --
+  -- `user_id` is the primary key, so this can never produce a second record for
+  -- one Auth identity — that is the whole reason the join is written this way
+  -- round rather than keyed by address. On a repeat call the row is refreshed
+  -- rather than replaced: the address and the active flag follow the account,
+  -- and the primary role is only ever promoted here (staff → admin). Demotion
+  -- is `admin_set_staff_role`'s job, and it carries the last-admin guard; doing
+  -- it from an "add" call would be a way around that guard.
   insert into public.staff_members
     (user_id, email, display_name, role, active, created_at)
   values (
@@ -669,12 +842,186 @@ begin
     (extract(epoch from now()) * 1000)::bigint
   )
   on conflict (user_id) do update
-    set role  = excluded.role,
-        email = excluded.email,
-        active = true;
+    set email = excluded.email,
+        active = true,
+        role = case
+                 when public.staff_members.role = 'admin' then 'admin'
+                 else excluded.role
+               end;
 
-  return jsonb_build_object('ok', true, 'userId', v_uid, 'email', v_email, 'role', v_role);
+  -- The row is returned rather than a bare acknowledgement. The caller needs
+  -- the Auth UUID that was actually written, so it can read the same record
+  -- back and confirm the join before telling anybody the account was added —
+  -- `admin_add_staff` answering without an error is not proof the row exists.
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', v_role,
+    'active', true
+  );
 end $$;
+
+--  Create OR reuse the sign-in account, and record it — all in one call.
+--
+--  `admin_add_staff` above only grants a role to an account that already exists,
+--  which leaves the browser to create the Auth user first. On a project with
+--  "Confirm email" switched on that account is created unconfirmed and cannot
+--  sign in — the state reported as "incorrect credentials". This function does
+--  the whole job in Postgres: reuse the existing UUID for an address that has
+--  one, create the identity here when it does not, hash the password with
+--  bcrypt (the plaintext is never stored anywhere), confirm the address, write
+--  exactly one `staff_members` row under that UUID, and return what was written.
+--
+--  No service-role key is involved: a browser can only ask, and this function
+--  refuses any caller whose own row is not an active admin.
+create or replace function public.admin_upsert_staff_account(
+  p_email        text,
+  p_password     text,
+  p_display_name text default null,
+  p_role         text default 'staff'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_email    text := lower(trim(coalesce(p_email, '')));
+  v_role     text := case when p_role = 'admin' then 'admin' else 'staff' end;
+  v_name     text;
+  v_password text := coalesce(p_password, '');
+  v_uid      uuid;
+  v_created  boolean := false;
+  v_stored   boolean := false;   -- was the supplied password actually set?
+  v_confirmed boolean := false;  -- was the address unconfirmed a moment ago?
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'A valid email address is required.';
+  end if;
+
+  v_name := nullif(trim(coalesce(p_display_name, '')), '');
+  if v_name is null then
+    v_name := coalesce(nullif(split_part(v_email, '@', 1), ''), 'Team');
+  end if;
+
+  -- 2. The identity for this address, if there is one. Reused as-is.
+  select u.id, u.email_confirmed_at is null, u.encrypted_password is not null
+    into v_uid, v_confirmed, v_stored
+    from auth.users u
+   where lower(u.email) = v_email
+   limit 1;
+
+  -- 3. No identity: make one here. The password is hashed in this statement and
+  --    survives only as the bcrypt digest GoTrue itself keeps.
+  if v_uid is null then
+    if length(v_password) < 8 then
+      raise exception
+        'A password of at least 8 characters is required to create a new sign-in account.';
+    end if;
+
+    v_uid := gen_random_uuid();
+
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password,
+      email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at,
+      confirmation_token, email_change, email_change_token_new, recovery_token
+    )
+    values (
+      coalesce(
+        (select u2.instance_id from auth.users u2 limit 1),
+        '00000000-0000-0000-0000-000000000000'::uuid
+      ),
+      v_uid,
+      'authenticated',
+      'authenticated',
+      v_email,
+      extensions.crypt(v_password, extensions.gen_salt('bf', 10)),
+      now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      jsonb_build_object('full_name', v_name),
+      now(), now(),
+      '', '', '', ''
+    );
+
+    -- GoTrue expects one identity row per provider. Without it the account
+    -- exists but cannot sign in, which looks exactly like a missing account.
+    insert into auth.identities (
+      id, user_id, provider_id, identity_data, provider,
+      last_sign_in_at, created_at, updated_at
+    )
+    values (
+      v_uid, v_uid, v_uid,
+      jsonb_build_object(
+        'sub', v_uid,
+        'email', v_email,
+        'email_verified', true,
+        'phone_verified', false
+      ),
+      'email',
+      now(), now(), now()
+    );
+
+    v_created := true;
+    v_stored := true;
+  end if;
+
+  -- 4. Confirm the address. Only ever for an address this admin has just
+  --    resolved, and only while they are an admin — never a blanket switch, and
+  --    never a confirmation of a stranger's account. `coalesce` leaves an
+  --    already-confirmed address exactly as it was.
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now()),
+         updated_at         = now()
+   where id = v_uid;
+  get diagnostics v_confirmed = row_count;
+
+  -- 5. Exactly one team row, keyed by the Auth UUID, with the role maintained in
+  --    the junction table.
+  insert into public.staff_member_roles (user_id, role, created_at)
+  values (v_uid, v_role, (extract(epoch from now()) * 1000)::bigint)
+  on conflict (user_id, role) do nothing;
+
+  insert into public.staff_members
+    (user_id, email, display_name, role, active, created_at)
+  values (
+    v_uid, v_email, v_name, v_role, true,
+    (extract(epoch from now()) * 1000)::bigint
+  )
+  on conflict (user_id) do update
+    set email        = excluded.email,
+        display_name = excluded.display_name,
+        active       = true,
+        -- Promotion only. Demotion is admin_set_staff_role's job, and it
+        -- carries the last-admin guard; doing it here would route around it.
+        role = case
+                 when public.staff_members.role = 'admin' then 'admin'
+                 else excluded.role
+               end;
+
+  -- 6. The row as stored, not as requested.
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', v_role,
+    'active', true,
+    'authCreated', v_created,
+    'passwordApplied', v_created or not v_stored,
+    'confirmed', v_confirmed
+  );
+end $$;
+
+revoke all on function public.admin_upsert_staff_account(text, text, text, text) from public;
+grant execute on function public.admin_upsert_staff_account(text, text, text, text) to authenticated;
 
 --  Change a role. Refuses to remove the last admin.
 create or replace function public.admin_set_staff_role(
@@ -775,17 +1122,302 @@ begin
     raise exception 'This is the only admin account — it cannot be removed.';
   end if;
 
+  -- Clean up junction table first.
+  delete from public.staff_member_roles where user_id = p_user_id;
+
   delete from public.staff_members where user_id = p_user_id;
 
   return jsonb_build_object('ok', true, 'userId', p_user_id);
 end $$;
 
+--  Erase a team member for good — the sign-in account as well as the team rows.
+--
+--  `admin_remove_staff` above takes away access and leaves the Auth account
+--  standing, which is the right default: it is reversible. This one is not. It
+--  deletes the row in `auth.users` — the identities go with it by cascade — so
+--  the email address is released and can be registered again from scratch. It
+--  is the action behind "delete this person properly" when someone leaves for
+--  good and their address should be reusable.
+--
+--  Three guards, and they are the reason this is safe to offer from a panel:
+--  the caller must be an admin, nobody may delete the account they are signed
+--  in with, and the last admin cannot be deleted. Nothing outside
+--  `staff_members`, `staff_member_roles` and the one auth row is touched.
+--
+--  Deleting from `auth.users` needs rights this function has only because it is
+--  `security definer` and owned by the role that runs the SQL editor. A
+--  publishable key can never do this — which is exactly why it is a function in
+--  Postgres rather than a call from the browser.
+create or replace function public.admin_delete_staff_account(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role    text;
+  v_email   text;
+  v_deleted integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  select sm.role, u.email
+    into v_role, v_email
+    from public.staff_members sm
+    left join auth.users u on u.id = sm.user_id
+   where sm.user_id = p_user_id;
+
+  if v_role is null and v_email is null then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  -- A mis-click must not lock the panel out with no way back in.
+  if p_user_id = auth.uid() then
+    raise exception 'You cannot delete the account you are signed in with.';
+  end if;
+
+  if v_role = 'admin' and public.tribe_active_admins() <= 1 then
+    raise exception 'This is the only admin account — it cannot be deleted.';
+  end if;
+
+  -- The team rows first, so a project whose foreign keys are missing still
+  -- ends up clean. Both tables also cascade from auth.users; doing it here
+  -- first means the cascade has nothing left to do.
+  delete from public.staff_member_roles where user_id = p_user_id;
+  delete from public.staff_members where user_id = p_user_id;
+
+  delete from auth.users where id = p_user_id;
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted = 0 then
+    raise exception
+      'The sign-in account could not be deleted from the database. Remove it in the Supabase dashboard under Authentication → Users, then try again.';
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', p_user_id, 'email', v_email, 'authDeleted', v_deleted);
+end $$;
+
+--  Put the three stores back in step.
+--
+--  A staff account lives in three places at once: `auth.users` (the sign-in),
+--  `staff_members` (the row that lets a portal open) and `staff_member_roles`
+--  (which roles it holds). They are written by different calls, and a project
+--  that has been through a few versions of this schema can end up with a member
+--  whose primary row exists but whose junction entry does not — which reads as
+--  somebody who is on the team and holds no role at all.
+--
+--  This repairs that, idempotently: every primary role with no matching
+--  junction row is written. It also counts rows whose sign-in account has gone,
+--  because those members can never get in and no amount of syncing will change
+--  it — they are reported, not deleted: what to do with an orphaned record is
+--  the owner's decision, not a function's.
+create or replace function public.admin_sync_staff_roles()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_added   integer := 0;
+  v_missing integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role, created_at)
+  select sm.user_id, sm.role, sm.created_at
+    from public.staff_members sm
+   where not exists (
+     select 1
+       from public.staff_member_roles r
+      where r.user_id = sm.user_id
+        and r.role = sm.role
+   )
+  on conflict (user_id, role) do nothing;
+  get diagnostics v_added = row_count;
+
+  select count(*) into v_missing
+    from public.staff_members sm
+   where not exists (
+     select 1 from auth.users u where u.id = sm.user_id
+   );
+
+  return jsonb_build_object(
+    'ok', true, 'rolesAdded', v_added, 'accountsMissing', v_missing);
+end $$;
+
+--  Mark a team member's address as confirmed.
+--
+--  A project with "Confirm email" switched on will not let a new staff account
+--  sign in until the address is confirmed, which is what turns "add a member"
+--  into "the new account cannot log in". `signUp` has no `email_confirm` option
+--  and the admin API that does needs a service-role key — which must never be
+--  in a page — so the confirmation is done here instead, by the role that owns
+--  the database.
+--
+--  The trust model is the same as `admin_add_staff`: only an admin can call it,
+--  and only for an address already on *this* team, so it can never be used to
+--  confirm a stranger's account. Both timestamps are written with `coalesce`,
+--  so an already-confirmed address is left exactly as it was and re-running the
+--  file changes nothing.
+create or replace function public.admin_confirm_staff_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id  uuid;
+  v_updated  integer := 0;
+  v_was_open boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_email is null or position('@' in p_email) = 0 then
+    raise exception 'Enter a valid email address.';
+  end if;
+
+  select u.id, u.email_confirmed_at is null
+    into v_user_id, v_was_open
+    from auth.users u
+   where lower(u.email) = lower(p_email);
+
+  if v_user_id is null then
+    raise exception 'No sign-in account exists for that address yet.';
+  end if;
+
+  if not exists (
+    select 1 from public.staff_members where user_id = v_user_id
+  ) then
+    raise exception 'That address is not on this team.';
+  end if;
+
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at       = coalesce(confirmed_at, now())
+   where id = v_user_id;
+  get diagnostics v_updated = row_count;
+
+  return jsonb_build_object(
+    'ok', true, 'userId', v_user_id, 'confirmed', v_was_open);
+end $$;
+
+-- --------------------------------------- multi-role management -----------
+--  Grant a specific role to an existing team member.
+--  The role is added to the junction table; the primary role in staff_members
+--  is promoted to admin if the new role is admin.
+create or replace function public.admin_grant_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  if not exists (select 1 from public.staff_members where user_id = p_user_id) then
+    raise exception 'That account is not on the team.';
+  end if;
+
+  insert into public.staff_member_roles (user_id, role)
+  values (p_user_id, p_role)
+  on conflict (user_id, role) do nothing;
+
+  -- Promote the primary role if granting admin.
+  if p_role = 'admin' then
+    update public.staff_members set role = 'admin'
+     where user_id = p_user_id and role = 'staff';
+  end if;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'grantedRole', p_role);
+end $$;
+
+--  Remove a specific role from a team member.
+--  Cannot remove the last admin role.
+create or replace function public.admin_remove_role(
+  p_user_id uuid,
+  p_role    text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can manage the team.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('staff', 'admin') then
+    raise exception 'A role must be either staff or admin.';
+  end if;
+
+  if p_role = 'admin' then
+    select count(*) into v_count
+      from public.staff_member_roles
+     where role = 'admin';
+    if v_count <= 1 then
+      raise exception 'This is the only admin account — cannot remove admin role.';
+    end if;
+  end if;
+
+  delete from public.staff_member_roles
+   where user_id = p_user_id and role = p_role;
+
+  return jsonb_build_object('ok', true, 'userId', p_user_id, 'removedRole', p_role);
+end $$;
+
+--  Get all roles for a user (used by frontend).
+create or replace function public.staff_get_roles(
+  p_user_id uuid
+)
+returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    jsonb_agg(r.role order by case when r.role = 'admin' then 0 else 1 end),
+    '[]'::jsonb
+  )
+  from public.staff_member_roles r
+  where r.user_id = p_user_id
+    and exists (
+      select 1 from public.staff_members sm
+       where sm.user_id = p_user_id and sm.active
+    );
+$$;
+
 revoke all on function public.staff_sync_email() from public;
 revoke all on function public.admin_list_staff() from public;
 revoke all on function public.admin_add_staff(text, text) from public;
 revoke all on function public.admin_set_staff_role(uuid, text) from public;
+revoke all on function public.admin_grant_role(uuid, text) from public;
+revoke all on function public.admin_remove_role(uuid, text) from public;
+revoke all on function public.staff_get_roles(uuid) from public;
 revoke all on function public.admin_set_staff_active(uuid, boolean) from public;
 revoke all on function public.admin_remove_staff(uuid) from public;
+revoke all on function public.admin_delete_staff_account(uuid) from public;
+revoke all on function public.admin_confirm_staff_email(text) from public;
+revoke all on function public.admin_sync_staff_roles() from public;
 revoke all on function public.tribe_active_admins() from public;
 
 grant execute on function public.staff_sync_email() to authenticated;
@@ -794,6 +1426,14 @@ grant execute on function public.admin_add_staff(text, text) to authenticated;
 grant execute on function public.admin_set_staff_role(uuid, text) to authenticated;
 grant execute on function public.admin_set_staff_active(uuid, boolean) to authenticated;
 grant execute on function public.admin_remove_staff(uuid) to authenticated;
+grant execute on function public.admin_delete_staff_account(uuid) to authenticated;
+grant execute on function public.admin_confirm_staff_email(text) to authenticated;
+grant execute on function public.admin_sync_staff_roles() to authenticated;
+--  These two were revoked from PUBLIC without being handed to anyone, which
+--  meant the Team screen's role buttons failed with "permission denied for
+--  function" for every caller, the owner included.
+grant execute on function public.admin_grant_role(uuid, text) to authenticated;
+grant execute on function public.admin_remove_role(uuid, text) to authenticated;
 grant execute on function public.tribe_active_admins() to authenticated;
 
 -- ------------------------------------------------ storage bucket ----------
@@ -841,7 +1481,8 @@ declare
 begin
   foreach tbl in array array[
     'menu_categories', 'menu_dishes', 'menu_addons', 'addon_categories',
-    'site_media', 'site_content', 'promotions', 'pre_order_items'
+    'site_media', 'counter_media', 'site_content', 'promotions',
+    'pre_order_items'
   ]
   loop
     -- Legacy catch-all (PIN era).
@@ -1954,47 +2595,3 @@ end $$;
 --      left join public.menu_addons a on a.category = c.id
 --     group by c.id, c.name, c.sort_order, c.active
 --     order by c.sort_order;
-
--- ============================================================================
---  Factory reset -- staff & admin accounts
---  Removes every row from staff_members and deletes every Supabase Auth user.
---  After this, staff_bootstrap_state() returns {claimable: true} and
---  claim_admin() is open to the very next account that signs up.
---
---  THIS IS A ONE-TIME DESTRUCTIVE OPERATION.  Run it from the Supabase
---  SQL Editor only -- it is deliberately NOT exposed as an RPC so it can
---  never be called from the frontend.
---
---    select public.factory_reset_staff();
--- ============================================================================
-create or replace function public.factory_reset_staff()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_staff integer := 0;
-  v_auth  integer := 0;
-begin
-  -- 1. Count and wipe staff_members (RLS-free because security definer)
-  select count(*) into v_staff from public.staff_members;
-  delete from public.staff_members;
-
-  -- 2. Count and wipe every Supabase Auth user.  This is required because
-  --    claim_admin() gates on "the caller must be the very first auth user
-  --    by created_at" -- leaving old users in auth.users would block the new
-  --    owner from ever claiming.  Deleting from auth.users cascades to
-  --    auth.refresh_tokens, auth.sessions, auth.instances, etc.
-  select count(*) into v_auth from auth.users;
-  delete from auth.users;
-
-  return jsonb_build_object(
-    'ok',                    true,
-    'staff_members_cleared', v_staff,
-    'auth_users_deleted',    v_auth
-  );
-end $$;
-
--- Only callable from the SQL Editor -- never grant to anon or authenticated.
-revoke all on function public.factory_reset_staff() from public;
