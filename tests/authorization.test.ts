@@ -158,11 +158,13 @@ mock.module("@supabase/supabase-js", () => ({
 
 const staff = await import("../src/lib/staff");
 const {
+  adminSetupState,
   authenticate,
   claimFirstAdmin,
   classifySignInError,
   portalPathFor,
   resendConfirmationEmail,
+  setupIsOffered,
   staffLookup,
   CONFIRMATION_RATE_LIMITED_MESSAGE,
   CONFIRMATION_UNDELIVERABLE_MESSAGE,
@@ -172,6 +174,9 @@ const {
   RATE_LIMITED_MESSAGE,
   SETUP_REQUIRED_MESSAGE,
 } = await import("../src/hooks/use-staff-auth");
+
+/** The auth module under test, for the rules exported from it. */
+const auth = await import("../src/hooks/use-staff-auth");
 
 beforeEach(() => {
   rpcCalls.length = 0;
@@ -184,6 +189,13 @@ beforeEach(() => {
   inviteSignInReply = null;
   rpcReply = { data: null, error: null };
   rpcReplies = {};
+  // The one-time admin setup is gated on a database read before anything is
+  // created, so every test that reaches the claim needs an answer. The default
+  // is the only answer that lets it through: no admin exists yet.
+  rpcReplies.staff_bootstrap_state = {
+    data: { claimable: true, version: 2 },
+    error: null,
+  };
   authReplies = {};
   tableReplies = {};
 });
@@ -461,7 +473,47 @@ describe("role changes", () => {
 /* ------------------------------------------------------- new staff login --- */
 
 describe("addStaffAccount", () => {
+  /**
+   * The team row `admin_add_staff` wrote, keyed by the Auth UUID it returned.
+   *
+   * The fake server answers every table read with the same shape, so this keeps
+   * the read-back honest: it is only a *verification* step if the record it
+   * finds is the one under the id the grant handed over.
+   */
+  const writtenRow = (userId: string, email: string, role = "staff") => {
+    tableReplies.staff_members = {
+      data: {
+        user_id: userId,
+        email,
+        display_name: email.split("@")[0],
+        role,
+        active: true,
+        created_at: 1,
+      },
+      error: null,
+    };
+    return {
+      userId,
+      email,
+      displayName: email.split("@")[0],
+      role,
+      roles: [role],
+      active: true,
+      createdAt: 1,
+    };
+  };
+  /** The grant's own answer: the UUID it wrote the row under. */
+  const granted = (userId: string, role = "staff") => {
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId, email: "new.chef@janoon.pk", role },
+      error: null,
+    };
+  };
+
   test("creates the sign-in without taking over the admin's session", async () => {
+    granted("auth-uuid-1");
+    writtenRow("auth-uuid-1", "new.chef@janoon.pk");
+
     const result = await staff.addStaffAccount("  New.Chef@Janoon.pk  ", "staff", "SharedSecret1!");
 
     expect(result).toEqual({
@@ -470,6 +522,17 @@ describe("addStaffAccount", () => {
       passwordApplied: true,
       needsConfirmation: false,
       confirmedByPortal: false,
+      // Returned from the database, read back under the UUID the grant itself
+      // wrote — which is what lets the team list show the new member at once.
+      member: {
+        userId: "auth-uuid-1",
+        email: "new.chef@janoon.pk",
+        displayName: "new.chef",
+        role: "staff",
+        roles: ["staff"],
+        active: true,
+        createdAt: 1,
+      },
     });
     // The address is normalised, and the password goes to Auth — never to a table.
     expect(inviteSignUps).toEqual([
@@ -488,14 +551,18 @@ describe("addStaffAccount", () => {
   });
 
   test("with no password given, the member sets their own through a reset link", async () => {
+    granted("auth-uuid-2");
+    writtenRow("auth-uuid-2", "new@janoon.pk", "admin");
+
     const result = await staff.addStaffAccount("new@janoon.pk", "admin");
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       createdSignIn: true,
       usedResetLink: true,
       passwordApplied: true,
       needsConfirmation: false,
       confirmedByPortal: false,
+      member: { userId: "auth-uuid-2", role: "admin", active: true },
     });
     expect(authCalls.map((call) => call.method)).toEqual(["resetPasswordForEmail"]);
     // A generated password exists only long enough to create the account.
@@ -518,15 +585,18 @@ describe("addStaffAccount", () => {
       data: { user: null, session: null },
       error: { message: "User already registered" },
     };
+    granted("auth-uuid-old");
+    writtenRow("auth-uuid-old", "old@janoon.pk");
 
     const result = await staff.addStaffAccount("old@janoon.pk", "staff", "BrandNew1!");
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       createdSignIn: false,
       usedResetLink: true,
       passwordApplied: false,
       needsConfirmation: false,
       confirmedByPortal: false,
+      member: { userId: "auth-uuid-old" },
     });
     // The role is still granted, and the setup link is the recovery path.
     expect(rpcCalls).toEqual([
@@ -540,18 +610,104 @@ describe("addStaffAccount", () => {
       data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
       error: null,
     };
+    granted("auth-uuid-3");
+    writtenRow("auth-uuid-3", "new@janoon.pk");
 
     const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
 
     // The password is set and will work — but not until the address is
     // confirmed, which is the other reason a first sign-in is refused.
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       createdSignIn: true,
       usedResetLink: true,
       passwordApplied: true,
       needsConfirmation: true,
       confirmedByPortal: false,
+      member: { userId: "auth-uuid-3" },
     });
+  });
+
+  /**
+   * The failure this whole read-back exists for.
+   *
+   * `admin_add_staff` can answer without an error and still leave nothing
+   * behind — an older copy of the function, a write the policies refused. The
+   * result is an account in `auth.users` with no row in `staff_members`: it
+   * signs in perfectly well and is then turned away at every portal door as
+   * somebody who is not staff. Reporting that as "added" is the false success
+   * the panel keeps being blamed for, so it throws with the real cause.
+   */
+  test("a grant that wrote no team record is a failure, not an added member", async () => {
+    granted("auth-uuid-ghost");
+    // The grant says fine; the row is not there.
+    tableReplies.staff_members = { data: null, error: null };
+
+    const attempt = staff.addStaffAccount("ghost@janoon.pk", "staff", "SharedSecret1!");
+
+    await expect(attempt).rejects.toThrow("no team record");
+    // The UUID the database handed back is named, so the gap is identifiable.
+    await expect(attempt).rejects.toThrow("auth-uuid-ghost");
+  });
+
+  /**
+   * An older database whose function answers without the Auth UUID.
+   *
+   * The read-back then falls back to the team list — still a real read of a real
+   * row, never an assumption — so the member is confirmed and shown. Only a
+   * genuine absence is a failure, which is the next test.
+   */
+  test("a grant that names no Auth id is confirmed through the team list", async () => {
+    rpcReplies.admin_add_staff = { data: { ok: true }, error: null };
+    rpcReplies.admin_list_staff = {
+      data: [
+        {
+          userId: "auth-uuid-found",
+          email: "nameless@janoon.pk",
+          displayName: "nameless",
+          role: "staff",
+          roles: ["staff"],
+          active: true,
+          createdAt: 1,
+        },
+      ],
+      error: null,
+    };
+
+    const result = await staff.addStaffAccount(
+      "nameless@janoon.pk",
+      "staff",
+      "SharedSecret1!",
+    );
+
+    expect(result.member).toEqual({
+      userId: "auth-uuid-found",
+      email: "nameless@janoon.pk",
+      displayName: "nameless",
+      role: "staff",
+      roles: ["staff"],
+      active: true,
+      createdAt: 1,
+    });
+  });
+
+  test("a member whose record is nowhere in the database is not reported as added", async () => {
+    // The grant says fine, and neither the UUID nor the team list has the row.
+    rpcReplies.admin_add_staff = {
+      data: { ok: true, userId: "auth-uuid-nowhere" },
+      error: null,
+    };
+    tableReplies.staff_members = { data: null, error: null };
+    rpcReplies.admin_list_staff = { data: [], error: null };
+
+    const attempt = staff.addStaffAccount(
+      "nameless@janoon.pk",
+      "staff",
+      "SharedSecret1!",
+    );
+
+    await expect(attempt).rejects.toThrow("no team record");
+    // And nothing is claimed on the panel's behalf.
+    await expect(attempt).rejects.toThrow("Add to team");
   });
 
   /**
@@ -568,6 +724,8 @@ describe("addStaffAccount", () => {
       data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
       error: null,
     };
+    granted("auth-uuid-4");
+    writtenRow("auth-uuid-4", "new@janoon.pk");
     rpcReplies.admin_confirm_staff_email = {
       data: { ok: true, confirmed: true },
       error: null,
@@ -575,12 +733,13 @@ describe("addStaffAccount", () => {
 
     const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       createdSignIn: true,
       usedResetLink: false,
       passwordApplied: true,
       needsConfirmation: false,
       confirmedByPortal: true,
+      member: { userId: "auth-uuid-4" },
     });
     // The owner-set password is the one that works, so no reset mail is needed.
     expect(authCalls).toEqual([]);
@@ -597,6 +756,8 @@ describe("addStaffAccount", () => {
       data: { user: { email: "new@janoon.pk", email_confirmed_at: null }, session: null },
       error: null,
     };
+    granted("auth-uuid-5");
+    writtenRow("auth-uuid-5", "new@janoon.pk");
     rpcReplies.admin_confirm_staff_email = {
       data: null,
       error: { message: "Could not find the function admin_confirm_staff_email" },
@@ -605,12 +766,13 @@ describe("addStaffAccount", () => {
     const result = await staff.addStaffAccount("new@janoon.pk", "staff", "SharedSecret1!");
 
     // An older project is never left worse off: the mail is the way in.
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       createdSignIn: true,
       usedResetLink: true,
       passwordApplied: true,
       needsConfirmation: true,
       confirmedByPortal: false,
+      member: { userId: "auth-uuid-5" },
     });
   });
 });
@@ -689,8 +851,22 @@ describe("verifyStaffSignIn", () => {
     };
     // The row "lands" while the retry is waiting.
     setTimeout(() => {
-      rpcReplies.admin_add_staff = { data: { ok: true }, error: null };
+      rpcReplies.admin_add_staff = {
+        data: { ok: true, userId: "auth-uuid-retry" },
+        error: null,
+      };
     }, 50);
+    tableReplies.staff_members = {
+      data: {
+        user_id: "auth-uuid-retry",
+        email: "new@janoon.pk",
+        display_name: "new",
+        role: "staff",
+        active: true,
+        created_at: 1,
+      },
+      error: null,
+    };
 
     const result = await staff.addStaffAccount(
       "new@janoon.pk",
@@ -699,6 +875,7 @@ describe("verifyStaffSignIn", () => {
     );
 
     expect(result.passwordApplied).toBe(true);
+    expect(result.member?.userId).toBe("auth-uuid-retry");
     // One account, not two: the retry re-reads the team, it does not re-sign-up.
     expect(inviteSignUps).toHaveLength(1);
   });
@@ -1097,6 +1274,7 @@ describe("claimFirstAdmin", () => {
       location: { origin: "https://janoon.pk" },
     };
     rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
       claim_admin: { data: { ok: true, role: "admin" }, error: null },
     };
@@ -1156,6 +1334,7 @@ describe("claimFirstAdmin", () => {
       error: null,
     };
     rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
       // No error — and no row behind it.
       claim_admin: { data: { ok: true }, error: null },
@@ -1172,6 +1351,7 @@ describe("claimFirstAdmin", () => {
 
   test("an existing address the database granted is left alone — no second Auth user", async () => {
     rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: { ok: true, role: "admin" }, error: null },
     };
 
@@ -1181,15 +1361,19 @@ describe("claimFirstAdmin", () => {
       message: "owner@janoon.pk",
     });
     // The existing identity keeps its UUID and its password: nothing was signed
-    // up, no password was asked for, and only the grant was called.
+    // up, no password was asked for, and only the gate and the grant were called.
     expect(authCalls).toEqual([]);
     expect(rpcCalls).toEqual([
+      { name: "staff_bootstrap_state", args: {} },
       { name: "claim_admin_for_email", args: { p_email: "owner@janoon.pk" } },
     ]);
   });
 
   test("an address that already has an account, with a password that is not accepted, is a failure", async () => {
-    rpcReplies = { claim_admin_for_email: { data: null, error: NO_ACCOUNT } };
+    rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
+      claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+    };
     authReplies.signUp = {
       data: { user: { id: "ghost", email: "taken@janoon.pk" }, session: null },
       error: null,
@@ -1207,7 +1391,10 @@ describe("claimFirstAdmin", () => {
   });
 
   test("the same case on a project without the rule says the setup step is outstanding", async () => {
-    rpcReplies = { claim_admin_for_email: { data: null, error: NO_RULE } };
+    rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
+      claim_admin_for_email: { data: null, error: NO_RULE },
+    };
     authReplies.signUp = {
       data: { user: { id: "ghost", email: "owner@janoon.pk" }, session: null },
       error: null,
@@ -1237,6 +1424,7 @@ describe("claimFirstAdmin", () => {
       error: null,
     };
     rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
       claim_admin: {
         data: null,
@@ -1264,6 +1452,7 @@ describe("claimFirstAdmin", () => {
       error: null,
     };
     rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
       claim_admin_for_email: { data: null, error: NO_ACCOUNT },
       claim_admin: {
         data: null,
@@ -1354,7 +1543,10 @@ describe("claimFirstAdmin", () => {
   });
 
   test("an address that needs confirming is not a failure", async () => {
-    rpcReplies = { claim_admin_for_email: { data: null, error: NO_ACCOUNT } };
+    rpcReplies = {
+      staff_bootstrap_state: { data: { claimable: true, version: 2 }, error: null },
+      claim_admin_for_email: { data: null, error: NO_ACCOUNT },
+    };
     authReplies.signUp = {
       data: { user: { id: "pending", email: "owner@janoon.pk" }, session: null },
       error: null,
@@ -1370,7 +1562,10 @@ describe("claimFirstAdmin", () => {
     });
     // The link is re-sent, and nothing was claimed — the card says so.
     expect(authCalls.map((call) => call.method)).toContain("resend");
-    expect(rpcCalls.map((call) => call.name)).toEqual(["claim_admin_for_email"]);
+    expect(rpcCalls.map((call) => call.name)).toEqual([
+      "staff_bootstrap_state",
+      "claim_admin_for_email",
+    ]);
   });
 });
 
@@ -1417,6 +1612,150 @@ describe("the admin route", () => {
     expect(src).toContain("signIn(email, password, role)");
     expect(src).toContain("NOT_ADMIN_MESSAGE");
     expect(src).toContain("INCORRECT_CREDENTIALS_MESSAGE");
+  });
+
+  /**
+   * The one-time setup is a property of the database, not of a browser.
+   *
+   * Two separate promises, and both have to hold. The *button* may only appear
+   * when the database positively said no admin exists. The *claim* must then ask
+   * again before it creates anything, so a screen left open, a stale tab or a
+   * hand-made request cannot slip past a rule that has since been closed.
+   */
+  test("the setup action and the claim are both decided by the database", () => {
+    const auth = read("../src/hooks/use-staff-auth.ts");
+    const card = read("../src/pages/AuthLanding.tsx");
+
+    // One function, one question, used by both the card and the claim.
+    expect(auth).toContain("export async function adminSetupState()");
+    expect(auth).toContain('supabase.rpc("staff_bootstrap_state")');
+    expect(card).toContain("setupIsOffered");
+    // The card reads its state through that one helper rather than deciding.
+    expect(card).not.toMatch(/claim\s*!==\s*"closed"/);
+
+    // The claim asks before it creates anything: the gate comes before signUp.
+    const gate = auth.indexOf("const state = await adminSetupState()");
+    const signUp = auth.indexOf("await supabase.auth.signUp(");
+    expect([gate > -1, signUp > -1, gate < signUp]).toEqual([true, true, true]);
+
+    // And an answer it could not get is a refusal, never a pass.
+    for (const state of ["unavailable", "outdated"]) {
+      expect([state, auth.includes(`"${state}"`)]).toEqual([state, true]);
+    }
+  });
+
+  test("the setup action appears only on the two answers that mean no admin exists", () => {
+    const { setupIsOffered } = auth;
+
+    // What the database said no admin exists.
+    expect(setupIsOffered("open")).toBe(true);
+    // …or a database that has no rule at all, and so cannot be holding one.
+    expect(setupIsOffered("missing")).toBe(true);
+
+    // Everything else says no, and the important one is the answer we could not
+    // get: offering setup on a guess is what "the browser must have no influence
+    // on this" forbids.
+    for (const state of ["closed", "outdated", "unavailable", "checking"]) {
+      expect([state, setupIsOffered(state as never)]).toEqual([state, false]);
+    }
+  });
+
+  test("an admin that already exists stops the claim before anything is created", async () => {
+    rpcReplies.staff_bootstrap_state = {
+      data: { claimable: false, version: 2 },
+      error: null,
+    };
+
+    const outcome = await claimFirstAdmin("latecomer@janoon.pk", "brand-new-secret");
+
+    expect(outcome).toMatchObject({ ok: false, reason: "claimed" });
+    // No account was created and no role granted: the gate refused first.
+    expect(authCalls).toEqual([]);
+    expect(rpcCalls.map((call) => call.name)).toEqual(["staff_bootstrap_state"]);
+  });
+
+  test("a bootstrap check that cannot run does not open the door either", async () => {
+    rpcReplies.staff_bootstrap_state = {
+      data: null,
+      error: { message: "Failed to fetch" },
+    };
+
+    const outcome = await claimFirstAdmin("owner@janoon.pk", "brand-new-secret");
+
+    expect(outcome).toMatchObject({ ok: false, reason: "claimed" });
+    expect(authCalls).toEqual([]);
+  });
+
+  test("a database with no bootstrap rule at all still offers the claim", async () => {
+    rpcReplies.staff_bootstrap_state = {
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function" },
+    };
+
+    // It cannot be holding an admin, and the database refuses the claim itself
+    // if one turns out to exist — so this is a database answer, not a guess.
+    expect(await adminSetupState()).toBe("missing");
+  });
+
+  test("no browser storage takes any part in the setup rule", () => {
+    for (const path of [
+      "../src/hooks/use-staff-auth.ts",
+      "../src/pages/AuthLanding.tsx",
+    ]) {
+      const src = readFileSync(new URL(path, import.meta.url), "utf8");
+      expect([path, /(localStorage|sessionStorage)\s*\./.test(src)]).toEqual([
+        path,
+        false,
+      ]);
+    }
+  });
+
+  /**
+   * The credentials screen is gone, from both portals.
+   *
+   * Not "hidden" — removed. The staff desk has no password, address or account
+   * settings surface at all, and the admin portal has no Credentials tab: team
+   * management and team credentials are one screen, held by one role, instead of
+   * a second place to look after passwords.
+   */
+  test("neither portal carries a credentials screen", () => {
+    const staffDesk = read("../src/pages/StaffPortal.tsx");
+    const admin = read("../src/pages/AdminPortal.tsx");
+
+    // The floor team: no credential surface of any kind.
+    expect(staffDesk).not.toContain("AccountSettings");
+    expect(staffDesk).not.toContain("changeOwnPassword");
+    expect(staffDesk).not.toContain("changeOwnEmail");
+
+    // The admin portal: no Credentials tab, and nothing importing the vault.
+    expect(admin).not.toContain("StaffCredentialsVault");
+    expect(admin).not.toContain('value="credentials"');
+    expect(admin).not.toMatch(/TabsTrigger value="credentials"/);
+
+    // …and the component itself is gone from disk, not merely unreferenced.
+    expect(() =>
+      readFileSync(
+        new URL("../src/components/admin/StaffCredentialsVault.tsx", import.meta.url),
+        "utf8",
+      ),
+    ).toThrow();
+  });
+
+  /** The team list has to answer "who is on it" at a glance. */
+  test("the team list names, addresses, roles and states every member", () => {
+    // Labels are split across lines by the formatter, so compare the rendered
+    // shape rather than the raw bytes.
+    const src = read("../src/components/admin/StaffManager.tsx").replace(
+      /\s+/g,
+      " ",
+    );
+
+    for (const column of ["Name", "Email", "Role", "Status"]) {
+      expect([column, src.includes(`> ${column} </`)]).toEqual([column, true]);
+    }
+    // Active/inactive is the flag the Team screen actually toggles, so it is
+    // what the list has to say out loud.
+    expect(src).toContain('{member.active ? "Active" : "Inactive"}');
   });
 
   test("no session or role is ever read from browser storage", () => {

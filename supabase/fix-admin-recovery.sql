@@ -703,6 +703,14 @@ begin
   on conflict (user_id, role) do nothing;
 
   -- Also ensure a row in staff_members (legacy table).
+  --
+  -- `user_id` is the primary key, so this can never produce a second record for
+  -- one Auth identity — that is the whole reason the join is written this way
+  -- round rather than keyed by address. On a repeat call the row is refreshed
+  -- rather than replaced: the address and the active flag follow the account,
+  -- and the primary role is only ever promoted here (staff → admin). Demotion
+  -- is `admin_set_staff_role`'s job, and it carries the last-admin guard; doing
+  -- it from an "add" call would be a way around that guard.
   insert into public.staff_members
     (user_id, email, display_name, role, active, created_at)
   values (
@@ -710,9 +718,25 @@ begin
     (extract(epoch from now()) * 1000)::bigint
   )
   on conflict (user_id) do update
-    set email = excluded.email, active = true;
+    set email = excluded.email,
+        active = true,
+        role = case
+                 when public.staff_members.role = 'admin' then 'admin'
+                 else excluded.role
+               end;
 
-  return jsonb_build_object('ok', true, 'userId', v_uid, 'email', v_email, 'role', v_role);
+  -- The row is returned rather than a bare acknowledgement. The caller needs
+  -- the Auth UUID that was actually written, so it can read the same record
+  -- back and confirm the join before telling anybody the account was added —
+  -- `admin_add_staff` answering without an error is not proof the row exists.
+  return jsonb_build_object(
+    'ok', true,
+    'userId', v_uid,
+    'email', v_email,
+    'displayName', v_name,
+    'role', v_role,
+    'active', true
+  );
 end $$;
 
 --  Change a role. Refuses to remove the last admin.

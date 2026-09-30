@@ -10,7 +10,6 @@ import { PreOrderManager } from "@/components/admin/PreOrderManager";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { SetupNotice } from "@/components/admin/SetupNotice";
 import { SignaturePhotoManager } from "@/components/admin/SignaturePhotoManager";
-import { StaffCredentialsVault } from "@/components/admin/StaffCredentialsVault";
 import { StaffManager } from "@/components/admin/StaffManager";
 import { AccountSettings } from "@/components/staff/AccountSettings";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
@@ -193,7 +192,6 @@ export default function AdminPortal() {
           <TabsTrigger value="promos">Promotions</TabsTrigger>
           <TabsTrigger value="records">Records</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
-          <TabsTrigger value="credentials">Credentials</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -298,11 +296,6 @@ export default function AdminPortal() {
           <div className="border-t border-border/70 pt-10">
             <AccountSettings />
           </div>
-        </TabsContent>
-
-        {/* Addresses, password checks and setup links — the recovery console. */}
-        <TabsContent value="credentials">
-          <StaffCredentialsVault />
         </TabsContent>
       </Tabs>
 

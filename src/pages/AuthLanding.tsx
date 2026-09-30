@@ -34,6 +34,7 @@ import {
   UNREACHABLE_MESSAGE,
   portalPathFor,
   resendConfirmationEmail,
+  setupIsOffered,
   useStaffAuth,
   type AdminSetupState,
   type OwnerSetupResult,
@@ -159,7 +160,7 @@ export default function AuthLanding() {
   // The admin setup, reachable only from the admin door and only while the
   // database reports that no active admin exists.
   const [ownerMode, setOwnerMode] = useState<"signin" | "setup">("signin");
-  const [claim, setClaim] = useState<"checking" | AdminSetupState>("checking");
+  const [claim, setClaim] = useState<AdminSetupState | "checking">("checking");
   // Bumped on every open so the effect below re-asks the database even when the
   // `?unlock=admin` parameter itself did not change — otherwise a second visit
   // to the same URL would keep a stale answer.
@@ -249,7 +250,6 @@ export default function AuthLanding() {
     setAttempts((count) => count + 1);
     setSubmitting(false);
     setRecovery(null);
-
     // Password accepted, address not confirmed. The way forward is a fresh
     // link, so one is sent before the card says anything — and if the send
     // itself fails, that is what the card reports. Nothing here claims a
@@ -270,7 +270,7 @@ export default function AuthLanding() {
       return;
     }
 
-    setError(signInMessage(result.reason, claim !== "closed" && claim !== "checking"));
+    setError(signInMessage(result.reason, setupIsOffered(claim)));
 
     // A refused password is a dead end on its own: the member is standing at a
     // till with a credential nobody can look up, because Supabase stores only a
@@ -308,7 +308,7 @@ export default function AuthLanding() {
         busy: false,
         sent: `The reset email could not be sent: ${
           error instanceof Error ? error.message.split("\n")[0] : "try again in a moment"
-        }. Ask an admin to confirm the address from the Credentials tab.`,
+        }. Ask an admin to confirm the address from the Team tab.`,
       });
     }
   };
@@ -333,10 +333,13 @@ export default function AuthLanding() {
     if (result.reason === "existing-account") {
       setOwnerMode("signin");
       setSetupPhase("form");
-      // The claim has just been spent on that account, so the setup action is
-      // gone the moment it succeeded — no round trip needed to hide it.
-      setClaim("closed");
       setSetupSuccess(ownerSetupMessage(result));
+      // The action is hidden by asking the database again, never by a flag set
+      // here. The grant has just been recorded, so the answer is "an admin
+      // exists" — and if it were ever anything else, the next render would
+      // show the setup action again rather than hide it on our own say-so.
+      setClaim("checking");
+      setClaimCheck((count) => count + 1);
       return;
     }
     if (result.reason === "confirm-email") {
@@ -621,12 +624,11 @@ export default function AuthLanding() {
               </button>
             </div>
             <p className="max-w-xs text-center text-[0.68rem] leading-relaxed text-muted-foreground/55">
-              Staff and management access. The first account set up here becomes
-              the administrator.
+              Staff and management access. The administrator account is created
+              once, from the admin door, and only while the database records no
+              administrator at all.
             </p>
-          </div>
-
-          <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
+          </div>            <p className="mt-8 text-center text-[0.68rem] text-muted-foreground/45">
             © {new Date().getFullYear()} {RESTAURANT.name} · {RESTAURANT.cityLine}
           </p>
         </motion.div>
@@ -677,9 +679,10 @@ function SignInModal({
   owner: {
     /**
      * `open` only while the database holds no active admin; `checking` until it
-     * has answered, and `unknown` if the check could not run.
+     * has answered, and `unavailable` if the question could not be asked at
+     * all — which is deliberately not an offer.
      */
-    claim: "checking" | AdminSetupState;
+    claim: AdminSetupState | "checking";
     mode: "signin" | "setup";
     phase: "form" | "confirm";
     error: string | null;
@@ -700,10 +703,7 @@ function SignInModal({
   // Admin recovery, offered only while the database has not told us an
   // administrator already exists.
   const offersSetup =
-    role === "admin" &&
-    !settingUp &&
-    owner.claim !== "closed" &&
-    owner.claim !== "checking";
+    role === "admin" && !settingUp && setupIsOffered(owner.claim);
 
   // Ready to type the moment the card opens, and again when the setup tab is
   // chosen.
@@ -805,11 +805,11 @@ function SignInModal({
         {role === "admin" && (offersSetup || settingUp) ? (
           <div className="relative mt-6 flex flex-col gap-3">
             {/*
-              `outdated` — the database answered without the current rule's
-              marker, so it can say whether an admin is wanted but cannot record
-              one. The action is still offered, because the claim itself is
-              decided in the database: it either grants the role or refuses it.
-              Nothing here tells the owner to run anything by hand.
+              Shown only when the database itself said no admin exists — never
+              because this browser thinks so. An answer it could not give
+              (`unavailable`) or an older rule it still runs (`outdated`) both
+              hide the action: the one thing this screen must never do is offer
+              a setup route on a guess.
             */}
             {offersSetup ? (
               <Button

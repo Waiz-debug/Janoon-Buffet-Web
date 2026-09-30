@@ -1,5 +1,4 @@
 import { SetupNotice } from "@/components/admin/SetupNotice";
-import { AccountSettings } from "@/components/staff/AccountSettings";
 import { DeliveryOrderCard } from "@/components/tribe/DeliveryOrderCard";
 import { PortalFrame } from "@/components/tribe/PortalFrame";
 import { RecordsDesk } from "@/components/tribe/RecordsDesk";
@@ -440,11 +439,16 @@ export default function StaffPortal() {
         </div>
       </section>
 
-      {/* Credentials, for the person signed in. It cannot touch a role — the
-          team list and every promotion live in the admin portal. */}
-      <div className="mt-10 border-t border-border/70 pt-10">
-        <AccountSettings />
-      </div>
+      {/*
+        Nothing about credentials lives here.
+
+        The floor team works the desk; passwords, sign-in addresses and account
+        settings are not part of that job and are not reachable from this
+        screen. An account locked out of its password uses the “Set or reset my
+        password” link on the sign-in card, and the admin who issued the account
+        manages it from the Team tab — one place, held by one role, instead of a
+        second credential surface on every signed-in member's screen.
+      */}
     </PortalFrame>
   );
 }

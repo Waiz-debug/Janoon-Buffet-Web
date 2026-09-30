@@ -4,15 +4,18 @@ import { Label } from "@/components/ui/label";
 import type { StaffRole } from "@/hooks/use-staff-auth";
 import {
   addStaffAccount,
+  confirmStaffEmail,
   deleteStaffAccount,
   grantRole,
   isMissingFunction,
   listStaff,
   removeRole,
   removeStaff,
+  replaceStaffAccount,
   sendPasswordReset,
   setStaffActive,
   StaffListError,
+  syncStaffRoles,
   type StaffMember,
 } from "@/lib/staff";
 import { motion } from "framer-motion";
@@ -29,6 +32,7 @@ import {
   UserCheck,
   UserX,
   Users,
+  Wrench,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -77,6 +81,23 @@ export function StaffManager() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  /**
+   * The row whose password is being replaced, and the password typed for it.
+   *
+   * The one route back in that needs no working mail provider at all: the old
+   * sign-in account is deleted and a new one created for the same address with
+   * a password chosen here. It lives on the member's own row rather than in a
+   * separate screen, because it is a team-management action — the same class of
+   * thing as suspending somebody — not a place to browse credentials.
+   */
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [rowNote, setRowNote] = useState<{ id: string; text: string } | null>(
+    null,
+  );
+  /** The junction-table repair, and what it found. */
+  const [repairing, setRepairing] = useState(false);
+  const [repairNote, setRepairNote] = useState<string | null>(null);
 
   /** Bumping this re-runs the fetch below — the only way this panel reloads. */
   const [reloadToken, setReloadToken] = useState(0);
@@ -141,6 +162,30 @@ export function StaffManager() {
       setHandover(
         result.createdSignIn ? { email: address, password: chosen || null } : null,
       );
+
+      // The new member is put on screen from the record the database returned —
+      // the row read back under the Auth UUID the grant itself handed over, so
+      // what appears here is what is really in `staff_members`, not a guess
+      // built from the form. `addStaffAccount` throws rather than returning a
+      // missing record, so reaching this line means the row exists.
+      if (result.member) {
+        setMembers((current) =>
+          current
+            ? [
+                ...current.filter(
+                  (existing) => existing.userId !== result.member?.userId,
+                ),
+                result.member as StaffMember,
+              ].sort(
+                (a, b) =>
+                  (a.role === "admin" ? 0 : 1) - (b.role === "admin" ? 0 : 1) ||
+                  (a.email ?? "").localeCompare(b.email ?? ""),
+              )
+            : [result.member as StaffMember],
+        );
+        setListError(null);
+      }
+
       // Say exactly what happened to the password, because the two failure
       // cases below are the ones that otherwise read as "wrong password" to
       // whoever is trying to sign in.
@@ -152,19 +197,24 @@ export function StaffManager() {
                 : "Use Send setup link on their row to email one."
             }`
           : result.needsConfirmation
-            ? "Account created, but the address still has to be confirmed before the first sign-in — a setup link has been emailed, or press Confirm address on their row in the Credentials tab."
+            ? "Account created and added to the team, but the address still has to be confirmed before the first sign-in — a setup link has been emailed, or press Confirm address on their row."
             : result.confirmedByPortal
               ? "Account created and the address confirmed — they can sign in straight away with the password below."
-            : result.usedResetLink
-              ? "Account created and a password-setup link emailed. Their role is live already."
-              : "Account created. They sign in with the password you set, and can change it from Your account.",
+              : result.usedResetLink
+                ? "Account created and a password-setup link emailed. Their role is live already."
+                : "Account created. They sign in with the password you set.",
       );
-      toast.success(`${role === "admin" ? "Admin" : "Staff"} added`);
+      toast.success(`${role === "admin" ? "Admin" : "Staff"} added to the team`);
+      // …and the whole list is re-read, so the row on screen is confirmed
+      // against the database rather than left as this panel's own copy of it.
       refresh();
     } catch (error) {
+      // The database refused, or wrote nothing. The real reason is shown and no
+      // success is claimed: a member who is not in the list is not on the team.
       setAddError(
         error instanceof Error ? error.message : "Could not add that account.",
       );
+      setHandover(null);
     } finally {
       setAddBusy(false);
     }
@@ -194,6 +244,54 @@ export function StaffManager() {
   };
 
   const addReady = email.trim().includes("@") && !addBusy;
+
+  /**
+   * Put the three stores back in step, then re-read the list.
+   *
+   * A staff account lives in `auth.users` (the sign-in), `staff_members` (the
+   * row that lets a portal open) and `staff_member_roles` (which roles it
+   * holds). A member whose junction row is missing reads as holding *no role at
+   * all* — on screen and at every policy that asks. This writes the roles that
+   * are already on their row, and only those; it never deletes a record, never
+   * invents an account and never touches a role somebody chose. Accounts whose
+   * sign-in is gone are counted and reported, because that is the owner's
+   * decision to make rather than a function's.
+   */
+  const repair = async () => {
+    setRepairing(true);
+    setRepairNote(null);
+    try {
+      const outcome = await syncStaffRoles();
+      setRepairNote(
+        outcome.rolesAdded > 0
+          ? `Repaired: ${outcome.rolesAdded} role${
+              outcome.rolesAdded === 1 ? " was" : "s were"
+            } written to match the team rows.` +
+            (outcome.accountsMissing > 0
+              ? ` ${outcome.accountsMissing} record${
+                  outcome.accountsMissing === 1 ? " has" : "s have"
+                } no sign-in account left — those people can never sign in; remove or replace the record.`
+              : "")
+          : "Everything was already in step — no role records were missing." +
+            (outcome.accountsMissing > 0
+              ? ` ${outcome.accountsMissing} record${
+                  outcome.accountsMissing === 1 ? " has" : "s have"
+                } no sign-in account left.`
+              : ""),
+      );
+      refresh();
+    } catch (error) {
+      setRepairNote(
+        isMissingFunction(error)
+          ? "This project has not been patched yet — run supabase/fix-admin-recovery.sql in the Supabase SQL editor, then try again."
+          : error instanceof Error
+            ? error.message
+            : "Could not run the repair. Try again in a moment.",
+      );
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   return (
     <section className="flex flex-col gap-8">
@@ -315,8 +413,8 @@ export function StaffManager() {
             <p className="text-xs leading-relaxed text-gold">
               <span className="font-semibold">Credentials to hand over.</span>{" "}
               Copy these into a message now — this card is not saved anywhere,
-              and the password cannot be shown again afterwards. Test it any time
-              from the <span className="font-semibold">Credentials</span> tab.
+              and the password cannot be shown again afterwards. If it is ever
+              lost, set a new one from the member&apos;s row below.
             </p>
               <button
                 type="button"
@@ -409,6 +507,22 @@ export function StaffManager() {
             ) : null}
             <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              disabled={repairing}
+              title="Rewrite any missing role records so every member's roles are what their team row says"
+              onClick={() => void repair()}
+            >
+              {repairing ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Wrench className="size-3.5" aria-hidden />
+              )}
+              {repairing ? "Repairing…" : "Repair roles"}
+            </Button>
+            <Button
+              type="button"
               variant="ghost"
               size="sm"
               className="gap-2"
@@ -423,6 +537,16 @@ export function StaffManager() {
             </Button>
           </div>
         </div>
+
+        {repairNote ? (
+          <p
+            className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold"
+            role="status"
+          >
+            <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            {repairNote}
+          </p>
+        ) : null}
 
         {listError ? (
           <p
@@ -447,65 +571,202 @@ export function StaffManager() {
             {members.map((member) => (
               <li
                 key={member.userId}
-                className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/60 p-4 lg:flex-row lg:items-center lg:justify-between"
+                className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/60 p-4"
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span
-                    className={
-                      member.role === "admin"
-                        ? "flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold"
-                        : "flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/60 text-muted-foreground"
-                    }
-                  >
-                    <ShieldCheck className="size-4" aria-hidden />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-2 text-sm font-medium">
-                      <span className="truncate">{member.email ?? "—"}</span>
-                      {member.email ? (
-                        <CopyButton
-                          value={member.email}
-                          label={`Copy the sign-in email for ${member.email}`}
-                        />
-                      ) : null}
-                    </p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      {(member.roles.length > 0 ? member.roles : [member.role]).map((r) => (
-                        <span
-                          key={r}
-                          className={
-                            r === "admin"
-                              ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-gold"
-                              : "rounded-full border border-border/70 px-2 py-0.5"
-                          }
-                        >
-                          {r}
-                        </span>
-                      ))}
-                      <span
-                        className={
-                          member.active
-                            ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-gold"
-                            : "rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300"
-                        }
-                      >
-                        {member.active ? "active" : "suspended"}
-                      </span>
-                      {member.displayName ? <span>{member.displayName}</span> : null}
-                    </p>
-                    {/* The other half of the sign-in details, said plainly: the
-                        address is the row above; the password is not something
-                        this panel can show, because Supabase stores only a
-                        hash. Setup link is the way back in. */}
-                    <p className="mt-1 text-[0.7rem] text-muted-foreground">
-                      Password: not retrievable — use{" "}
-                      <span className="text-gold/90">Send setup link</span> to let
-                      them choose a new one.
-                    </p>
+                {/*
+                  Name · Email · Role · Active, each as its own labelled column
+                  rather than a single line of pills. They are four different
+                  facts about a person and they get read in that order when
+                  somebody is standing at the till; the actions then sit below,
+                  on their own row, so nothing is squeezed out on a narrow
+                  screen.
+                */}
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span
+                      className={
+                        member.role === "admin"
+                          ? "flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold"
+                          : "flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/60 text-muted-foreground"
+                      }
+                    >
+                      <ShieldCheck className="size-4" aria-hidden />
+                    </span>
+                    <dl className="grid min-w-0 flex-1 grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                      <div className="min-w-0">
+                        <dt className="text-[0.6rem] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase">
+                          Name
+                        </dt>
+                        <dd className="truncate text-sm font-medium">
+                          {member.displayName ||
+                            member.email?.split("@")[0] ||
+                            "Unnamed"}
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-[0.6rem] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase">
+                          Email
+                        </dt>
+                        <dd className="flex items-center gap-2 text-sm">
+                          <span className="truncate">
+                            {member.email ?? "— no address on record"}
+                          </span>
+                          {member.email ? (
+                            <CopyButton
+                              value={member.email}
+                              label={`Copy the sign-in email for ${member.email}`}
+                            />
+                          ) : null}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.6rem] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase">
+                          Role
+                        </dt>
+                        <dd className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {(member.roles.length > 0
+                            ? member.roles
+                            : [member.role]
+                          ).map((r) => (
+                            <span
+                              key={r}
+                              className={
+                                r === "admin"
+                                  ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[0.7rem] text-gold"
+                                  : "rounded-full border border-border/70 px-2 py-0.5 text-[0.7rem]"
+                              }
+                            >
+                              {r}
+                            </span>
+                          ))}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.6rem] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase">
+                          Status
+                        </dt>
+                        <dd className="mt-1">
+                          <span
+                            className={
+                              member.active
+                                ? "rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[0.7rem] text-gold"
+                                : "rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[0.7rem] text-rose-300"
+                            }
+                          >
+                            {member.active ? "Active" : "Inactive"}
+                          </span>
+                        </dd>
+                      </div>
+                    </dl>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                {rowNote?.id === member.userId ? (
+                  <p
+                    className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-gold"
+                    role="status"
+                  >
+                    <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                    {rowNote.text}
+                  </p>
+                ) : null}
+
+                {/* The no-email route back in, on the member's own row: the old
+                    sign-in account is deleted and a new one created for the
+                    same address with the password typed here. It needs no
+                    working mail provider, no confirmation link and no patience,
+                    and the role is carried across. */}
+                {replacingId === member.userId ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col gap-3 rounded-xl border border-gold/25 bg-gold/[0.05] p-3.5"
+                  >
+                    <p className="text-xs leading-relaxed text-foreground/85">
+                      This <span className="text-foreground">replaces the
+                      sign-in account</span> for{" "}
+                      <span className="text-foreground">{member.email}</span>:
+                      the old one is erased and a new one created with the
+                      password you type here. No email is involved, so it works
+                      even when mail cannot be delivered. Their role is carried
+                      across, and the account gets a new user id — so its start
+                      date begins again.
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <div className="flex flex-1 flex-col gap-1.5">
+                        <label
+                          htmlFor={`new-password-${member.userId}`}
+                          className="text-[0.65rem] tracking-[0.18em] text-gold/80 uppercase"
+                        >
+                          The password to set
+                        </label>
+                        <Input
+                          id={`new-password-${member.userId}`}
+                          type="text"
+                          value={newPassword}
+                          autoComplete="off"
+                          spellCheck={false}
+                          placeholder="At least 8 characters"
+                          className="h-10 rounded-xl bg-background/60 font-mono"
+                          onChange={(event) => {
+                            setNewPassword(event.target.value);
+                            setRowNote(null);
+                          }}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-10 gap-1.5"
+                        disabled={newPassword.length < 8 || busyId === member.userId}
+                        onClick={() =>
+                          void run(
+                            member.userId,
+                            "Password set",
+                            async () => {
+                              const outcome = await replaceStaffAccount(
+                                member.userId,
+                                member.email as string,
+                                member.role,
+                                newPassword,
+                              );
+                              setNewPassword("");
+                              setReplacingId(null);
+                              setRowNote({
+                                id: member.userId,
+                                text: outcome.needsConfirmation
+                                  ? `A new account exists for ${member.email}. Confirm the address on this row, then the password you just typed is the one that works.`
+                                  : `A new account exists for ${member.email}. They can sign in now with the password you just typed, and their role is unchanged.`,
+                              });
+                            },
+                          )
+                        }
+                      >
+                        {busyId === member.userId ? (
+                          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <KeyRound className="size-3.5" aria-hidden />
+                        )}
+                        Set this password
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-10"
+                        onClick={() => {
+                          setReplacingId(null);
+                          setNewPassword("");
+                        }}
+                      >
+                        <X className="size-3.5" aria-hidden />
+                        Cancel
+                      </Button>
+                    </div>
+                  </motion.div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
                   {!member.roles.includes("admin") ? (
                     <Button
                       type="button"
@@ -615,6 +876,58 @@ export function StaffManager() {
                   >
                     <KeyRound className="size-3.5" aria-hidden />
                     Send setup link
+                  </Button>
+
+                  {/* For an account created before the panel could confirm an
+                      address itself, or on a project whose mail never arrives:
+                      one press stamps the confirmation and the member signs in
+                      with the password they were given. */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    title="Mark this address as confirmed so the member can sign in"
+                    disabled={busyId === member.userId || !member.email}
+                    onClick={() =>
+                      void run(
+                        member.userId,
+                        "Address confirmed",
+                        async () => {
+                          const changed = await confirmStaffEmail(
+                            member.email as string,
+                          );
+                          setRowNote({
+                            id: member.userId,
+                            text: changed
+                              ? `${member.email} is confirmed — the member can sign in now, with the password they were given.`
+                              : `${member.email} was already confirmed; nothing to change.`,
+                          });
+                        },
+                      )
+                    }
+                  >
+                    <ShieldCheck className="size-3.5" aria-hidden />
+                    Confirm address
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    title="Replace the sign-in account with one that has a password you choose"
+                    disabled={busyId === member.userId || !member.email}
+                    onClick={() => {
+                      setRowNote(null);
+                      setNewPassword("");
+                      setReplacingId(
+                        replacingId === member.userId ? null : member.userId,
+                      );
+                    }}
+                  >
+                    <KeyRound className="size-3.5" aria-hidden />
+                    Set password
                   </Button>
 
                   {/* Removing keeps the sign-in account; deleting erases it,
@@ -733,6 +1046,16 @@ export function StaffManager() {
           registration. The last admin cannot be demoted, suspended, removed or
           deleted — promote someone else first, and nobody can delete the
           account they are signed in with.
+        </p>
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          An existing password is never shown here and cannot be: Supabase Auth
+          stores a one-way hash and hands the plaintext back to nobody. The
+          password you set while adding somebody is printed once, in the handover
+          card above. After that, the two routes back in are{" "}
+          <span className="text-gold">Send setup link</span> (they choose their
+          own) and <span className="text-gold">Set password</span> (you choose
+          one now, with no email involved).
         </p>
       </div>
     </section>

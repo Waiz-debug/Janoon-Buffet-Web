@@ -55,11 +55,18 @@ function messageOf(error: unknown): string {
  * the role and does not create a second account. A refusal because the caller
  * is not an admin is never retried: that one is real.
  */
-async function grantStaffRole(address: string, role: StaffRole): Promise<void> {
+async function grantStaffRole(
+  address: string,
+  role: StaffRole,
+): Promise<string | undefined> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      await rpc("admin_add_staff", { p_email: address, p_role: role });
-      return;
+      const outcome = await rpc("admin_add_staff", {
+        p_email: address,
+        p_role: role,
+      });
+      const userId = outcome.userId;
+      return typeof userId === "string" && userId.length > 0 ? userId : undefined;
     } catch (error) {
       const message = messageOf(error);
       const willAppear = /no sign-in account exists/i.test(message);
@@ -74,6 +81,78 @@ async function grantStaffRole(address: string, role: StaffRole): Promise<void> {
       // A moment's wait, then look again.
       await new Promise((resolve) => setTimeout(resolve, 800));
     }
+  }
+  return undefined;
+}
+
+/**
+ * Read one team member back, by the Auth UUID the grant returned.
+ *
+ * This is the step that turns "the function did not complain" into "the record
+ * exists". A `security definer` call can answer without an error and still have
+ * written nothing — an older copy of the function, a policy that will not let
+ * the write through — and the result of that is an account that signs in
+ * perfectly well and is then turned away at every portal door as somebody who
+ * is not staff. So after any write the row is read back through the same
+ * policies an admin's own read uses, and its `user_id` is compared with the UUID
+ * the database itself handed back.
+ *
+ * Returns `null` when the row is genuinely absent; the caller decides what to
+ * say about that, because only it knows what the operation was trying to do.
+ */
+export async function readStaffMember(
+  userId: string,
+): Promise<StaffMember | null> {
+  const { data, error } = await supabase
+    .from(TABLES.staffMembers)
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.error(`[Junoon] staff record read failed: ${error.message}`);
+    return null;
+  }
+  if (!data) return null;
+
+  const row = data as Record<string, unknown>;
+  const role: StaffRole = row.role === "admin" ? "admin" : "staff";
+  return {
+    userId,
+    email: typeof row.email === "string" ? row.email : null,
+    displayName: typeof row.display_name === "string" ? row.display_name : null,
+    role,
+    roles: [role],
+    active: row.active !== false,
+    createdAt: typeof row.created_at === "number" ? row.created_at : 0,
+  };
+}
+
+/**
+ * Find a team record by its sign-in address instead.
+ *
+ * The fallback for a database whose `admin_add_staff` answers without the Auth
+ * UUID it wrote — an older copy of the function. It reads the team through the
+ * same admin-only list the Team screen uses, so it grants nothing extra, and it
+ * returns the record with its real `user_id`, which is the join that matters.
+ */
+async function readStaffMemberByEmail(
+  address: string,
+): Promise<StaffMember | null> {
+  try {
+    const team = await listStaff();
+    const wanted = address.trim().toLowerCase();
+    return (
+      team.find(
+        (member) => (member.email ?? "").trim().toLowerCase() === wanted,
+      ) ?? null
+    );
+  } catch (error) {
+    console.warn(
+      `[Junoon] team lookup by address failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
   }
 }
 
@@ -294,6 +373,14 @@ export type StaffAccountResult = {
    * it; otherwise the setup link below is the route in.
    */
   confirmedByPortal: boolean;
+  /**
+   * The team record the database actually holds for this address, read back
+   * after the write and carrying the same Auth UUID the database itself
+   * returned. `null` means the row is not there — which is the state that
+   * produces an account that signs in and is then refused at every portal door,
+   * so the caller must not report success without it.
+   */
+  member: StaffMember | null;
 };
 
 export async function addStaffAccount(
@@ -340,7 +427,11 @@ export async function addStaffAccount(
 
   // The role is decided in Postgres, by `admin_add_staff`, which refuses any
   // caller who is not an admin. This call cannot promote anybody by itself.
-  await grantStaffRole(address, role);
+  //
+  // The UUID it hands back is the one written into `staff_members.user_id` —
+  // the join the whole portal turns on — so it is kept and checked against the
+  // row that was really written rather than against an address.
+  const grantedUserId = await grantStaffRole(address, role);
 
   // …and the address is confirmed there too, immediately, for the same reason:
   // a member the admin has just created should be able to sign in with the
@@ -376,12 +467,39 @@ export async function addStaffAccount(
     usedResetLink = !error;
   }
 
+  // …and the row is read back before anything is reported as done.
+  //
+  // `admin_add_staff` answering without an error is not proof that a team
+  // record exists: a database carrying an older copy of the function, or a
+  // write the policies refused, both leave an account in `auth.users` with no
+  // row in `staff_members`. That account signs in fine and is then turned away
+  // at every portal door as somebody who is not staff — the exact failure this
+  // screen keeps being blamed for.
+  //
+  // The UUID the database itself returned is the key that read is made with, so
+  // a row filed under a different identity can never pass as this member's. A
+  // database whose function predates that answer falls back to looking the
+  // record up by address through the same admin-only list the Team screen uses
+  // — still a real read of a real row, never an assumption — and only a genuine
+  // absence is a failure.
+  const member = grantedUserId
+    ? await readStaffMember(grantedUserId)
+    : await readStaffMemberByEmail(address);
+  if (!member) {
+    throw new Error(
+      grantedUserId
+        ? `The sign-in account for ${address} was created, but the database has no team record for it under Auth id ${grantedUserId}. Nothing has been added to the team. Run supabase/fix-admin-recovery.sql in the Supabase SQL editor, then press Add to team again — that grants the role to the existing account without creating a second one.`
+        : `The sign-in account for ${address} was created, but the database holds no team record for it, so it cannot be confirmed as added. Nothing has been added to the team. Run supabase/fix-admin-recovery.sql in the Supabase SQL editor, then press Add to team again — that grants the role to the existing account without creating a second one.`,
+    );
+  }
+
   return {
     createdSignIn,
     usedResetLink,
     passwordApplied: createdSignIn,
     needsConfirmation,
     confirmedByPortal,
+    member,
   };
 }
 

@@ -16,13 +16,37 @@ export type StaffSession = {
 /**
  * What the database says about the admin bootstrap door.
  *
- *   open     — no active admin exists, so the claim is on offer
- *   closed   — an active admin exists, so the claim is refused
- *   outdated — the live database still carries the first version of the rule,
- *              which hid the setup action whenever ANY staff row existed
- *   unknown  — the check could not run at all (schema missing, network down)
+ *   open       — the database holds no active admin, so the claim is on offer
+ *   closed     — an active admin exists, so the claim is refused
+ *   outdated   — the database answered, but with the first version of the rule,
+ *                which hid the setup action whenever ANY staff row existed
+ *   missing    — the database has no bootstrap rule at all, so it cannot hold an
+ *                admin either; the claim is offered because the refusal that
+ *                would otherwise apply cannot exist
+ *   unavailable — the question could not be answered (network down, the call
+ *                refused). Deliberately *not* `open`: offering setup on a guess
+ *                is exactly what "the browser must have no influence on this"
+ *                forbids
  */
-export type AdminSetupState = "open" | "closed" | "outdated" | "unknown";
+export type AdminSetupState =
+  | "open"
+  | "closed"
+  | "outdated"
+  | "missing"
+  | "unavailable";
+
+/**
+ * Is the setup action allowed to be shown at all?
+ *
+ * The single place that decides, so the card cannot show it in one state and
+ * hide it in another. `open` and `missing` are the two answers where the
+ * database has positively told us no admin exists — the second because a
+ * database without the rule cannot be holding one. Everything else, including
+ * "we could not ask", says no.
+ */
+export function setupIsOffered(state: AdminSetupState | "checking"): boolean {
+  return state === "open" || state === "missing";
+}
 
 /** The table that records who may work the portals. */
 const STAFF_TABLE = TABLES.staffMembers;
@@ -450,6 +474,28 @@ function isMissingFunction(error: { code?: string; message?: string } | null) {
 }
 
 /**
+ * Ask the database whether an administrator may still be claimed.
+ *
+ * Module scope and free of React, so the claim can be gated by the same rule
+ * the setup button is shown by, and so both can be tested against a fake server
+ * without a browser. One read, one boolean, and every failure mode kept apart:
+ * a refusal that could not be obtained is reported as such rather than being
+ * rounded to "no admin exists".
+ */
+export async function adminSetupState(): Promise<AdminSetupState> {
+  const { data, error } = await supabase.rpc("staff_bootstrap_state");
+  if (error) {
+    console.warn(`[Junoon] admin setup check failed: ${error.message}`);
+    return isMissingFunction(error) ? "missing" : "unavailable";
+  }
+  const answer = data as { claimable?: boolean; version?: number } | null;
+  if (answer?.version !== 2) return "outdated";
+  if (answer.claimable === true) return "open";
+  if (answer.claimable === false) return "closed";
+  return "unavailable";
+}
+
+/**
  * Check a password and read the role behind it — the whole of sign-in, with no
  * React state attached, so the rule can be tested without a browser.
  *
@@ -546,6 +592,30 @@ export async function claimFirstAdmin(
   password: string,
 ): Promise<OwnerClaim> {
   const address = email.trim();
+
+  // ------------------------------------------------------------------
+  // GATE — asked of the database before anything is created.
+  //
+  // The setup action is hidden while an admin exists, but hiding it is a
+  // convenience; this is the part that actually decides. Nothing is signed up,
+  // no role is granted and no account is touched unless the database has just
+  // answered that it holds no active admin — the same question the button's
+  // visibility was decided by, asked again here so the two can never disagree
+  // and so a stale screen (or a hand-made request) cannot slip past it.
+  //
+  // An answer that could not be obtained is a refusal, not a pass.
+  // ------------------------------------------------------------------
+  const state = await adminSetupState();
+  if (state === "closed" || state === "outdated" || state === "unavailable") {
+    return {
+      ok: false,
+      reason: "claimed",
+      message:
+        state === "outdated"
+          ? "This database has not been updated with the current one-time setup rule."
+          : "An admin account already exists for this restaurant.",
+    };
+  }
 
   // ------------------------------------------------------------------
   // PHASE 1 — Try to grant admin to an EXISTING auth user.
@@ -832,27 +902,10 @@ export function useStaffAuth() {
    * database-gated either way, so offering it costs nothing.
    */
   const canClaimOwner = useCallback(async (): Promise<AdminSetupState> => {
-    const { data, error } = await supabase.rpc("staff_bootstrap_state");
-    if (error) {
-      console.warn(`[Junoon] admin setup check failed: ${error.message}`);
-      return "unknown";
-    }
-    const answer = data as {
-      claimable?: boolean;
-      version?: number;
-    } | null;
-
-    // The current rule answers with `version: 2`. A database that answers
-    // without it is still running the first rule — which reported "not
-    // claimable" as soon as a single staff row existed, and is the usual reason
-    // the setup action looked missing. Say so instead of guessing, and offer the
-    // action anyway: the claim itself is refused by the database when an admin
-    // really does exist, so nothing is granted that should not be.
-    if (answer?.version !== 2) return "outdated";
-
-    if (answer.claimable === true) return "open";
-    if (answer.claimable === false) return "closed";
-    return "unknown";
+    // The same read the claim is gated by, from one place: a database with no
+    // bootstrap function cannot be holding an admin either, while a dropped
+    // connection is not an answer and must not be rounded to "you may claim".
+    return adminSetupState();
   }, []);
 
   /**
