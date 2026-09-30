@@ -2367,6 +2367,73 @@ describe("the security schema", () => {
   });
 
   /**
+   * The short file is a cut-down copy, not a second opinion.
+   *
+   * It exists so a locked-out owner can paste 12 KB instead of 29 KB and be
+   * working again. That is only safe if the two functions in it are byte-for-byte
+   * the same ones the full migration installs — otherwise the short file becomes
+   * a second, divergent definition of how an account is created.
+   */
+  test("the short first-admin file is the same SQL, not a variant of it", () => {
+    const short = readSql("first-admin.sql");
+    const full = readSql("staff-auth.sql");
+
+    // Only the two functions needed to get an admin in, and nothing else.
+    expect([
+      ...new Set(
+        [...short.matchAll(/create or replace function public\.(\w+)\(/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    ].sort()).toEqual(["admin_bootstrap_owner", "staff_ensure_auth_user"]);
+
+    // The bodies match the full migration exactly, comments and layout included.
+    const bodyOfIn = (sql: string, name: string) => {
+      const start = sql.indexOf(`create or replace function public.${name}(`);
+      expect([name, start > -1]).toEqual([name, true]);
+      return sql.slice(start, sql.indexOf("$$;", start));
+    };
+    for (const name of ["staff_ensure_auth_user", "admin_bootstrap_owner"]) {
+      expect([name, bodyOfIn(short, name)]).toEqual([
+        name,
+        bodyOfIn(full, name),
+      ]);
+    }
+
+    // The same grants, so the short file leaves the door in the same state.
+    expect(short).toContain(
+      "revoke all on function public.staff_ensure_auth_user(text, text, text) from public;",
+    );
+    expect(short).toContain(
+      "grant execute on function public.admin_bootstrap_owner(text, text, text) to anon, authenticated;",
+    );
+    // No duplicate grant, which a spliced file produces silently.
+    expect(short.match(/grant execute on function/g)?.length).toBe(1);
+
+    // And it still touches nothing outside the auth and staff tables.
+    const statements = short
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("--"))
+      .join("\n");
+    expect(
+      [
+        ...new Set(
+          [
+            ...statements.matchAll(
+              /(?:insert into|update|delete from)\s+((?:public|auth)\.[a-z_]+)/gi,
+            ),
+          ].map((match) => match[1].toLowerCase()),
+        ),
+      ].sort(),
+    ).toEqual([
+      "auth.identities",
+      "auth.users",
+      "public.staff_member_roles",
+      "public.staff_members",
+    ]);
+  });
+
+  /**
    * The identity helper is the only thing that writes to auth.users, and it is
    * reachable from nowhere but the two functions that guard themselves.
    */
@@ -2555,7 +2622,12 @@ describe("the security schema", () => {
    * `.txt`, so what is read is always what runs.
    */
   test("every staff SQL file ships an identical .txt twin", () => {
-    for (const file of ["staff-auth.sql", "fix-admin-recovery.sql", "schema.sql"]) {
+    for (const file of [
+      "staff-auth.sql",
+      "fix-admin-recovery.sql",
+      "schema.sql",
+      "first-admin.sql",
+    ]) {
       const sql = readFileSync(new URL(`../supabase/${file}`, import.meta.url));
       const twin = readFileSync(
         new URL(`../supabase/${file}.txt`, import.meta.url),
